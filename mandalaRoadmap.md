@@ -60,10 +60,10 @@ git commit -am "implement office entity"
 
 ## Step 2 — Person
 
-- [ ] Prompt Codex to implement Person
-- [ ] Person belongs to an office
-- [ ] Add salary + availability fields
-- [ ] Add derived hourly cost
+- [x] Prompt Codex to implement Person
+- [x] Person belongs to an office
+- [x] Add salary + availability fields
+- [x] Add derived hourly cost
 
 ```
 hourlyCost = annualSalary / 2080

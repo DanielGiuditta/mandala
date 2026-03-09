@@ -31,3 +31,11 @@ export function derivePersonAllocationPercent(
   if (availabilityHoursPerWeek <= 0) return 0
   return assignedHours / availabilityHoursPerWeek
 }
+
+export function deriveUtilizationPercent(
+  loggedHoursInPeriod: number,
+  availableHoursInPeriod: number,
+): number {
+  if (availableHoursInPeriod <= 0) return 0
+  return loggedHoursInPeriod / availableHoursInPeriod
+}
