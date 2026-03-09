@@ -61,7 +61,7 @@ People may have overlapping assignments across projects.
 
 ### 2.5 Time tracking is lightweight
 
-Employees enter time manually, with optional input from the native Windows tracker.
+People enter time manually, with optional input from the native Windows tracker.
 
 Time tracking is intended for simple operational tracking and rough project cost visibility.
 
@@ -95,6 +95,16 @@ Project stage is a lifecycle label.
 
 Admins control stage changes in V1.
 
+### 2.9 Utilization is actual logged time
+
+Utilization measures actual logged work relative to available time for the same period.
+
+The system should derive:
+
+`utilizationPercent = loggedHoursInPeriod / availableHoursInPeriod`
+
+In V1, utilization is based on logged project time, not planned assignment hours.
+
 ## 3. Core Entities
 
 - Office
@@ -103,7 +113,6 @@ Admins control stage changes in V1.
 - Assignment
 - TimeEntry
 - ResourceDocument
-- Stage
 
 ## 4. Reporting
 
@@ -115,7 +124,7 @@ The system should support reporting across:
 - people by home office
 - staffing allocation
 - remaining capacity
-- utilization
+- utilization based on logged project time versus available time
 - project labor cost
 
 ## 5. V1 Scope Notes

@@ -1,10 +1,10 @@
 # Glossary
 
 ## Project
-A client-facing architecture job tracked through defined stages.
+A client-facing architecture job tracked through project stage labels.
 
 ## Person
-An employee or staff member tracked in the system.
+A person tracked in the system.
 
 ## Assignment
 A staffing record linking one person to one project.
@@ -18,7 +18,7 @@ A document or library asset attached to a project or stored in the shared librar
 ## Library
 A shared repository of non-project reference materials.
 
-## Workflow Stage
+## Project Stage
 A named lifecycle label for a project in V1.
 
 ## Approval

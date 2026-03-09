@@ -23,5 +23,5 @@ Read:
 - route or page matches documented scope
 - empty, loading, error, and permission states are handled
 - filters and table columns use documented entity fields
-- actions obey role and documented stage constraints
+- actions obey documented behavior and stage constraints
 - UI reuses shared components and tokens

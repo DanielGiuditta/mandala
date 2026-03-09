@@ -1,4 +1,4 @@
-# Workflow Stages
+# Project Stage Labels
 
 ## Default V1 stage set
 

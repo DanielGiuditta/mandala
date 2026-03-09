@@ -19,7 +19,6 @@ Core entities:
 - Assignment
 - TimeEntry
 - ResourceDocument
-- Stage
 
 ## Office
 
@@ -51,7 +50,7 @@ An office can:
 
 ## Person
 
-Represents an employee or contractor who can work on projects.
+Represents a person who can work on projects.
 
 ### Fields
 
@@ -77,6 +76,12 @@ Represents an employee or contractor who can work on projects.
 - `hourlyCost = annualSalary / 2080`
 - `allocationPercent = assignedHours / availabilityHoursPerWeek`
 - `remainingCapacity = availabilityHoursPerWeek - assignedHours`
+- `utilizationPercent = loggedHoursInPeriod / availableHoursInPeriod`
+
+### Notes
+
+- utilization uses actual logged project time, not planned assignment hours
+- `availableHoursInPeriod` must use the same time window as `loggedHoursInPeriod`
 
 ### Relationships
 
@@ -200,9 +205,9 @@ Represents a document attached to a project or the shared library.
 - if `projectId` is null, the document belongs to the shared library
 - this is the meaning of "resource" in the product
 
-## Stage
+## Project stage labels
 
-Represents the lifecycle label of a project.
+`Project.stage` is a lifecycle label, not a separate entity in V1.
 
 ### Example values
 
@@ -228,5 +233,5 @@ The system should support reporting by:
 - people by home office
 - staffing allocation
 - remaining capacity
-- utilization
+- utilization based on logged project time versus available time
 - project labor cost

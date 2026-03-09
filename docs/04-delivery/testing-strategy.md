@@ -2,7 +2,7 @@
 
 ## Priorities
 
-1. Business rules and permissions
+1. Business rules and access rules
 2. Office relationships and stage labels
 3. Rollups and cost calculations
 4. Critical list/detail screens
@@ -31,5 +31,5 @@ Test these first when time is tight:
 - originating/managing office integrity
 - stage label changes
 - assignment/time rollups
-- salary/cost visibility permissions
+- salary/cost visibility rules
 - storage access rules
