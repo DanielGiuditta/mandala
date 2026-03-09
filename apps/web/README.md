@@ -9,5 +9,5 @@ Expected responsibilities:
 - people
 - assignments
 - resources
-- time entry and review
+- project time visibility and rollups
 - project stage management

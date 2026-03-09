@@ -61,9 +61,13 @@ People may have overlapping assignments across projects.
 
 ### 2.5 Time tracking is lightweight
 
-People enter time manually, with optional input from the native Windows tracker.
+In V1, people capture time primarily through a native Windows checker.
+
+At machine login or session start, the person selects the current project from a dropdown.
 
 Time tracking is intended for simple operational tracking and rough project cost visibility.
+
+Dedicated web time-entry screens, manager time review, and time-card approval workflows are out of scope for V1.
 
 ### 2.6 Salary drives labor cost
 
@@ -134,13 +138,15 @@ V1 should prioritize:
 - office-aware project tracking
 - person records with salary and availability
 - planned staffing assignments in hours
-- lightweight time entry
+- native Windows time capture with project selection at login or session start
 - project labor cost rollups
 - project documents / library documents
 
 V1 does not require:
 
 - payroll integration
+- dedicated web time-entry screens
+- manager time review
 - formal time approval workflows
 - complex accounting structures
 - division-based reporting

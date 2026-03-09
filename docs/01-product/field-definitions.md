@@ -50,7 +50,7 @@ End date of the assignment window.
 Actual time worked for a project on a given date.
 
 ### `source`
-Where the time entry originated, such as manual entry or Windows tracker sync.
+Where the time entry originated, such as native Windows checker sync or a manual correction/import path.
 
 ### `assignmentId`
 Optional link to the related assignment when available.

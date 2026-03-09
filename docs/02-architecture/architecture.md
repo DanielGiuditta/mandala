@@ -3,7 +3,7 @@
 ## Suggested top-level shape
 
 - `apps/web` — user-facing application
-- `apps/desktop-agent` — optional Windows tray app for timer convenience and future activity signals
+- `apps/desktop-agent` — Windows companion app for V1 project selection and time capture
 - `packages/ui` — shared components and tokens
 - `packages/domain` — shared schemas, types, enums, and pure business logic
 - `packages/db` — database clients, generated types, query helpers
@@ -13,7 +13,7 @@
 
 The product has two interfaces with shared domain rules:
 1. the web application
-2. an optional Windows companion agent
+2. a Windows companion app for V1 time capture
 
 A monorepo avoids duplicating domain types, permission enums, workflow keys, and design-system primitives.
 
@@ -24,7 +24,7 @@ Lay the core model down first, then build vertical slices:
 2. People
 3. Projects
 4. Assignments
-5. Time entries + rollups
+5. Native time capture + time rollups
 6. Resources + storage
 7. Auth + authorization skeleton
 8. Project and people list/detail flows

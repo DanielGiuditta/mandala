@@ -234,7 +234,7 @@ git commit -am "implement projects list"
 - [ ] Build project detail page
 - [ ] Show assignments
 - [ ] Show documents
-- [ ] Show time entries
+- [ ] Show project time summary
 
 Commit
 

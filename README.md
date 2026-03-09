@@ -15,11 +15,10 @@ This repository is a starter scaffold for the internal architecture-firm tracker
 2. People
 3. Projects
 4. Assignments
-5. Time entries and rollups
+5. Native time capture and rollups
 6. Resources
 7. Stage labels and admin controls
 8. Dashboard
-9. Optional desktop companion
 
 ## How to use with Codex
 

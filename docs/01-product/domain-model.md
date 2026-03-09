@@ -162,7 +162,9 @@ Assignments are stored in hours per week, not percent.
 
 Represents actual hours worked.
 
-Employees enter time manually or through the Windows tracker.
+In V1, time is captured primarily through the native Windows checker.
+
+At machine login or session start, the person selects the current project from a dropdown.
 
 ### Fields
 
@@ -181,8 +183,10 @@ Employees enter time manually or through the Windows tracker.
 
 ### Notes
 
+- `source` distinguishes Windows checker sync from any manual correction or import path
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema but should be linked when possible
+- dedicated web time-entry and manager review flows are out of scope for V1
 
 ## ResourceDocument
 
