@@ -335,3 +335,81 @@ set
   hours = excluded.hours,
   notes = excluded.notes,
   source = excluded.source;
+
+insert into public.resource_documents (
+  id,
+  name,
+  file_url,
+  file_type,
+  project_id,
+  category,
+  description,
+  uploaded_by_person_id,
+  created_at
+)
+values
+  (
+    '50000000-0000-0000-0000-000000000001',
+    'Malabar Arts Center Brief',
+    'https://files.mandala.local/projects/malabar-arts-center/brief.pdf',
+    'pdf',
+    '20000000-0000-0000-0000-000000000001',
+    'brief',
+    'Client brief and project goals for the arts center expansion.',
+    '10000000-0000-0000-0000-000000000004',
+    '2026-02-05T10:00:00Z'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000002',
+    'Bangalore Civic Hub Site Plan',
+    'https://files.mandala.local/projects/bangalore-civic-hub/site-plan.dwg',
+    'dwg',
+    '20000000-0000-0000-0000-000000000002',
+    'drawing',
+    'Base site plan package shared across managing and originating offices.',
+    '10000000-0000-0000-0000-000000000006',
+    '2026-03-02T15:30:00Z'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000003',
+    'Waterfront Housing Moodboard',
+    'https://files.mandala.local/projects/kochi-waterfront-housing/moodboard.png',
+    'png',
+    '20000000-0000-0000-0000-000000000003',
+    'reference',
+    'Early concept reference board for the residential waterfront package.',
+    '10000000-0000-0000-0000-000000000005',
+    '2026-03-04T09:15:00Z'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000004',
+    'Mandala Presentation Template',
+    'https://files.mandala.local/library/templates/presentation-template.pptx',
+    'pptx',
+    null,
+    'template',
+    'Shared internal presentation template for project reviews and client updates.',
+    '10000000-0000-0000-0000-000000000001',
+    '2026-01-10T08:00:00Z'
+  ),
+  (
+    '50000000-0000-0000-0000-000000000005',
+    'Facade Material Reference Library',
+    'https://files.mandala.local/library/references/facade-material-reference.pdf',
+    'pdf',
+    null,
+    'reference',
+    'Shared facade precedent and material guidance for early design work.',
+    '10000000-0000-0000-0000-000000000002',
+    '2026-01-20T11:45:00Z'
+  )
+on conflict (id) do update
+set
+  name = excluded.name,
+  file_url = excluded.file_url,
+  file_type = excluded.file_type,
+  project_id = excluded.project_id,
+  category = excluded.category,
+  description = excluded.description,
+  uploaded_by_person_id = excluded.uploaded_by_person_id,
+  created_at = excluded.created_at;

@@ -159,7 +159,7 @@ git commit -am "implement time entry entity"
 
 ## Step 6 — ResourceDocument
 
-- [ ] Implement document resource entity
+- [x] Implement document resource entity
 
 Fields
 
