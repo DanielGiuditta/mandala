@@ -133,7 +133,7 @@ git commit -am "implement assignment entity"
 
 ## Step 5 — TimeEntry
 
-- [ ] Implement TimeEntry entity
+- [x] Implement TimeEntry entity
 
 Fields
 

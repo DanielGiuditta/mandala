@@ -264,3 +264,74 @@ set
   end_date = excluded.end_date,
   notes = excluded.notes,
   active = excluded.active;
+
+insert into public.time_entries (
+  id,
+  person_id,
+  project_id,
+  assignment_id,
+  date,
+  hours,
+  notes,
+  source
+)
+values
+  (
+    '40000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000004',
+    '20000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000001',
+    '2026-03-02',
+    7.50,
+    'Consultant coordination and design review.',
+    'manual'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000004',
+    '20000000-0000-0000-0000-000000000002',
+    '30000000-0000-0000-0000-000000000002',
+    '2026-03-03',
+    2.50,
+    'Cross-office planning workshop support.',
+    'windows-tracker'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000006',
+    '20000000-0000-0000-0000-000000000002',
+    '30000000-0000-0000-0000-000000000003',
+    '2026-03-03',
+    6.00,
+    'Meeting prep and follow-up log.',
+    'manual'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000005',
+    '20000000-0000-0000-0000-000000000003',
+    null,
+    '2026-03-04',
+    5.50,
+    'Concept sketches entered without assignment link.',
+    'manual'
+  ),
+  (
+    '40000000-0000-0000-0000-000000000005',
+    '10000000-0000-0000-0000-000000000005',
+    '20000000-0000-0000-0000-000000000001',
+    '30000000-0000-0000-0000-000000000005',
+    '2026-03-05',
+    4.00,
+    'Interior graphics package updates.',
+    'windows-tracker'
+  )
+on conflict (id) do update
+set
+  person_id = excluded.person_id,
+  project_id = excluded.project_id,
+  assignment_id = excluded.assignment_id,
+  date = excluded.date,
+  hours = excluded.hours,
+  notes = excluded.notes,
+  source = excluded.source;
