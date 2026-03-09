@@ -9,6 +9,10 @@ export const PROJECT_STAGES = [
 
 export type ProjectStage = (typeof PROJECT_STAGES)[number]
 
+export function isProjectStage(value: string): value is ProjectStage {
+  return (PROJECT_STAGES as readonly string[]).includes(value)
+}
+
 export interface Project {
   id: string
   name: string

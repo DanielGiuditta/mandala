@@ -127,3 +127,69 @@ where id in (
   '00000000-0000-0000-0000-000000000002',
   '00000000-0000-0000-0000-000000000003'
 );
+
+insert into public.projects (
+  id,
+  name,
+  client_name,
+  description,
+  originating_office_id,
+  managing_office_id,
+  lead_person_id,
+  stage,
+  start_date,
+  target_completion_date,
+  active
+)
+values
+  (
+    '20000000-0000-0000-0000-000000000001',
+    'Malabar Arts Center',
+    'Kerala Cultural Trust',
+    'Adaptive reuse and expansion for a regional arts and performance venue.',
+    '00000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000004',
+    'active',
+    '2026-01-15',
+    '2026-12-30',
+    true
+  ),
+  (
+    '20000000-0000-0000-0000-000000000002',
+    'Bangalore Civic Hub',
+    'South Metro Development Board',
+    'Mixed-use civic and community building managed across offices.',
+    '00000000-0000-0000-0000-000000000002',
+    '00000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000003',
+    'planning',
+    '2026-03-01',
+    '2027-05-15',
+    true
+  ),
+  (
+    '20000000-0000-0000-0000-000000000003',
+    'Kochi Waterfront Housing',
+    'Blue Tide Communities',
+    'Residential master planning and phased waterfront housing package.',
+    '00000000-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002',
+    'proposal',
+    '2026-02-10',
+    '2027-11-20',
+    true
+  )
+on conflict (id) do update
+set
+  name = excluded.name,
+  client_name = excluded.client_name,
+  description = excluded.description,
+  originating_office_id = excluded.originating_office_id,
+  managing_office_id = excluded.managing_office_id,
+  lead_person_id = excluded.lead_person_id,
+  stage = excluded.stage,
+  start_date = excluded.start_date,
+  target_completion_date = excluded.target_completion_date,
+  active = excluded.active;

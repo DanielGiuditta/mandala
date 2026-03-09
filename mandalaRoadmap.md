@@ -79,7 +79,7 @@ git commit -am "implement person entity"
 
 ## Step 3 — Project
 
-- [ ] Prompt Codex to implement Project
+- [x] Prompt Codex to implement Project
 
 Required fields:
 
