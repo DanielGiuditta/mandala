@@ -105,7 +105,7 @@ git commit -am "implement project entity"
 
 ## Step 4 — Assignment
 
-- [ ] Implement Assignment entity
+- [x] Implement Assignment entity
 
 Fields
 

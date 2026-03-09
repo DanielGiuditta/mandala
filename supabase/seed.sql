@@ -193,3 +193,74 @@ set
   start_date = excluded.start_date,
   target_completion_date = excluded.target_completion_date,
   active = excluded.active;
+
+insert into public.assignments (
+  id,
+  project_id,
+  person_id,
+  assigned_hours_per_week,
+  start_date,
+  end_date,
+  notes,
+  active
+)
+values
+  (
+    '30000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000004',
+    24.00,
+    '2026-01-15',
+    '2026-06-30',
+    'Lead project architect for core design and consultant coordination.',
+    true
+  ),
+  (
+    '30000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000004',
+    10.00,
+    '2026-03-01',
+    '2026-08-31',
+    'Advisory support during planning while primary work remains in Calicut.',
+    true
+  ),
+  (
+    '30000000-0000-0000-0000-000000000003',
+    '20000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000006',
+    20.00,
+    '2026-03-01',
+    '2026-12-31',
+    'Project coordination and meeting follow-up for the managing office.',
+    true
+  ),
+  (
+    '30000000-0000-0000-0000-000000000004',
+    '20000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000005',
+    18.00,
+    '2026-02-10',
+    '2026-09-30',
+    'Residential concept design and presentation support.',
+    true
+  ),
+  (
+    '30000000-0000-0000-0000-000000000005',
+    '20000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000005',
+    12.00,
+    '2026-02-01',
+    '2026-05-31',
+    'Interior and graphics package support alongside other active assignments.',
+    true
+  )
+on conflict (id) do update
+set
+  project_id = excluded.project_id,
+  person_id = excluded.person_id,
+  assigned_hours_per_week = excluded.assigned_hours_per_week,
+  start_date = excluded.start_date,
+  end_date = excluded.end_date,
+  notes = excluded.notes,
+  active = excluded.active;
