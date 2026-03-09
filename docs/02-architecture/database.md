@@ -18,6 +18,12 @@
 
 Advanced workflow tables such as approvals or checklist items should not be introduced unless the product docs are expanded beyond the current V1 scope.
 
+## Current integrity baseline
+
+- enforce foreign keys once the core tables exist
+- add indexes on office, person, project, and assignment relationship columns
+- add reporting indexes on fields such as `projects.stage`, `time_entries.date`, and `resource_documents.created_at`
+
 ## Recommended process
 
 1. Write or update domain invariants.

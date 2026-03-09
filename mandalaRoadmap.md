@@ -182,7 +182,7 @@ git commit -am "implement resource document entity"
 
 # Phase 2 — Database Integrity
 
-- [ ] Add foreign keys
+- [x] Add foreign keys
 
 ```
 Person.officeId → Office.id
@@ -193,7 +193,7 @@ Assignment.projectId → Project.id
 TimeEntry.personId → Person.id
 ```
 
-- [ ] Add indexes for common queries
+- [x] Add indexes for common queries
 
 Commit
 
