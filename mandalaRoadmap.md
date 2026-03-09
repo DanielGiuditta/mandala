@@ -9,15 +9,15 @@ Check items off as you complete them.
 ## Phase 0 — Repo Setup
 
 - [x] Unzip the starter repo into your project
-- [ ] Commit the initial repo
+- [x] Commit the initial repo
 
 ```
 git add .
 git commit -m "initial codex project scaffold"
 ```
 
-- [ ] Open the repo root in Codex
-- [ ] Confirm these files exist
+- [x] Open the repo root in Codex
+- [x] Confirm these files exist
 
 ```
 docs/01-product/prd.md
@@ -39,10 +39,10 @@ DO NOT BUILD UI YET.
 
 ## Step 1 — Office
 
-- [ ] Prompt Codex to implement the Office entity
-- [ ] Add database table
-- [ ] Add domain type in packages/domain
-- [ ] Add seed data
+- [x] Prompt Codex to implement the Office entity
+- [x] Add database table
+- [x] Add domain type in packages/domain
+- [x] Add seed data
 
 Example offices:
 
