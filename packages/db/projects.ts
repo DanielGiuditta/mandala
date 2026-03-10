@@ -9,6 +9,16 @@ import type {
 import { deriveHourlyCost, isProjectStage } from "@mandala/domain"
 
 import { fetchOfficeRows, fetchPeopleRows, type OfficeRow, type PersonRow } from "./lookups"
+import {
+  PREVIEW_CONFIG_MESSAGE,
+  previewAssignments,
+  previewChecklistItems,
+  previewOffices,
+  previewPeople,
+  previewProjects,
+  previewResourceDocuments,
+  previewTimeEntries,
+} from "./previewData"
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 
 interface ProjectRow {
@@ -256,18 +266,184 @@ function emptyTimeSummary(): ProjectTimeSummary {
   }
 }
 
+function listPreviewProjects(filters: ProjectListFilters): ProjectListData {
+  const projectRows = [...previewProjects]
+    .filter((row) => matchesFilters(row, filters))
+    .sort((left, right) => left.name.localeCompare(right.name))
+  const leadIds = projectRows
+    .map((row) => row.lead_person_id)
+    .filter((value): value is string => Boolean(value))
+  const officesById = new Map(previewOffices.map((office) => [office.id, office]))
+  const peopleById = new Map(
+    previewPeople
+      .filter((person) => leadIds.includes(person.id))
+      .map((person) => [person.id, person]),
+  )
+
+  return {
+    configured: false,
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    filters,
+    offices: previewOffices.map((office) => ({ id: office.id, name: office.name })),
+    projects: projectRows.map((row) => buildProjectListItem(row, officesById, peopleById)),
+  }
+}
+
+function getPreviewProjectDetail(projectId: string): ProjectDetailData {
+  const row = previewProjects.find((project) => project.id === projectId)
+
+  if (!row) {
+    return {
+      checklistItems: [],
+      configured: false,
+      configMessage: PREVIEW_CONFIG_MESSAGE,
+      documents: [],
+      project: null,
+      staffing: [],
+      timeSummary: emptyTimeSummary(),
+    }
+  }
+
+  const offices = previewOffices.filter(
+    (office) =>
+      office.id === row.originating_office_id || office.id === row.managing_office_id,
+  )
+  const assignmentRows = previewAssignments
+    .filter((assignment) => assignment.project_id === projectId)
+    .sort((left, right) => (left.start_date ?? "").localeCompare(right.start_date ?? ""))
+  const checklistRows = previewChecklistItems
+    .filter((item) => item.project_id === projectId)
+    .sort(
+      (left, right) =>
+        Number(left.completed) - Number(right.completed) ||
+        left.created_at.localeCompare(right.created_at),
+    )
+  const documentRows = previewResourceDocuments
+    .filter((document) => document.project_id === projectId)
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+  const timeEntryRows = previewTimeEntries
+    .filter((entry) => entry.project_id === projectId)
+    .sort((left, right) => right.date.localeCompare(left.date))
+  const staffingPeopleIds = assignmentRows.map((assignment) => assignment.person_id)
+  const checklistPeopleIds = checklistRows
+    .map((item) => item.assigned_person_id)
+    .filter((value): value is string => Boolean(value))
+  const timePeopleIds = timeEntryRows.map((entry) => entry.person_id)
+  const allPeopleIds = [
+    ...new Set([
+      ...(row.lead_person_id ? [row.lead_person_id] : []),
+      ...staffingPeopleIds,
+      ...checklistPeopleIds,
+      ...timePeopleIds,
+      ...documentRows
+        .map((document) => document.uploaded_by_person_id)
+        .filter((value): value is string => Boolean(value)),
+    ]),
+  ]
+  const allPeople = previewPeople.filter((person) => allPeopleIds.includes(person.id))
+  const officesById = new Map(offices.map((office) => [office.id, office]))
+  const peopleById = new Map(allPeople.map((person) => [person.id, person]))
+  const staffingOfficeIds = [
+    ...new Set(
+      allPeople
+        .map((person) => person.office_id)
+        .filter((officeId) => !officesById.has(officeId)),
+    ),
+  ]
+
+  for (const office of previewOffices.filter((candidate) =>
+    staffingOfficeIds.includes(candidate.id),
+  )) {
+    officesById.set(office.id, office)
+  }
+
+  const project = buildProjectListItem(row, officesById, peopleById)
+  const staffing = assignmentRows.map((assignmentRow) => {
+    const assignment = toAssignment(assignmentRow)
+    const person = peopleById.get(assignment.personId)
+
+    return {
+      ...assignment,
+      personName: person?.full_name ?? "Unknown person",
+      personOfficeName: person ? officesById.get(person.office_id)?.name ?? null : null,
+      personTitle: person?.title ?? null,
+    }
+  })
+  const checklistItems = checklistRows.map((checklistRow) => {
+    const checklistItem = toChecklistItem(checklistRow)
+    const assignedPerson = checklistItem.assignedPersonId
+      ? peopleById.get(checklistItem.assignedPersonId)
+      : null
+
+    return {
+      ...checklistItem,
+      assignedPersonName: assignedPerson?.full_name ?? null,
+    }
+  })
+  const documents = documentRows.map((documentRow) => ({
+    ...toResourceDocument(documentRow),
+    uploadedByPersonName: documentRow.uploaded_by_person_id
+      ? peopleById.get(documentRow.uploaded_by_person_id)?.full_name ?? null
+      : null,
+  }))
+  const timeEntries = timeEntryRows.map((timeEntryRow) => toTimeEntry(timeEntryRow))
+  const byPerson = new Map<
+    string,
+    { hours: number; laborCost: number; personId: string; personName: string }
+  >()
+  let totalHours = 0
+  let totalLaborCost = 0
+
+  for (const timeEntry of timeEntries) {
+    const person = peopleById.get(timeEntry.personId)
+    const personName = person?.full_name ?? "Unknown person"
+    const laborCost =
+      person ? timeEntry.hours * deriveHourlyCost(Number(person.annual_salary)) : 0
+    const existing = byPerson.get(timeEntry.personId)
+
+    totalHours += timeEntry.hours
+    totalLaborCost += laborCost
+
+    if (existing) {
+      existing.hours += timeEntry.hours
+      existing.laborCost += laborCost
+    } else {
+      byPerson.set(timeEntry.personId, {
+        hours: timeEntry.hours,
+        laborCost,
+        personId: timeEntry.personId,
+        personName,
+      })
+    }
+  }
+
+  return {
+    checklistItems,
+    configured: false,
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    documents,
+    project,
+    staffing,
+    timeSummary: {
+      byPerson: Array.from(byPerson.values()).sort((left, right) =>
+        left.personName.localeCompare(right.personName),
+      ),
+      recentEntries: timeEntries.slice(0, 5).map((entry) => ({
+        ...entry,
+        personName: peopleById.get(entry.personId)?.full_name ?? null,
+      })),
+      totalHours,
+      totalLaborCost,
+    },
+  }
+}
+
 export async function listProjects(filters: ProjectListFilters = {}): Promise<ProjectListData> {
   const status = getDatabaseStatus()
   const client = createServerSupabaseClient()
 
   if (!client) {
-    return {
-      configured: status.configured,
-      configMessage: status.message,
-      filters,
-      offices: [],
-      projects: [],
-    }
+    return listPreviewProjects(filters)
   }
 
   const [{ data: projectData, error: projectError }, offices] = await Promise.all([
@@ -308,15 +484,7 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
   const client = createServerSupabaseClient()
 
   if (!client) {
-    return {
-      checklistItems: [],
-      configured: status.configured,
-      configMessage: status.message,
-      documents: [],
-      project: null,
-      staffing: [],
-      timeSummary: emptyTimeSummary(),
-    }
+    return getPreviewProjectDetail(projectId)
   }
 
   const { data: projectRow, error: projectError } = await client

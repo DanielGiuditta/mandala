@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 .next/
+.next.stale.*/
 .turbo/
 *.tsbuildinfo
 .env

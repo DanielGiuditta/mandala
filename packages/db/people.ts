@@ -8,6 +8,15 @@ import {
 } from "@mandala/domain"
 
 import { fetchOfficeRows, type OfficeRow, type PersonRow } from "./lookups"
+import {
+  PREVIEW_CONFIG_MESSAGE,
+  previewAssignments,
+  previewChecklistItems,
+  previewOffices,
+  previewPeople,
+  previewProjects,
+  previewTimeEntries,
+} from "./previewData"
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 
 interface AssignmentRow {
@@ -193,18 +202,183 @@ function emptyPersonTimeSummary(): PersonDetailData["timeSummary"] {
   }
 }
 
+function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
+  const filteredPeople = previewPeople.filter((row) => matchesFilters(row, filters))
+  const officesById = new Map(previewOffices.map((office) => [office.id, office]))
+  const assignmentsByPersonId = previewAssignments.reduce((totals, assignment) => {
+    if (!assignment.active) {
+      return totals
+    }
+
+    const currentTotal = totals.get(assignment.person_id) ?? 0
+    totals.set(assignment.person_id, currentTotal + Number(assignment.assigned_hours_per_week))
+    return totals
+  }, new Map<string, number>())
+
+  return {
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    configured: false,
+    filters,
+    offices: previewOffices.map((office) => ({ id: office.id, name: office.name })),
+    people: filteredPeople.map((row) =>
+      buildPersonListItem(row, assignmentsByPersonId, officesById),
+    ),
+  }
+}
+
+function getPreviewPersonDetail(personId: string): PersonDetailData {
+  const person = previewPeople.find((candidate) => candidate.id === personId)
+
+  if (!person) {
+    return {
+      assignments: [],
+      checklistItems: [],
+      configMessage: PREVIEW_CONFIG_MESSAGE,
+      configured: false,
+      person: null,
+      timeSummary: emptyPersonTimeSummary(),
+    }
+  }
+
+  const officesById = new Map(previewOffices.map((office) => [office.id, office]))
+  const assignmentRows = previewAssignments
+    .filter((assignment) => assignment.person_id === personId)
+    .sort(
+      (left, right) =>
+        Number(right.active) - Number(left.active) ||
+        (left.start_date ?? "").localeCompare(right.start_date ?? ""),
+    )
+  const timeEntryRows = previewTimeEntries
+    .filter((entry) => entry.person_id === personId)
+    .sort((left, right) => right.date.localeCompare(left.date))
+  const checklistRows = previewChecklistItems
+    .filter((item) => item.assigned_person_id === personId)
+    .sort(
+      (left, right) =>
+        Number(left.completed) - Number(right.completed) ||
+        right.created_at.localeCompare(left.created_at),
+    )
+  const projectRows = previewProjects.filter((project) =>
+    [
+      ...assignmentRows.map((assignment) => assignment.project_id),
+      ...timeEntryRows.map((entry) => entry.project_id),
+      ...checklistRows.map((item) => item.project_id),
+    ].includes(project.id),
+  )
+  const assignmentsByPersonId = assignmentRows.reduce((totals, assignment) => {
+    const currentTotal = totals.get(assignment.person_id) ?? 0
+    totals.set(
+      assignment.person_id,
+      currentTotal + Number(assignment.assigned_hours_per_week),
+    )
+    return totals
+  }, new Map<string, number>())
+  const personListItem = buildPersonListItem(person, assignmentsByPersonId, officesById)
+  const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
+  const projectsById = new Map(projectRows.map((project) => [project.id, project]))
+  const byProject = new Map<string, PersonDetailProjectTimeItem>()
+  let totalHours = 0
+  let totalLaborCost = 0
+  let latestTrackedWeekHours = 0
+  const latestTrackedDate = timeEntryRows[0]?.date ?? null
+  const latestTrackedWeekStart = latestTrackedDate
+    ? new Date(`${latestTrackedDate}T00:00:00Z`)
+    : null
+
+  if (latestTrackedWeekStart) {
+    latestTrackedWeekStart.setUTCDate(latestTrackedWeekStart.getUTCDate() - 6)
+  }
+
+  for (const entry of timeEntryRows) {
+    const hours = Number(entry.hours)
+    const laborCost = hours * hourlyCost
+    const projectName = projectsById.get(entry.project_id)?.name ?? "Unknown project"
+    const existing = byProject.get(entry.project_id)
+
+    totalHours += hours
+    totalLaborCost += laborCost
+
+    if (latestTrackedWeekStart) {
+      const entryDate = new Date(`${entry.date}T00:00:00Z`)
+      if (entryDate >= latestTrackedWeekStart) {
+        latestTrackedWeekHours += hours
+      }
+    }
+
+    if (existing) {
+      existing.hours += hours
+      existing.laborCost += laborCost
+    } else {
+      byProject.set(entry.project_id, {
+        hours,
+        laborCost,
+        projectId: entry.project_id,
+        projectName,
+      })
+    }
+  }
+
+  return {
+    assignments: assignmentRows.map((assignment) => {
+      const project = projectsById.get(assignment.project_id)
+
+      return {
+        active: assignment.active,
+        endDate: assignment.end_date,
+        id: assignment.id,
+        managingOfficeName: project
+          ? officesById.get(project.managing_office_id)?.name ?? null
+          : null,
+        notes: assignment.notes,
+        projectId: assignment.project_id,
+        projectName: project?.name ?? "Unknown project",
+        projectStage: project?.stage ?? "unknown",
+        startDate: assignment.start_date,
+        assignedHoursPerWeek: Number(assignment.assigned_hours_per_week),
+      }
+    }),
+    checklistItems: checklistRows.map((item) => ({
+      completed: item.completed,
+      completedAt: item.completed_at,
+      createdAt: item.created_at,
+      id: item.id,
+      projectId: item.project_id,
+      projectName: projectsById.get(item.project_id)?.name ?? "Unknown project",
+      title: item.title,
+    })),
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    configured: false,
+    person: personListItem,
+    timeSummary: {
+      latestTrackedWeekHours,
+      latestTrackedWeekUtilizationPercent: deriveUtilizationPercent(
+        latestTrackedWeekHours,
+        personListItem.availabilityHoursPerWeek,
+      ),
+      recentEntries: timeEntryRows.slice(0, 8).map((entry) => ({
+        date: entry.date,
+        hours: Number(entry.hours),
+        id: entry.id,
+        notes: entry.notes,
+        projectId: entry.project_id,
+        projectName: projectsById.get(entry.project_id)?.name ?? "Unknown project",
+        source: entry.source,
+      })),
+      totalHours,
+      totalLaborCost,
+      byProject: Array.from(byProject.values()).sort((left, right) =>
+        right.hours - left.hours || left.projectName.localeCompare(right.projectName),
+      ),
+    },
+  }
+}
+
 export async function listPeople(filters: PeopleListFilters = {}): Promise<PeopleListData> {
   const status = getDatabaseStatus()
   const client = createServerSupabaseClient()
 
   if (!client) {
-    return {
-      configMessage: status.message,
-      configured: status.configured,
-      filters,
-      offices: [],
-      people: [],
-    }
+    return listPreviewPeople(filters)
   }
 
   const [{ data: peopleData, error: peopleError }, offices] = await Promise.all([
@@ -269,14 +443,7 @@ export async function getPersonDetail(personId: string): Promise<PersonDetailDat
   const client = createServerSupabaseClient()
 
   if (!client) {
-    return {
-      assignments: [],
-      checklistItems: [],
-      configMessage: status.message,
-      configured: status.configured,
-      person: null,
-      timeSummary: emptyPersonTimeSummary(),
-    }
+    return getPreviewPersonDetail(personId)
   }
 
   const { data: personRow, error: personError } = await client

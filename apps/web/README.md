@@ -16,6 +16,7 @@ Current scope in this repo:
 - project checklist visibility
 - project time visibility and labor cost rollups
 - shared library document visibility
+- seeded preview fallback when Supabase is not configured
 
 Out of scope for the current V1 web scaffold:
 - dedicated web time entry
