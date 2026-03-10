@@ -98,6 +98,10 @@ export interface ProjectChecklistItem extends ChecklistItem {
   assignedPersonName: string | null
 }
 
+export interface ProjectDocumentItem extends ResourceDocument {
+  uploadedByPersonName: string | null
+}
+
 export interface ProjectTimeSummary {
   byPerson: Array<{
     hours: number
@@ -114,7 +118,7 @@ export interface ProjectDetailData {
   checklistItems: ProjectChecklistItem[]
   configured: boolean
   configMessage: string | null
-  documents: ResourceDocument[]
+  documents: ProjectDocumentItem[]
   project: ProjectListItem | null
   staffing: ProjectAssignmentItem[]
   timeSummary: ProjectTimeSummary
@@ -453,7 +457,12 @@ export async function getProjectDetail(projectId: string): Promise<ProjectDetail
     }
   })
 
-  const documents = documentRows.map((documentRow) => toResourceDocument(documentRow))
+  const documents = documentRows.map((documentRow) => ({
+    ...toResourceDocument(documentRow),
+    uploadedByPersonName: documentRow.uploaded_by_person_id
+      ? peopleById.get(documentRow.uploaded_by_person_id)?.full_name ?? null
+      : null,
+  }))
   const timeEntries = timeEntryRows.map((timeEntryRow) => toTimeEntry(timeEntryRow))
   const byPerson = new Map<
     string,
