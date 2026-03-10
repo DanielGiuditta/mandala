@@ -19,6 +19,7 @@ Core entities:
 - Assignment
 - TimeEntry
 - ResourceDocument
+- ChecklistItem
 
 ## Office
 
@@ -87,6 +88,7 @@ Represents a person who can work on projects.
 
 - Person → Office
 - Person → Assignments
+- Person → ChecklistItems
 - Person → TimeEntries
 
 ## Project
@@ -115,6 +117,7 @@ A project may originate in one office and be managed by another.
 - Project → ManagingOffice
 - Project → LeadPerson
 - Project → Assignments
+- Project → ChecklistItems
 - Project → TimeEntries
 - Project → ResourceDocuments
 
@@ -208,6 +211,31 @@ Represents a document attached to a project or the shared library.
 
 - if `projectId` is null, the document belongs to the shared library
 - this is the meaning of "resource" in the product
+
+## ChecklistItem
+
+Represents a lightweight to-do on a project.
+
+### Fields
+
+- `id`
+- `projectId`
+- `title`
+- `assignedPersonId`
+- `completed`
+- `createdAt`
+- `completedAt`
+
+### Relationships
+
+- ChecklistItem → Project
+- ChecklistItem → AssignedPerson
+
+### Notes
+
+- `assignedPersonId` is optional
+- checklist items are not tied to stage gating in V1
+- this is not a full task-management system in V1
 
 ## Project stage labels
 

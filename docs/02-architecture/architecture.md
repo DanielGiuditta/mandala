@@ -26,10 +26,11 @@ Lay the core model down first, then build vertical slices:
 4. Assignments
 5. Native time capture + time rollups
 6. Resources + storage
-7. Auth + authorization skeleton
-8. Project and people list/detail flows
-9. Dashboard
-10. Advanced workflow and approvals only if scope expands beyond V1
+7. Checklist items
+8. Auth + authorization skeleton
+9. Project and people list/detail flows
+10. Dashboard
+11. Advanced workflow and approvals only if scope expands beyond V1
 
 ## Boundaries
 

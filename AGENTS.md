@@ -23,6 +23,7 @@ Read these files before making changes:
 - Projects may originate in one office and be managed by another office.
 - Projects must model both `originatingOfficeId` and `managingOfficeId`.
 - Assignments represent planned staffing hours per week.
+- Checklist items are project-scoped, may optionally be assigned to a person, and are not stage-gated in V1.
 - Time tracking is lightweight and captured primarily through the native Windows checker, with project selection at login or session start.
 - Salary is stored on the person record and hourly cost is derived from salary.
 - "Resource" means a document or library asset, not a person or staffing slot.
@@ -45,6 +46,7 @@ When implementing the core model, prefer this order:
 4. Assignment
 5. TimeEntry
 6. ResourceDocument
+7. ChecklistItem
 
 ## Validation
 

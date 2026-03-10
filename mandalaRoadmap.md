@@ -180,6 +180,30 @@ git commit -am "implement resource document entity"
 
 ---
 
+## Step 7 — ChecklistItem
+
+- [ ] Implement checklist item entity
+
+Fields
+
+- id
+- projectId
+- title
+- assignedPersonId
+- completed
+
+Note
+
+Checklist items are lightweight project to-dos and are not stage-gated in V1.
+
+Commit
+
+```
+git commit -am "implement checklist item entity"
+```
+
+---
+
 # Phase 2 — Database Integrity
 
 - [x] Add foreign keys
@@ -233,6 +257,7 @@ git commit -am "implement projects list"
 
 - [ ] Build project detail page
 - [ ] Show assignments
+- [ ] Show checklist items
 - [ ] Show documents
 - [ ] Show project time summary
 

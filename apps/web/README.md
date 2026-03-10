@@ -8,6 +8,7 @@ Expected responsibilities:
 - projects
 - people
 - assignments
+- project checklists
 - resources
 - project time visibility and rollups
 - project stage management

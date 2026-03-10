@@ -17,8 +17,9 @@ This repository is a starter scaffold for the internal architecture-firm tracker
 4. Assignments
 5. Native time capture and rollups
 6. Resources
-7. Stage labels and admin controls
-8. Dashboard
+7. Checklist items
+8. Stage labels and admin controls
+9. Dashboard
 
 ## How to use with Codex
 

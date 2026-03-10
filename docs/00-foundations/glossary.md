@@ -9,6 +9,9 @@ A person tracked in the system.
 ## Assignment
 A staffing record linking one person to one project.
 
+## Checklist Item
+A lightweight project to-do that may optionally be assigned to a person.
+
 ## Time Entry
 A recorded span of time for a person working on a project.
 

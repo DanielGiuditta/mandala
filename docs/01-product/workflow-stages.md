@@ -14,6 +14,7 @@
 - Stage is a project lifecycle label.
 - Admins control stage changes in V1.
 - Stage changes are not gated by approvals or checklists in V1.
+- Project checklist items may exist in V1 without affecting stage changes.
 
 ## Future workflow notes
 

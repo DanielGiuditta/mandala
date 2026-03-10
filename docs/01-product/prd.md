@@ -9,6 +9,7 @@ The tool should answer:
 - which office is running a project
 - where a project originated
 - who is staffed on each project
+- which checklist items are still open on a project
 - how many hours people are planned for
 - how many hours people actually worked
 - rough labor cost based on salary-derived hourly cost
@@ -109,6 +110,19 @@ The system should derive:
 
 In V1, utilization is based on logged project time, not planned assignment hours.
 
+### 2.10 Checklist items are lightweight project to-dos
+
+Projects may have lightweight checklist items in V1.
+
+Each checklist item:
+
+- belongs to a project
+- has a short title
+- may optionally be assigned to a person
+- may be marked complete
+
+Checklist items are not tied to stage gating in V1.
+
 ## 3. Core Entities
 
 - Office
@@ -117,6 +131,7 @@ In V1, utilization is based on logged project time, not planned assignment hours
 - Assignment
 - TimeEntry
 - ResourceDocument
+- ChecklistItem
 
 ## 4. Reporting
 
@@ -141,12 +156,14 @@ V1 should prioritize:
 - native Windows time capture with project selection at login or session start
 - project labor cost rollups
 - project documents / library documents
+- lightweight project checklist items
 
 V1 does not require:
 
 - payroll integration
 - dedicated web time-entry screens
 - manager time review
+- stage-gated checklist workflows
 - formal time approval workflows
 - complex accounting structures
 - division-based reporting

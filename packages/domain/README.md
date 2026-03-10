@@ -16,5 +16,6 @@ Current core entities:
 - Assignment
 - TimeEntry
 - ResourceDocument
+- ChecklistItem
 
 Project stage labels are modeled on `Project.stage`.

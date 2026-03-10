@@ -62,3 +62,14 @@ If present, the document belongs to a project. If null, it belongs to the shared
 
 ### `category`
 Document grouping label such as drawing, brief, template, or reference.
+
+## ChecklistItem
+
+### `assignedPersonId`
+Optional person responsible for completing the checklist item.
+
+### `completed`
+Whether the checklist item is complete.
+
+### `completedAt`
+Timestamp recorded when the checklist item is marked complete.

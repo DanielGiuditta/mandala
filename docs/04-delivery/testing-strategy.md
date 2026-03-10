@@ -23,6 +23,7 @@ Maintain a realistic seed dataset covering:
 - projects in different stages
 - projects whose originating and managing offices differ
 - people on multiple assignments
+- open and completed project checklist items
 - project documents and shared library documents
 
 ## Risk-based focus

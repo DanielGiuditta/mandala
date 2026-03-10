@@ -13,10 +13,11 @@
 - people
 - projects
 - assignments
+- checklist_items
 - time_entries
 - resource_documents
 
-Advanced workflow tables such as approvals or checklist items should not be introduced unless the product docs are expanded beyond the current V1 scope.
+Lightweight `checklist_items` are in scope for V1. Advanced workflow tables such as approvals or stage-gating rules should not be introduced unless the product docs are expanded beyond the current V1 scope.
 
 ## Current integrity baseline
 
