@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { listPeople } from "@mandala/db"
 
 interface PeoplePageProps {
@@ -104,7 +106,7 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
               {data.people.map((person) => (
                 <tr key={person.id}>
                   <td>
-                    {person.fullName}
+                    <Link href={`/people/${person.id}`}>{person.fullName}</Link>
                     {!person.active ? <span className="muted"> · inactive</span> : null}
                   </td>
                   <td>{person.title ?? "No title"}</td>

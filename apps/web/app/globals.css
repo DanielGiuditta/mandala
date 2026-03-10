@@ -187,11 +187,13 @@ th {
   grid-template-columns: 1.2fr 0.8fr;
 }
 
-.project-detail-page {
+.project-detail-page,
+.person-detail-page {
   gap: 20px;
 }
 
-.project-hero {
+.project-hero,
+.person-hero {
   background:
     radial-gradient(circle at top left, rgba(201, 140, 92, 0.22), transparent 32%),
     linear-gradient(180deg, #fffaf2 0%, #fffdf9 100%);
@@ -199,7 +201,8 @@ th {
   gap: 20px;
 }
 
-.project-hero-top {
+.project-hero-top,
+.person-hero-top {
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
@@ -214,24 +217,28 @@ th {
   text-transform: uppercase;
 }
 
-.project-title-row {
+.project-title-row,
+.person-title-row {
   align-items: flex-start;
   display: flex;
   gap: 16px;
   justify-content: space-between;
 }
 
-.project-title-block {
+.project-title-block,
+.person-title-block {
   gap: 8px;
 }
 
-.project-title {
+.project-title,
+.person-title {
   font-size: clamp(2rem, 4vw, 3rem);
   line-height: 0.95;
   margin: 0;
 }
 
-.project-subtitle {
+.project-subtitle,
+.person-subtitle {
   color: #655f58;
   font-size: 1rem;
   margin: 0;
@@ -260,6 +267,11 @@ th {
 .project-status-pill {
   background: #e8dcc8;
   color: #3e2f22;
+}
+
+.person-office-pill {
+  background: #25443b;
+  color: #f3f0ea;
 }
 
 .project-facts-grid {
@@ -576,6 +588,7 @@ th {
 
 @media (max-width: 840px) {
   .project-hero-top,
+  .person-hero-top,
   .project-layout,
   .project-overview-grid,
   .project-checklist-grid,
@@ -602,6 +615,7 @@ th {
   }
 
   .project-title-row,
+  .person-title-row,
   .app-header,
   .page-title {
     align-items: flex-start;

@@ -6,6 +6,7 @@ Current implemented routes:
 - `/projects`
 - `/projects/[projectId]`
 - `/people`
+- `/people/[personId]`
 - `/library`
 
 Current scope in this repo:

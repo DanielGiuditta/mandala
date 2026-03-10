@@ -1,11 +1,11 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { getProjectDetail } from "@mandala/db"
+import { getPersonDetail } from "@mandala/db"
 
-interface ProjectDetailPageProps {
+interface PersonDetailPageProps {
   params: Promise<{
-    projectId: string
+    personId: string
   }>
 }
 
@@ -52,6 +52,18 @@ function formatHours(value: number): string {
   return `${value.toFixed(1)} hrs`
 }
 
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`
+}
+
+function formatStage(value: string): string {
+  if (value === "onHold") {
+    return "On hold"
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
 function formatSource(source?: string | null): string {
   if (source === "windows-tracker") {
     return "Windows checker"
@@ -64,34 +76,22 @@ function formatSource(source?: string | null): string {
   return "Unknown source"
 }
 
-function formatStage(stage: string): string {
-  if (stage === "onHold") {
-    return "On hold"
-  }
+export default async function PersonDetailPage({ params }: PersonDetailPageProps) {
+  const { personId } = await params
+  const data = await getPersonDetail(personId)
 
-  return stage.charAt(0).toUpperCase() + stage.slice(1)
-}
-
-export default async function ProjectDetailPage({ params }: ProjectDetailPageProps) {
-  const { projectId } = await params
-  const data = await getProjectDetail(projectId)
-
-  if (data.configured && !data.project) {
+  if (data.configured && !data.person) {
     notFound()
   }
 
   const openChecklistItems = data.checklistItems.filter((item) => !item.completed)
   const completedChecklistItems = data.checklistItems.filter((item) => item.completed)
-  const plannedHoursPerWeek = data.staffing.reduce(
-    (total, assignment) => total + assignment.assignedHoursPerWeek,
-    0,
-  )
 
   return (
-    <main className="project-detail-page stack">
+    <main className="person-detail-page stack">
       <div className="button-row">
-        <Link className="secondary" href="/projects">
-          Back to projects
+        <Link className="secondary" href="/people">
+          Back to people
         </Link>
       </div>
 
@@ -99,107 +99,95 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         <div className="notice">{data.configMessage}</div>
       ) : null}
 
-      {data.project ? (
+      {data.person ? (
         <>
-          <section className="card project-hero stack">
-            <div className="project-hero-top">
+          <section className="card person-hero stack">
+            <div className="person-hero-top">
               <div className="stack">
-                <div className="project-kicker">Project detail</div>
-                <div className="project-title-row">
-                  <div className="stack project-title-block">
-                    <h2 className="project-title">{data.project.name}</h2>
-                    <p className="project-subtitle">
-                      {data.project.clientName ?? "No client name"} ·{" "}
-                      {data.project.originatingOfficeName} origin ·{" "}
-                      {data.project.managingOfficeName} managing office
+                <div className="project-kicker">Person detail</div>
+                <div className="person-title-row">
+                  <div className="stack person-title-block">
+                    <h2 className="person-title">{data.person.fullName}</h2>
+                    <p className="person-subtitle">
+                      {data.person.title ?? "No title"} · {data.person.officeName}
                     </p>
                   </div>
 
                   <div className="project-badge-row">
-                    <span className="pill project-stage-pill">
-                      {formatStage(data.project.stage)}
-                    </span>
+                    <span className="pill person-office-pill">{data.person.officeName}</span>
                     <span className="pill project-status-pill">
-                      {data.project.active ? "Active" : "Inactive"}
+                      {data.person.active ? "Active" : "Inactive"}
                     </span>
                   </div>
                 </div>
 
                 <p className="project-description-copy">
-                  {data.project.description ??
-                    "No description has been added to this project yet."}
+                  {data.person.email
+                    ? `${data.person.fullName} is based in ${data.person.officeName} and can be reached at ${data.person.email}.`
+                    : `${data.person.fullName} is based in ${data.person.officeName}.`}
                 </p>
               </div>
 
               <div className="project-facts-grid">
                 <div className="project-fact">
-                  <span className="project-fact-label">Lead</span>
+                  <span className="project-fact-label">Home office</span>
+                  <strong className="project-fact-value">{data.person.officeName}</strong>
+                </div>
+                <div className="project-fact">
+                  <span className="project-fact-label">Availability / week</span>
                   <strong className="project-fact-value">
-                    {data.project.leadPersonId && data.project.leadPersonName ? (
-                      <Link href={`/people/${data.project.leadPersonId}`}>
-                        {data.project.leadPersonName}
-                      </Link>
-                    ) : (
-                      "No lead assigned"
-                    )}
+                    {formatHours(data.person.availabilityHoursPerWeek)}
                   </strong>
                 </div>
                 <div className="project-fact">
-                  <span className="project-fact-label">Start date</span>
+                  <span className="project-fact-label">Hourly cost</span>
                   <strong className="project-fact-value">
-                    {formatDate(data.project.startDate)}
+                    {formatCurrency(data.person.hourlyCost)}
                   </strong>
                 </div>
                 <div className="project-fact">
-                  <span className="project-fact-label">Target completion</span>
+                  <span className="project-fact-label">Annual salary</span>
                   <strong className="project-fact-value">
-                    {formatDate(data.project.targetCompletionDate)}
-                  </strong>
-                </div>
-                <div className="project-fact">
-                  <span className="project-fact-label">Originating office</span>
-                  <strong className="project-fact-value">
-                    {data.project.originatingOfficeName}
-                  </strong>
-                </div>
-                <div className="project-fact">
-                  <span className="project-fact-label">Managing office</span>
-                  <strong className="project-fact-value">
-                    {data.project.managingOfficeName}
+                    {formatCurrency(data.person.annualSalary)}
                   </strong>
                 </div>
               </div>
             </div>
 
-            <nav aria-label="Project sections" className="project-section-nav">
-              <a href="#overview">Overview</a>
-              <a href="#staffing">Staffing</a>
+            <nav aria-label="Person sections" className="project-section-nav">
+              <a href="#profile">Profile</a>
+              <a href="#assignments">Assignments</a>
               <a href="#checklist">Checklist</a>
               <a href="#time">Project time</a>
-              <a href="#documents">Documents</a>
             </nav>
 
             <div className="project-stat-grid">
               <div className="project-stat-card">
-                <span className="project-stat-label">Staffed people</span>
-                <strong className="project-stat-value">{data.staffing.length}</strong>
-              </div>
-              <div className="project-stat-card">
-                <span className="project-stat-label">Planned hours / week</span>
-                <strong className="project-stat-value">{formatHours(plannedHoursPerWeek)}</strong>
-              </div>
-              <div className="project-stat-card">
-                <span className="project-stat-label">Open checklist items</span>
-                <strong className="project-stat-value">{openChecklistItems.length}</strong>
-              </div>
-              <div className="project-stat-card">
-                <span className="project-stat-label">Logged hours</span>
+                <span className="project-stat-label">Assigned / week</span>
                 <strong className="project-stat-value">
-                  {formatHours(data.timeSummary.totalHours)}
+                  {formatHours(data.person.assignedHours)}
                 </strong>
               </div>
               <div className="project-stat-card">
-                <span className="project-stat-label">Rough labor cost</span>
+                <span className="project-stat-label">Remaining capacity</span>
+                <strong className="project-stat-value">
+                  {formatHours(data.person.remainingCapacity)}
+                </strong>
+              </div>
+              <div className="project-stat-card">
+                <span className="project-stat-label">Allocation</span>
+                <strong className="project-stat-value">
+                  {formatPercent(data.person.allocationPercent)}
+                </strong>
+              </div>
+              <div className="project-stat-card">
+                <span className="project-stat-label">Utilization, latest tracked week</span>
+                <strong className="project-stat-value">
+                  {formatPercent(data.timeSummary.latestTrackedWeekUtilizationPercent)}
+                </strong>
+              </div>
+              <div className="project-stat-card">
+                <span className="project-stat-label">Total labor cost</span>
                 <strong className="project-stat-value">
                   {formatCurrency(data.timeSummary.totalLaborCost)}
                 </strong>
@@ -209,103 +197,99 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
 
           <div className="project-layout">
             <div className="project-main stack">
-              <section className="card stack" id="overview">
+              <section className="card stack" id="profile">
                 <div className="section-heading">
                   <div>
-                    <div className="section-kicker">Overview</div>
-                    <h3>Project summary</h3>
+                    <div className="section-kicker">Profile</div>
+                    <h3>Person summary</h3>
                   </div>
                   <p className="muted">
-                    Core record details and office relationships for this project.
+                    Salary, availability, and office context for this person.
                   </p>
                 </div>
 
                 <div className="project-overview-grid">
                   <article className="project-panel project-panel-strong">
-                    <div className="section-label">Description</div>
+                    <div className="section-label">Contact</div>
                     <p className="project-panel-copy">
-                      {data.project.description ??
-                        "No description has been recorded yet. This block is a good candidate for a project narrative or internal summary."}
+                      {data.person.email ?? "No email recorded for this person yet."}
                     </p>
                   </article>
 
                   <article className="project-panel">
-                    <div className="section-label">Delivery details</div>
+                    <div className="section-label">Capacity</div>
                     <dl className="data-pairs">
                       <div>
-                        <dt>Client</dt>
-                        <dd>{data.project.clientName ?? "No client name"}</dd>
+                        <dt>Availability / week</dt>
+                        <dd>{formatHours(data.person.availabilityHoursPerWeek)}</dd>
                       </div>
                       <div>
-                        <dt>Stage</dt>
-                        <dd>{formatStage(data.project.stage)}</dd>
+                        <dt>Assigned / week</dt>
+                        <dd>{formatHours(data.person.assignedHours)}</dd>
                       </div>
                       <div>
-                        <dt>Status</dt>
-                        <dd>{data.project.active ? "Active" : "Inactive"}</dd>
+                        <dt>Remaining capacity</dt>
+                        <dd>{formatHours(data.person.remainingCapacity)}</dd>
                       </div>
                       <div>
-                        <dt>Lead</dt>
-                        <dd>
-                          {data.project.leadPersonId && data.project.leadPersonName ? (
-                            <Link href={`/people/${data.project.leadPersonId}`}>
-                              {data.project.leadPersonName}
-                            </Link>
-                          ) : (
-                            "No lead assigned"
-                          )}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Start date</dt>
-                        <dd>{formatDate(data.project.startDate)}</dd>
-                      </div>
-                      <div>
-                        <dt>Target completion</dt>
-                        <dd>{formatDate(data.project.targetCompletionDate)}</dd>
+                        <dt>Allocation</dt>
+                        <dd>{formatPercent(data.person.allocationPercent)}</dd>
                       </div>
                     </dl>
                   </article>
 
                   <article className="project-panel">
-                    <div className="section-label">Office relationship</div>
-                    <p className="project-panel-copy">
-                      {data.project.originatingOfficeName} originated this project.{" "}
-                      {data.project.managingOfficeName} currently manages delivery, staffing,
-                      and cost visibility.
-                    </p>
+                    <div className="section-label">Compensation</div>
+                    <dl className="data-pairs">
+                      <div>
+                        <dt>Annual salary</dt>
+                        <dd>{formatCurrency(data.person.annualSalary)}</dd>
+                      </div>
+                      <div>
+                        <dt>Hourly cost</dt>
+                        <dd>{formatCurrency(data.person.hourlyCost)}</dd>
+                      </div>
+                      <div>
+                        <dt>Status</dt>
+                        <dd>{data.person.active ? "Active" : "Inactive"}</dd>
+                      </div>
+                      <div>
+                        <dt>Home office</dt>
+                        <dd>{data.person.officeName}</dd>
+                      </div>
+                    </dl>
                   </article>
                 </div>
               </section>
 
-              <section className="card stack" id="staffing">
+              <section className="card stack" id="assignments">
                 <div className="section-heading">
                   <div>
-                    <div className="section-kicker">Staffing</div>
-                    <h3>Assigned people</h3>
+                    <div className="section-kicker">Assignments</div>
+                    <h3>Project staffing</h3>
                   </div>
                   <p className="muted">
-                    {data.staffing.length} people staffed for {formatHours(plannedHoursPerWeek)}{" "}
-                    per week.
+                    {data.assignments.length} assignments totaling{" "}
+                    {formatHours(data.person.assignedHours)} per week.
                   </p>
                 </div>
 
-                {data.staffing.length === 0 ? (
-                  <div className="empty-state">No staffing assignments yet.</div>
+                {data.assignments.length === 0 ? (
+                  <div className="empty-state">No project assignments yet.</div>
                 ) : (
                   <div className="stack">
-                    {data.staffing.map((assignment) => (
+                    {data.assignments.map((assignment) => (
                       <article className="project-row-card" key={assignment.id}>
                         <div className="project-row-top">
                           <div>
                             <h4>
-                              <Link href={`/people/${assignment.personId}`}>
-                                {assignment.personName}
+                              <Link href={`/projects/${assignment.projectId}`}>
+                                {assignment.projectName}
                               </Link>
                             </h4>
                             <p className="muted">
-                              {assignment.personTitle ?? "No title"} ·{" "}
-                              {assignment.personOfficeName ?? "No office"}
+                              {formatStage(assignment.projectStage)} ·{" "}
+                              {assignment.managingOfficeName ?? "Unknown office"}
                             </p>
                           </div>
                           <div className="project-row-chip">
@@ -334,7 +318,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                 <div className="section-heading">
                   <div>
                     <div className="section-kicker">Checklist</div>
-                    <h3>Project to-dos</h3>
+                    <h3>Assigned to-dos</h3>
                   </div>
                   <p className="muted">
                     {openChecklistItems.length} open · {completedChecklistItems.length} completed
@@ -354,11 +338,13 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                       openChecklistItems.map((item) => (
                         <article className="project-checklist-item" key={item.id}>
                           <div className="project-checklist-top">
-                            <h4>{item.title}</h4>
+                            <h4>
+                              <Link href={`/projects/${item.projectId}`}>{item.title}</Link>
+                            </h4>
                             <span className="pill project-open-pill">Open</span>
                           </div>
                           <div className="project-checklist-meta">
-                            <span>Assigned to {item.assignedPersonName ?? "nobody"}</span>
+                            <span>Project: {item.projectName}</span>
                             <span>Created {formatDateTime(item.createdAt)}</span>
                           </div>
                         </article>
@@ -381,11 +367,13 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                           key={item.id}
                         >
                           <div className="project-checklist-top">
-                            <h4>{item.title}</h4>
+                            <h4>
+                              <Link href={`/projects/${item.projectId}`}>{item.title}</Link>
+                            </h4>
                             <span className="pill project-complete-pill">Completed</span>
                           </div>
                           <div className="project-checklist-meta">
-                            <span>Assigned to {item.assignedPersonName ?? "nobody"}</span>
+                            <span>Project: {item.projectName}</span>
                             <span>Completed {formatDateTime(item.completedAt)}</span>
                           </div>
                         </article>
@@ -393,57 +381,6 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                     )}
                   </div>
                 </div>
-              </section>
-
-              <section className="card stack" id="documents">
-                <div className="section-heading">
-                  <div>
-                    <div className="section-kicker">Documents</div>
-                    <h3>Project files</h3>
-                  </div>
-                  <p className="muted">{data.documents.length} attached to this project.</p>
-                </div>
-
-                {data.documents.length === 0 ? (
-                  <div className="empty-state">No project documents yet.</div>
-                ) : (
-                  <div className="stack">
-                    {data.documents.map((document) => (
-                      <article className="project-row-card" key={document.id}>
-                        <div className="project-row-top">
-                          <div>
-                            <h4>
-                              <a
-                                className="inline-link"
-                                href={document.fileUrl}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                {document.name}
-                              </a>
-                            </h4>
-                            <p className="muted">
-                              {document.category ?? "Uncategorized"} ·{" "}
-                              {document.fileType ?? "Unknown type"}
-                            </p>
-                          </div>
-                          <div className="project-row-chip">
-                            {formatDateTime(document.createdAt)}
-                          </div>
-                        </div>
-
-                        <div className="project-row-meta">
-                          <span>Uploaded by {document.uploadedByPersonName ?? "Unknown"}</span>
-                          <span>{document.projectId ? "Project document" : "Library document"}</span>
-                        </div>
-
-                        {document.description ? (
-                          <p className="project-row-notes">{document.description}</p>
-                        ) : null}
-                      </article>
-                    ))}
-                  </div>
-                )}
               </section>
             </div>
 
@@ -462,33 +399,35 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                     <strong>{formatHours(data.timeSummary.totalHours)}</strong>
                   </div>
                   <div className="project-mini-stat">
-                    <span>Rough labor cost</span>
-                    <strong>{formatCurrency(data.timeSummary.totalLaborCost)}</strong>
+                    <span>Latest tracked week</span>
+                    <strong>{formatHours(data.timeSummary.latestTrackedWeekHours)}</strong>
                   </div>
                   <div className="project-mini-stat">
-                    <span>People with time</span>
-                    <strong>{data.timeSummary.byPerson.length}</strong>
+                    <span>Total labor cost</span>
+                    <strong>{formatCurrency(data.timeSummary.totalLaborCost)}</strong>
                   </div>
                 </div>
 
                 <div className="stack">
                   <div className="project-column-header">
-                    <span>Hours by person</span>
-                    <span>{data.timeSummary.byPerson.length}</span>
+                    <span>Hours by project</span>
+                    <span>{data.timeSummary.byProject.length}</span>
                   </div>
 
-                  {data.timeSummary.byPerson.length === 0 ? (
+                  {data.timeSummary.byProject.length === 0 ? (
                     <div className="empty-state">No tracked time yet.</div>
                   ) : (
-                    data.timeSummary.byPerson.map((personSummary) => (
-                      <article className="project-time-person" key={personSummary.personId}>
+                    data.timeSummary.byProject.map((project) => (
+                      <article className="project-time-person" key={project.projectId}>
                         <div className="project-time-row">
-                          <strong>{personSummary.personName}</strong>
-                          <span>{formatHours(personSummary.hours)}</span>
+                          <strong>
+                            <Link href={`/projects/${project.projectId}`}>
+                              {project.projectName}
+                            </Link>
+                          </strong>
+                          <span>{formatHours(project.hours)}</span>
                         </div>
-                        <div className="muted">
-                          {formatCurrency(personSummary.laborCost)}
-                        </div>
+                        <div className="muted">{formatCurrency(project.laborCost)}</div>
                       </article>
                     ))
                   )}
@@ -496,7 +435,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
 
                 <div className="stack">
                   <div className="project-column-header">
-                    <span>Recent time entries</span>
+                    <span>Recent entries</span>
                     <span>{data.timeSummary.recentEntries.length}</span>
                   </div>
 
@@ -506,7 +445,9 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                     data.timeSummary.recentEntries.map((entry) => (
                       <article className="project-time-entry" key={entry.id}>
                         <div className="project-time-row">
-                          <strong>{entry.personName ?? "Unknown person"}</strong>
+                          <strong>
+                            <Link href={`/projects/${entry.projectId}`}>{entry.projectName}</Link>
+                          </strong>
                           <span>{formatHours(entry.hours)}</span>
                         </div>
                         <div className="project-time-meta">
@@ -532,36 +473,30 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
 
                 <dl className="data-pairs data-pairs-compact">
                   <div>
-                    <dt>Client</dt>
-                    <dd>{data.project.clientName ?? "No client name"}</dd>
+                    <dt>Title</dt>
+                    <dd>{data.person.title ?? "No title"}</dd>
                   </div>
                   <div>
-                    <dt>Lead</dt>
+                    <dt>Home office</dt>
+                    <dd>{data.person.officeName}</dd>
+                  </div>
+                  <div>
+                    <dt>Email</dt>
+                    <dd>{data.person.email ?? "No email"}</dd>
+                  </div>
+                  <div>
+                    <dt>Allocation</dt>
+                    <dd>{formatPercent(data.person.allocationPercent)}</dd>
+                  </div>
+                  <div>
+                    <dt>Utilization, latest tracked week</dt>
                     <dd>
-                      {data.project.leadPersonId && data.project.leadPersonName ? (
-                        <Link href={`/people/${data.project.leadPersonId}`}>
-                          {data.project.leadPersonName}
-                        </Link>
-                      ) : (
-                        "No lead assigned"
-                      )}
+                      {formatPercent(data.timeSummary.latestTrackedWeekUtilizationPercent)}
                     </dd>
                   </div>
                   <div>
-                    <dt>Stage</dt>
-                    <dd>{formatStage(data.project.stage)}</dd>
-                  </div>
-                  <div>
                     <dt>Status</dt>
-                    <dd>{data.project.active ? "Active" : "Inactive"}</dd>
-                  </div>
-                  <div>
-                    <dt>Originating office</dt>
-                    <dd>{data.project.originatingOfficeName}</dd>
-                  </div>
-                  <div>
-                    <dt>Managing office</dt>
-                    <dd>{data.project.managingOfficeName}</dd>
+                    <dd>{data.person.active ? "Active" : "Inactive"}</dd>
                   </div>
                 </dl>
               </section>
@@ -570,9 +505,9 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         </>
       ) : (
         <section className="card">
-          <h2>Project detail</h2>
+          <h2>Person detail</h2>
           <p className="muted">
-            Configure the database connection to load live project detail data.
+            Configure the database connection to load live person detail data.
           </p>
         </section>
       )}

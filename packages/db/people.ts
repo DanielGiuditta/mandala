@@ -4,15 +4,48 @@ import {
   deriveHourlyCost,
   derivePersonAllocationPercent,
   deriveRemainingCapacity,
+  deriveUtilizationPercent,
 } from "@mandala/domain"
 
 import { fetchOfficeRows, type OfficeRow, type PersonRow } from "./lookups"
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 
 interface AssignmentRow {
+  id: string
   person_id: string
+  project_id: string
   assigned_hours_per_week: number | string
+  start_date: string | null
+  end_date: string | null
+  notes: string | null
   active: boolean
+}
+
+interface ProjectRow {
+  id: string
+  name: string
+  stage: string
+  managing_office_id: string
+}
+
+interface TimeEntryRow {
+  id: string
+  person_id: string
+  project_id: string
+  assignment_id: string | null
+  date: string
+  hours: number | string
+  notes: string | null
+  source: string | null
+}
+
+interface ChecklistItemRow {
+  id: string
+  project_id: string
+  title: string
+  completed: boolean
+  created_at: string
+  completed_at: string | null
 }
 
 export interface PeopleOfficeFilter {
@@ -39,6 +72,62 @@ export interface PeopleListData {
   filters: PeopleListFilters
   offices: PeopleOfficeFilter[]
   people: PersonListItem[]
+}
+
+export interface PersonDetailAssignmentItem {
+  active: boolean
+  endDate: string | null
+  id: string
+  managingOfficeName: string | null
+  notes: string | null
+  projectId: string
+  projectName: string
+  projectStage: string
+  startDate: string | null
+  assignedHoursPerWeek: number
+}
+
+export interface PersonDetailChecklistItem {
+  completed: boolean
+  completedAt: string | null
+  createdAt: string
+  id: string
+  projectId: string
+  projectName: string
+  title: string
+}
+
+export interface PersonDetailTimeEntry {
+  date: string
+  hours: number
+  id: string
+  notes: string | null
+  projectId: string
+  projectName: string
+  source: string | null
+}
+
+export interface PersonDetailProjectTimeItem {
+  hours: number
+  laborCost: number
+  projectId: string
+  projectName: string
+}
+
+export interface PersonDetailData {
+  assignments: PersonDetailAssignmentItem[]
+  checklistItems: PersonDetailChecklistItem[]
+  configMessage: string | null
+  configured: boolean
+  person: PersonListItem | null
+  timeSummary: {
+    latestTrackedWeekHours: number
+    latestTrackedWeekUtilizationPercent: number
+    recentEntries: PersonDetailTimeEntry[]
+    totalHours: number
+    totalLaborCost: number
+    byProject: PersonDetailProjectTimeItem[]
+  }
 }
 
 function toPerson(row: PersonRow): Person {
@@ -90,6 +179,17 @@ function buildPersonListItem(
       person.availabilityHoursPerWeek,
       assignedHours,
     ),
+  }
+}
+
+function emptyPersonTimeSummary(): PersonDetailData["timeSummary"] {
+  return {
+    latestTrackedWeekHours: 0,
+    latestTrackedWeekUtilizationPercent: 0,
+    recentEntries: [],
+    totalHours: 0,
+    totalLaborCost: 0,
+    byProject: [],
   }
 }
 
@@ -161,5 +261,229 @@ export async function listPeople(filters: PeopleListFilters = {}): Promise<Peopl
     people: filteredPeople.map((row) =>
       buildPersonListItem(row, assignmentsByPersonId, officesById),
     ),
+  }
+}
+
+export async function getPersonDetail(personId: string): Promise<PersonDetailData> {
+  const status = getDatabaseStatus()
+  const client = createServerSupabaseClient()
+
+  if (!client) {
+    return {
+      assignments: [],
+      checklistItems: [],
+      configMessage: status.message,
+      configured: status.configured,
+      person: null,
+      timeSummary: emptyPersonTimeSummary(),
+    }
+  }
+
+  const { data: personRow, error: personError } = await client
+    .from("people")
+    .select(
+      "id, full_name, title, office_id, annual_salary, availability_hours_per_week, email, active",
+    )
+    .eq("id", personId)
+    .maybeSingle()
+
+  if (personError) {
+    throw personError
+  }
+
+  if (!personRow) {
+    return {
+      assignments: [],
+      checklistItems: [],
+      configMessage: status.message,
+      configured: status.configured,
+      person: null,
+      timeSummary: emptyPersonTimeSummary(),
+    }
+  }
+
+  const person = personRow as PersonRow
+
+  const [
+    offices,
+    assignmentResponse,
+    timeEntryResponse,
+    checklistResponse,
+  ] = await Promise.all([
+    fetchOfficeRows([person.office_id]),
+    client
+      .from("assignments")
+      .select(
+        "id, person_id, project_id, assigned_hours_per_week, start_date, end_date, notes, active",
+      )
+      .eq("person_id", personId)
+      .order("active", { ascending: false })
+      .order("start_date", { ascending: true }),
+    client
+      .from("time_entries")
+      .select("id, person_id, project_id, assignment_id, date, hours, notes, source")
+      .eq("person_id", personId)
+      .order("date", { ascending: false }),
+    client
+      .from("checklist_items")
+      .select("id, project_id, title, completed, created_at, completed_at")
+      .eq("assigned_person_id", personId)
+      .order("completed", { ascending: true })
+      .order("created_at", { ascending: false }),
+  ])
+
+  if (assignmentResponse.error) throw assignmentResponse.error
+  if (timeEntryResponse.error) throw timeEntryResponse.error
+  if (checklistResponse.error) throw checklistResponse.error
+
+  const assignmentRows = (assignmentResponse.data ?? []) as AssignmentRow[]
+  const timeEntryRows = (timeEntryResponse.data ?? []) as TimeEntryRow[]
+  const checklistRows = (checklistResponse.data ?? []) as ChecklistItemRow[]
+
+  const projectIds = [
+    ...new Set([
+      ...assignmentRows.map((assignment) => assignment.project_id),
+      ...timeEntryRows.map((entry) => entry.project_id),
+      ...checklistRows.map((item) => item.project_id),
+    ]),
+  ]
+
+  let projectRows: ProjectRow[] = []
+
+  if (projectIds.length > 0) {
+    const { data: projectsData, error: projectsError } = await client
+      .from("projects")
+      .select("id, name, stage, managing_office_id")
+      .in("id", projectIds)
+
+    if (projectsError) {
+      throw projectsError
+    }
+
+    projectRows = (projectsData ?? []) as ProjectRow[]
+  }
+
+  const managingOfficeIds = [
+    ...new Set(projectRows.map((project) => project.managing_office_id)),
+  ]
+  const managingOffices =
+    managingOfficeIds.length > 0 ? await fetchOfficeRows(managingOfficeIds) : []
+  const officesById = new Map(
+    [...offices, ...managingOffices].map((office) => [office.id, office]),
+  )
+  const projectsById = new Map(projectRows.map((project) => [project.id, project]))
+  const assignmentsByPersonId = assignmentRows.reduce((totals, assignment) => {
+    const currentTotal = totals.get(assignment.person_id) ?? 0
+    totals.set(
+      assignment.person_id,
+      currentTotal + Number(assignment.assigned_hours_per_week),
+    )
+    return totals
+  }, new Map<string, number>())
+
+  const personListItem = buildPersonListItem(person, assignmentsByPersonId, officesById)
+  const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
+
+  const assignments = assignmentRows.map((assignment) => {
+    const project = projectsById.get(assignment.project_id)
+
+    return {
+      active: assignment.active,
+      endDate: assignment.end_date,
+      id: assignment.id,
+      managingOfficeName: project
+        ? officesById.get(project.managing_office_id)?.name ?? null
+        : null,
+      notes: assignment.notes,
+      projectId: assignment.project_id,
+      projectName: project?.name ?? "Unknown project",
+      projectStage: project?.stage ?? "unknown",
+      startDate: assignment.start_date,
+      assignedHoursPerWeek: Number(assignment.assigned_hours_per_week),
+    }
+  })
+
+  const checklistItems = checklistRows.map((item) => ({
+    completed: item.completed,
+    completedAt: item.completed_at,
+    createdAt: item.created_at,
+    id: item.id,
+    projectId: item.project_id,
+    projectName: projectsById.get(item.project_id)?.name ?? "Unknown project",
+    title: item.title,
+  }))
+
+  let totalHours = 0
+  let totalLaborCost = 0
+  let latestTrackedWeekHours = 0
+  const byProject = new Map<string, PersonDetailProjectTimeItem>()
+
+  const latestTrackedDate = timeEntryRows[0]?.date ?? null
+  const latestTrackedWeekStart = latestTrackedDate
+    ? new Date(`${latestTrackedDate}T00:00:00Z`)
+    : null
+
+  if (latestTrackedWeekStart) {
+    latestTrackedWeekStart.setUTCDate(latestTrackedWeekStart.getUTCDate() - 6)
+  }
+
+  const recentEntries = timeEntryRows.slice(0, 8).map((entry) => ({
+    date: entry.date,
+    hours: Number(entry.hours),
+    id: entry.id,
+    notes: entry.notes,
+    projectId: entry.project_id,
+    projectName: projectsById.get(entry.project_id)?.name ?? "Unknown project",
+    source: entry.source,
+  }))
+
+  for (const entry of timeEntryRows) {
+    const hours = Number(entry.hours)
+    const laborCost = hours * hourlyCost
+    const projectName = projectsById.get(entry.project_id)?.name ?? "Unknown project"
+    const existing = byProject.get(entry.project_id)
+
+    totalHours += hours
+    totalLaborCost += laborCost
+
+    if (latestTrackedWeekStart) {
+      const entryDate = new Date(`${entry.date}T00:00:00Z`)
+      if (entryDate >= latestTrackedWeekStart) {
+        latestTrackedWeekHours += hours
+      }
+    }
+
+    if (existing) {
+      existing.hours += hours
+      existing.laborCost += laborCost
+    } else {
+      byProject.set(entry.project_id, {
+        hours,
+        laborCost,
+        projectId: entry.project_id,
+        projectName,
+      })
+    }
+  }
+
+  return {
+    assignments,
+    checklistItems,
+    configMessage: status.message,
+    configured: status.configured,
+    person: personListItem,
+    timeSummary: {
+      latestTrackedWeekHours,
+      latestTrackedWeekUtilizationPercent: deriveUtilizationPercent(
+        latestTrackedWeekHours,
+        personListItem.availabilityHoursPerWeek,
+      ),
+      recentEntries,
+      totalHours,
+      totalLaborCost,
+      byProject: Array.from(byProject.values()).sort((left, right) =>
+        right.hours - left.hours || left.projectName.localeCompare(right.projectName),
+      ),
+    },
   }
 }
