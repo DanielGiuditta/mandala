@@ -182,7 +182,7 @@ git commit -am "implement resource document entity"
 
 ## Step 7 — ChecklistItem
 
-- [ ] Implement checklist item entity
+- [x] Implement checklist item entity
 
 Fields
 
@@ -214,6 +214,8 @@ Project.originatingOfficeId → Office.id
 Project.managingOfficeId → Office.id
 Assignment.personId → Person.id
 Assignment.projectId → Project.id
+ChecklistItem.projectId → Project.id
+ChecklistItem.assignedPersonId → Person.id
 TimeEntry.personId → Person.id
 ```
 

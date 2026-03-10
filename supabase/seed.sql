@@ -413,3 +413,67 @@ set
   description = excluded.description,
   uploaded_by_person_id = excluded.uploaded_by_person_id,
   created_at = excluded.created_at;
+
+insert into public.checklist_items (
+  id,
+  project_id,
+  title,
+  assigned_person_id,
+  completed,
+  created_at,
+  completed_at
+)
+values
+  (
+    '60000000-0000-0000-0000-000000000001',
+    '20000000-0000-0000-0000-000000000001',
+    'Confirm consultant kickoff agenda',
+    '10000000-0000-0000-0000-000000000004',
+    false,
+    '2026-03-01T09:00:00Z',
+    null
+  ),
+  (
+    '60000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000001',
+    'Upload revised arts center brief',
+    '10000000-0000-0000-0000-000000000005',
+    true,
+    '2026-02-28T14:30:00Z',
+    '2026-03-02T10:15:00Z'
+  ),
+  (
+    '60000000-0000-0000-0000-000000000003',
+    '20000000-0000-0000-0000-000000000002',
+    'Prepare planning workshop checklist',
+    '10000000-0000-0000-0000-000000000006',
+    false,
+    '2026-03-02T11:00:00Z',
+    null
+  ),
+  (
+    '60000000-0000-0000-0000-000000000004',
+    '20000000-0000-0000-0000-000000000003',
+    'Review waterfront precedent set',
+    null,
+    false,
+    '2026-03-03T08:45:00Z',
+    null
+  ),
+  (
+    '60000000-0000-0000-0000-000000000005',
+    '20000000-0000-0000-0000-000000000002',
+    'Send revised civic hub notes to client',
+    '10000000-0000-0000-0000-000000000003',
+    true,
+    '2026-03-01T16:00:00Z',
+    '2026-03-03T17:20:00Z'
+  )
+on conflict (id) do update
+set
+  project_id = excluded.project_id,
+  title = excluded.title,
+  assigned_person_id = excluded.assigned_person_id,
+  completed = excluded.completed,
+  created_at = excluded.created_at,
+  completed_at = excluded.completed_at;
