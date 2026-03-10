@@ -1,0 +1,13 @@
+{
+  "name": "@mandala/db",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "@mandala/domain": "0.0.0",
+    "@supabase/supabase-js": "^2.57.4"
+  }
+}

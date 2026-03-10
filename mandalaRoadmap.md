@@ -235,6 +235,10 @@ Goal: First working screen.
 
 Feature: Project list
 
+Note
+
+The current implementation is an intentionally minimal technical scaffold, not final UI.
+
 Display
 
 - project name
@@ -243,9 +247,9 @@ Display
 - originating office
 - managing office
 
-- [ ] Build Projects list UI
-- [ ] Fetch projects from backend
-- [ ] Display office names
+- [x] Build Projects list UI
+- [x] Fetch projects from backend
+- [x] Display office names
 
 Commit
 
@@ -257,11 +261,11 @@ git commit -am "implement projects list"
 
 # Phase 4 — Project Detail
 
-- [ ] Build project detail page
-- [ ] Show assignments
-- [ ] Show checklist items
-- [ ] Show documents
-- [ ] Show project time summary
+- [x] Build project detail page
+- [x] Show assignments
+- [x] Show checklist items
+- [x] Show documents
+- [x] Show project time summary
 
 Commit
 
@@ -273,7 +277,7 @@ git commit -am "implement project detail"
 
 # Phase 5 — People
 
-- [ ] Build People list
+- [x] Build People list
 
 Display
 
@@ -292,11 +296,15 @@ git commit -am "implement people list"
 
 ---
 
-# Phase 6 — Staffing Planner
+# Phase 6 — Project Staffing
 
 - [ ] Implement assignment editor
 - [ ] Show weekly hours per person
 - [ ] Show allocation %
+
+Note
+
+Staffing is handled inside project detail in V1, not as a top-level module.
 
 Commit
 
@@ -306,12 +314,15 @@ git commit -am "implement staffing planner"
 
 ---
 
-# Phase 7 — Time Tracking
+# Phase 7 — Native Time Capture
 
-- [ ] Implement manual time entry
-- [ ] Allow selecting project
-- [ ] Allow entering hours
-- [ ] Display recent entries
+- [ ] Implement Windows checker project selection flow
+- [ ] Sync captured time into `TimeEntry`
+- [x] Display recent entries on the project page
+
+Note
+
+Dedicated web time entry is out of scope for V1.
 
 Commit
 
@@ -323,13 +334,13 @@ git commit -am "implement time tracking"
 
 # Phase 8 — Cost Visibility
 
-- [ ] Calculate project labor cost
+- [x] Calculate project labor cost
 
 ```
 sum(timeEntry.hours * hourlyCost)
 ```
 
-- [ ] Show cost on project page
+- [x] Show cost on project page
 
 Commit
 
@@ -342,8 +353,8 @@ git commit -am "implement cost reporting"
 # Phase 9 — Documents
 
 - [ ] Upload documents
-- [ ] Show project document list
-- [ ] Show library documents
+- [x] Show project document list
+- [x] Show library documents
 
 Commit
 

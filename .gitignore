@@ -4,6 +4,8 @@ dist/
 coverage/
 .next/
 .turbo/
+*.tsbuildinfo
 .env
 .env.*
+!.env.example
 .obsidian/workspace.json

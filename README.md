@@ -2,6 +2,25 @@
 
 This repository is a starter scaffold for the internal architecture-firm tracker.
 
+## Current technical scaffold
+
+The repo now includes a runnable Next.js workspace in `apps/web` with deliberately
+minimal, non-final screens for:
+
+- projects list
+- project detail
+- people list
+- shared library documents
+
+These routes are intended to validate the domain/query layer before final UI design lands.
+
+## Local setup
+
+1. Copy `.env.example` to `.env`
+2. Fill in the Supabase variables
+3. Run `npm install`
+4. Run `npm run dev`
+
 ## What to keep true
 
 - `docs/01-product/prd.md` is the product source of truth
