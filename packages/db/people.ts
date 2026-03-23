@@ -1,5 +1,8 @@
 import type { Person } from "@mandala/domain"
 import {
+  canCreateOrUpdatePeople,
+  canViewPeopleDirectory,
+  canViewPerson,
   deriveAssignedHours,
   deriveHourlyCost,
   derivePersonAllocationPercent,
@@ -7,6 +10,7 @@ import {
   deriveUtilizationPercent,
 } from "@mandala/domain"
 
+import { getCurrentViewerAccess, getViewerLabel, type ViewerRequestContext } from "./auth"
 import { fetchOfficeRows, type OfficeRow, type PersonRow } from "./lookups"
 import {
   PREVIEW_CONFIG_MESSAGE,
@@ -76,11 +80,14 @@ export interface PersonListItem extends Person {
 }
 
 export interface PeopleListData {
+  accessMessage: string | null
+  forbidden: boolean
   configMessage: string | null
   configured: boolean
   filters: PeopleListFilters
   offices: PeopleOfficeFilter[]
   people: PersonListItem[]
+  viewerLabel: string | null
 }
 
 export interface PersonDetailAssignmentItem {
@@ -123,11 +130,18 @@ export interface PersonDetailProjectTimeItem {
   projectName: string
 }
 
+export interface UpdatePersonPhotoInput {
+  personId: string
+  photoUrl?: string | null
+}
+
 export interface PersonDetailData {
+  accessMessage: string | null
   assignments: PersonDetailAssignmentItem[]
   checklistItems: PersonDetailChecklistItem[]
   configMessage: string | null
   configured: boolean
+  forbidden: boolean
   person: PersonListItem | null
   timeSummary: {
     latestTrackedWeekHours: number
@@ -137,6 +151,7 @@ export interface PersonDetailData {
     totalLaborCost: number
     byProject: PersonDetailProjectTimeItem[]
   }
+  viewerLabel: string | null
 }
 
 function toPerson(row: PersonRow): Person {
@@ -144,6 +159,7 @@ function toPerson(row: PersonRow): Person {
     id: row.id,
     fullName: row.full_name,
     title: row.title,
+    photoUrl: row.photo_url,
     officeId: row.office_id,
     annualSalary: Number(row.annual_salary),
     availabilityHoursPerWeek: Number(row.availability_hours_per_week),
@@ -202,6 +218,46 @@ function emptyPersonTimeSummary(): PersonDetailData["timeSummary"] {
   }
 }
 
+function emptyPeopleListData(
+  filters: PeopleListFilters,
+  configured: boolean,
+  configMessage: string | null,
+  accessMessage: string | null,
+  viewerLabel: string | null,
+  forbidden: boolean,
+): PeopleListData {
+  return {
+    accessMessage,
+    configMessage,
+    configured,
+    filters,
+    forbidden,
+    offices: [],
+    people: [],
+    viewerLabel,
+  }
+}
+
+function emptyPersonDetailData(
+  configured: boolean,
+  configMessage: string | null,
+  accessMessage: string | null,
+  viewerLabel: string | null,
+  forbidden: boolean,
+): PersonDetailData {
+  return {
+    accessMessage,
+    assignments: [],
+    checklistItems: [],
+    configMessage,
+    configured,
+    forbidden,
+    person: null,
+    timeSummary: emptyPersonTimeSummary(),
+    viewerLabel,
+  }
+}
+
 function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
   const filteredPeople = previewPeople.filter((row) => matchesFilters(row, filters))
   const officesById = new Map(previewOffices.map((office) => [office.id, office]))
@@ -216,13 +272,16 @@ function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
   }, new Map<string, number>())
 
   return {
+    accessMessage: null,
     configMessage: PREVIEW_CONFIG_MESSAGE,
     configured: false,
     filters,
+    forbidden: false,
     offices: previewOffices.map((office) => ({ id: office.id, name: office.name })),
     people: filteredPeople.map((row) =>
       buildPersonListItem(row, assignmentsByPersonId, officesById),
     ),
+    viewerLabel: null,
   }
 }
 
@@ -230,14 +289,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
   const person = previewPeople.find((candidate) => candidate.id === personId)
 
   if (!person) {
-    return {
-      assignments: [],
-      checklistItems: [],
-      configMessage: PREVIEW_CONFIG_MESSAGE,
-      configured: false,
-      person: null,
-      timeSummary: emptyPersonTimeSummary(),
-    }
+    return emptyPersonDetailData(false, PREVIEW_CONFIG_MESSAGE, null, null, false)
   }
 
   const officesById = new Map(previewOffices.map((office) => [office.id, office]))
@@ -319,6 +371,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
   }
 
   return {
+    accessMessage: null,
     assignments: assignmentRows.map((assignment) => {
       const project = projectsById.get(assignment.project_id)
 
@@ -348,6 +401,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
     })),
     configMessage: PREVIEW_CONFIG_MESSAGE,
     configured: false,
+    forbidden: false,
     person: personListItem,
     timeSummary: {
       latestTrackedWeekHours,
@@ -370,25 +424,61 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
         right.hours - left.hours || left.projectName.localeCompare(right.projectName),
       ),
     },
+    viewerLabel: null,
   }
 }
 
-export async function listPeople(filters: PeopleListFilters = {}): Promise<PeopleListData> {
+export async function listPeople(
+  filters: PeopleListFilters = {},
+  context: ViewerRequestContext = {},
+): Promise<PeopleListData> {
+  const viewerAccess = await getCurrentViewerAccess(context)
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
-  const client = createServerSupabaseClient()
+  const client = status.configured
+    ? createServerSupabaseClient({ accessToken: context.accessToken })
+    : null
+
+  if (!viewerAccess.viewer) {
+    return emptyPeopleListData(
+      filters,
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!canViewPeopleDirectory(viewerAccess.viewer)) {
+    return emptyPeopleListData(
+      filters,
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage ?? "Current viewer cannot access the people directory.",
+      viewerLabel,
+      true,
+    )
+  }
 
   if (!client) {
-    return listPreviewPeople(filters)
+    const previewData = listPreviewPeople(filters)
+
+    return {
+      ...previewData,
+      accessMessage: viewerAccess.accessMessage,
+      viewerLabel,
+    }
   }
 
   const [{ data: peopleData, error: peopleError }, offices] = await Promise.all([
     client
       .from("people")
       .select(
-        "id, full_name, title, office_id, annual_salary, availability_hours_per_week, email, active",
+        "id, full_name, title, photo_url, office_id, annual_salary, availability_hours_per_week, email, active",
       )
       .order("full_name"),
-    fetchOfficeRows(),
+    fetchOfficeRows(undefined, { client }),
   ])
 
   if (peopleError) {
@@ -428,28 +518,51 @@ export async function listPeople(filters: PeopleListFilters = {}): Promise<Peopl
   }
 
   return {
+    accessMessage: viewerAccess.accessMessage,
     configMessage: status.message,
     configured: status.configured,
     filters,
+    forbidden: false,
     offices: offices.map((office) => ({ id: office.id, name: office.name })),
     people: filteredPeople.map((row) =>
       buildPersonListItem(row, assignmentsByPersonId, officesById),
     ),
+    viewerLabel,
   }
 }
 
-export async function getPersonDetail(personId: string): Promise<PersonDetailData> {
+export async function updatePersonPhoto(
+  input: UpdatePersonPhotoInput,
+  context: ViewerRequestContext = {},
+): Promise<Person> {
   const status = getDatabaseStatus()
-  const client = createServerSupabaseClient()
+
+  if (!status.configured) {
+    throw new Error("People photo updates require a configured database connection.")
+  }
+
+  const viewerAccess = await getCurrentViewerAccess(context)
+
+  if (!viewerAccess.viewer) {
+    throw new Error(viewerAccess.accessMessage ?? "Sign in to continue.")
+  }
+
+  const client = createServerSupabaseClient({ accessToken: context.accessToken })
 
   if (!client) {
-    return getPreviewPersonDetail(personId)
+    throw new Error("People photo updates require a configured database connection.")
+  }
+
+  const personId = input.personId.trim()
+
+  if (!personId) {
+    throw new Error("Person is required.")
   }
 
   const { data: personRow, error: personError } = await client
     .from("people")
     .select(
-      "id, full_name, title, office_id, annual_salary, availability_hours_per_week, email, active",
+      "id, full_name, title, photo_url, office_id, annual_salary, availability_hours_per_week, email, active",
     )
     .eq("id", personId)
     .maybeSingle()
@@ -459,17 +572,120 @@ export async function getPersonDetail(personId: string): Promise<PersonDetailDat
   }
 
   if (!personRow) {
-    return {
-      assignments: [],
-      checklistItems: [],
-      configMessage: status.message,
-      configured: status.configured,
-      person: null,
-      timeSummary: emptyPersonTimeSummary(),
-    }
+    throw new Error("Selected person is unavailable.")
   }
 
   const person = personRow as PersonRow
+
+  if (!canCreateOrUpdatePeople(viewerAccess.viewer, person.office_id)) {
+    throw new Error("You do not have permission to update this person.")
+  }
+
+  const photoUrl = input.photoUrl?.trim()
+
+  const { data, error } = await client
+    .from("people")
+    .update({
+      photo_url: photoUrl ? photoUrl : null,
+    })
+    .eq("id", personId)
+    .select(
+      "id, full_name, title, photo_url, office_id, annual_salary, availability_hours_per_week, email, active",
+    )
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return toPerson(data as PersonRow)
+}
+
+export async function getPersonDetail(
+  personId: string,
+  context: ViewerRequestContext = {},
+): Promise<PersonDetailData> {
+  const viewerAccess = await getCurrentViewerAccess(context)
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
+  const status = getDatabaseStatus()
+  const client = status.configured
+    ? createServerSupabaseClient({ accessToken: context.accessToken })
+    : null
+
+  if (!viewerAccess.viewer) {
+    return emptyPersonDetailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!client) {
+    const previewData = getPreviewPersonDetail(personId)
+
+    if (
+      previewData.person &&
+      !canViewPerson(viewerAccess.viewer, {
+        id: previewData.person.id,
+        officeId: previewData.person.officeId,
+      })
+    ) {
+      return emptyPersonDetailData(
+        false,
+        PREVIEW_CONFIG_MESSAGE,
+        viewerAccess.accessMessage ?? "Current viewer cannot access this person.",
+        viewerLabel,
+        true,
+      )
+    }
+
+    return {
+      ...previewData,
+      accessMessage: viewerAccess.accessMessage,
+      viewerLabel,
+    }
+  }
+
+  const { data: personRow, error: personError } = await client
+    .from("people")
+    .select(
+      "id, full_name, title, photo_url, office_id, annual_salary, availability_hours_per_week, email, active",
+    )
+    .eq("id", personId)
+    .maybeSingle()
+
+  if (personError) {
+    throw personError
+  }
+
+  if (!personRow) {
+    return emptyPersonDetailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      false,
+    )
+  }
+
+  const person = personRow as PersonRow
+
+  if (
+    !canViewPerson(viewerAccess.viewer, {
+      id: person.id,
+      officeId: person.office_id,
+    })
+  ) {
+    return emptyPersonDetailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage ?? "Current viewer cannot access this person.",
+      viewerLabel,
+      true,
+    )
+  }
 
   const [
     offices,
@@ -477,7 +693,7 @@ export async function getPersonDetail(personId: string): Promise<PersonDetailDat
     timeEntryResponse,
     checklistResponse,
   ] = await Promise.all([
-    fetchOfficeRows([person.office_id]),
+    fetchOfficeRows([person.office_id], { client }),
     client
       .from("assignments")
       .select(
@@ -534,7 +750,9 @@ export async function getPersonDetail(personId: string): Promise<PersonDetailDat
     ...new Set(projectRows.map((project) => project.managing_office_id)),
   ]
   const managingOffices =
-    managingOfficeIds.length > 0 ? await fetchOfficeRows(managingOfficeIds) : []
+    managingOfficeIds.length > 0
+      ? await fetchOfficeRows(managingOfficeIds, { client })
+      : []
   const officesById = new Map(
     [...offices, ...managingOffices].map((office) => [office.id, office]),
   )
@@ -634,10 +852,12 @@ export async function getPersonDetail(personId: string): Promise<PersonDetailDat
   }
 
   return {
+    accessMessage: viewerAccess.accessMessage,
     assignments,
     checklistItems,
     configMessage: status.message,
     configured: status.configured,
+    forbidden: false,
     person: personListItem,
     timeSummary: {
       latestTrackedWeekHours,
@@ -652,5 +872,6 @@ export async function getPersonDetail(personId: string): Promise<PersonDetailDat
         right.hours - left.hours || left.projectName.localeCompare(right.projectName),
       ),
     },
+    viewerLabel,
   }
 }

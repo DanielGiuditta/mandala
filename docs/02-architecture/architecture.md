@@ -32,9 +32,24 @@ Lay the core model down first, then build vertical slices:
 10. Dashboard
 11. Advanced workflow and approvals only if scope expands beyond V1
 
+For V1, the authorization skeleton should add:
+
+- `UserAccount` for login identity
+- `RoleAssignment` for elevated `partner` and office-scoped `admin` permissions
+- `ClientProjectAccess` for explicit client entitlements
+- derived project-lead permissions from `Project.leadPersonId`
+- derived employee permissions from the `UserAccount` to `Person` link and active project relationships
+
+Office-scoped admin checks should use:
+
+- `Person.officeId` for person management
+- `Project.managingOfficeId` for project staffing, stage, time, checklist, and document management
+
 ## Boundaries
 
 - UI packages should not own business rules.
 - Database packages should not own presentation decisions.
 - Shared domain package owns canonical enums and validation.
+- Shared domain package should also own authorization role enums and scope rules.
+- Authorization roles must not be stored in `Person.title`.
 - App code composes modules; it should not redefine domain constants.

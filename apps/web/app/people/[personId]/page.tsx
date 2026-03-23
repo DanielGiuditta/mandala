@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 
 import { getPersonDetail } from "@mandala/db"
 
+import { getViewerRequestContext } from "../../../lib/auth/session"
+
 interface PersonDetailPageProps {
   params: Promise<{
     personId: string
@@ -78,9 +80,10 @@ function formatSource(source?: string | null): string {
 
 export default async function PersonDetailPage({ params }: PersonDetailPageProps) {
   const { personId } = await params
-  const data = await getPersonDetail(personId)
+  const viewerContext = await getViewerRequestContext()
+  const data = await getPersonDetail(personId, viewerContext)
 
-  if (data.configured && !data.person) {
+  if (data.configured && !data.person && !data.forbidden) {
     notFound()
   }
 
@@ -98,8 +101,19 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       {!data.configured && data.configMessage ? (
         <div className="notice">{data.configMessage}</div>
       ) : null}
+      {data.accessMessage ? <div className="notice">{data.accessMessage}</div> : null}
 
-      {data.person ? (
+      {data.forbidden ? (
+        <section className="card">
+          <h2>Person access</h2>
+          <p className="muted">
+            This viewer does not have access to the requested person record.
+          </p>
+          {data.viewerLabel ? <p className="muted">Viewer: {data.viewerLabel}</p> : null}
+        </section>
+      ) : null}
+
+      {data.person && !data.forbidden ? (
         <>
           <section className="card person-hero stack">
             <div className="person-hero-top">
@@ -126,6 +140,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
                     ? `${data.person.fullName} is based in ${data.person.officeName} and can be reached at ${data.person.email}.`
                     : `${data.person.fullName} is based in ${data.person.officeName}.`}
                 </p>
+                {data.viewerLabel ? <p className="muted">Viewer: {data.viewerLabel}</p> : null}
               </div>
 
               <div className="project-facts-grid">

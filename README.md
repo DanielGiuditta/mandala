@@ -17,9 +17,13 @@ These routes are intended to validate the domain/query layer before final UI des
 ## Local setup
 
 1. Copy `.env.example` to `.env`
-2. Fill in the Supabase variables
-3. Run `npm install`
-4. Run `npm run dev`
+2. Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Optionally fill in `SUPABASE_SERVICE_ROLE_KEY` for admin scripts or manual maintenance
+4. Run `npm install`
+5. Run `npm run dev`
+6. Sign in at `/login` with a Supabase Auth user whose email matches `public.user_accounts.email`
+
+If Supabase is not configured, the app falls back to seeded preview data. In that preview-only mode, `KOLAM_VIEWER_EMAIL` and `KOLAM_VIEWER_USER_ACCOUNT_ID` control impersonation. Legacy `MANDALA_VIEWER_EMAIL` and `MANDALA_VIEWER_USER_ACCOUNT_ID` are still supported for compatibility.
 
 ## What to keep true
 

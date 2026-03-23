@@ -18,6 +18,7 @@ export interface Project {
   name: string
   clientName?: string | null
   description?: string | null
+  photoUrl?: string | null
   originatingOfficeId: string
   managingOfficeId: string
   leadPersonId?: string | null

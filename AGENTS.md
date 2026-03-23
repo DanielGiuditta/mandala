@@ -7,6 +7,7 @@ This repository is the source of truth for an internal tracker used by a multi-o
 Read these files before making changes:
 
 - `docs/01-product/prd.md`
+- `docs/01-product/access-control.md`
 - `docs/01-product/domain-model.md`
 - `docs/01-product/field-definitions.md`
 - `docs/01-product/ui-domain-mapping.md`

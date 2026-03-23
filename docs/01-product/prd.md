@@ -98,7 +98,15 @@ Do not use "resource" to mean a person or staffing slot.
 
 Project stage is a lifecycle label.
 
-Admins control stage changes in V1.
+The V1 stage set is fixed across the instance.
+
+Partners can change stage on any project.
+
+Scoped admins can change stage on projects managed by their scoped offices.
+
+Project leads can change stage on projects they lead.
+
+Changing the global stage set itself is out of scope for V1.
 
 ### 2.9 Utilization is actual logged time
 
@@ -122,6 +130,20 @@ Each checklist item:
 - may be marked complete
 
 Checklist items are not tied to stage gating in V1.
+
+### 2.11 Access control is separate from staffing data
+
+Authorization is separate from job titles, office partner designation, and client names.
+
+V1 should support these effective user tiers:
+
+- `partner` — instance-wide operational control and admin assignment
+- `admin` — office-scoped operational control for one or more offices
+- `projectLead` — project-scoped control derived from project lead assignment
+- `employee` — internal contributor on staffed or led projects
+- `client` — read-only access to explicitly assigned projects
+
+Client access is explicit per project and must not be inferred from `clientName`.
 
 ## 3. Core Entities
 

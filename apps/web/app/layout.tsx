@@ -1,5 +1,8 @@
-import Link from "next/link"
 import type { Metadata } from "next"
+import { getCurrentViewerAccess } from "@mandala/db"
+
+import { AppFrame } from "./components/app-frame"
+import { getAppSessionState } from "../lib/auth/session"
 
 import "./globals.css"
 
@@ -8,31 +11,33 @@ export const metadata: Metadata = {
   description: "Internal tracker for projects, people, staffing, time, and documents.",
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const session = await getAppSessionState()
+  const viewerAccess = await getCurrentViewerAccess({
+    accessToken: session.accessToken,
+    sessionEmail: session.sessionEmail,
+  })
+
   return (
     <html lang="en">
       <body>
-        <div className="app-shell">
-          <header className="app-header">
-            <div>
-              <h1>Mandala</h1>
-              <p className="app-subtitle">
-                Technical scaffold for projects, people, checklist items, documents, and
-                project time visibility.
-              </p>
-            </div>
-            <nav aria-label="Primary" className="app-nav">
-              <Link href="/projects">Projects</Link>
-              <Link href="/people">People</Link>
-              <Link href="/library">Library</Link>
-            </nav>
-          </header>
+        <AppFrame
+          shell={{
+            accessMessage: viewerAccess.accessMessage,
+            configured: session.configured,
+            displayName: viewerAccess.summary?.displayName ?? null,
+            isAuthenticated: session.isAuthenticated,
+            officeName: viewerAccess.summary?.officeName ?? null,
+            primaryTier: viewerAccess.summary?.primaryTier ?? null,
+            sessionEmail: session.sessionEmail,
+          }}
+        >
           {children}
-        </div>
+        </AppFrame>
       </body>
     </html>
   )

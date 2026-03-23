@@ -1,3 +1,4 @@
+export * from "./auth"
 export * from "./library"
 export * from "./people"
 export * from "./projects"

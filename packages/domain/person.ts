@@ -2,6 +2,7 @@ export interface Person {
   id: string
   fullName: string
   title?: string | null
+  photoUrl?: string | null
   officeId: string
   annualSalary: number
   availabilityHoursPerWeek: number

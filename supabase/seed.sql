@@ -52,7 +52,7 @@ values
     '00000000-0000-0000-0000-000000000001',
     185000.00,
     40.00,
-    'anjali.menon@mandala.local',
+    'anjali.menon@kolam.local',
     true
   ),
   (
@@ -62,7 +62,7 @@ values
     '00000000-0000-0000-0000-000000000002',
     182000.00,
     40.00,
-    'vikram.rao@mandala.local',
+    'vikram.rao@kolam.local',
     true
   ),
   (
@@ -72,7 +72,7 @@ values
     '00000000-0000-0000-0000-000000000003',
     178000.00,
     40.00,
-    'meera.joseph@mandala.local',
+    'meera.joseph@kolam.local',
     true
   ),
   (
@@ -82,7 +82,7 @@ values
     '00000000-0000-0000-0000-000000000001',
     116000.00,
     40.00,
-    'arjun.thomas@mandala.local',
+    'arjun.thomas@kolam.local',
     true
   ),
   (
@@ -92,7 +92,7 @@ values
     '00000000-0000-0000-0000-000000000002',
     92000.00,
     40.00,
-    'nisha.varghese@mandala.local',
+    'nisha.varghese@kolam.local',
     true
   ),
   (
@@ -102,7 +102,7 @@ values
     '00000000-0000-0000-0000-000000000003',
     78000.00,
     35.00,
-    'devika.paul@mandala.local',
+    'devika.paul@kolam.local',
     true
   )
 on conflict (id) do update
@@ -133,6 +133,7 @@ insert into public.projects (
   name,
   client_name,
   description,
+  photo_url,
   originating_office_id,
   managing_office_id,
   lead_person_id,
@@ -147,6 +148,7 @@ values
     'Malabar Arts Center',
     'Kerala Cultural Trust',
     'Adaptive reuse and expansion for a regional arts and performance venue.',
+    null,
     '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000001',
     '10000000-0000-0000-0000-000000000004',
@@ -160,6 +162,7 @@ values
     'Bangalore Civic Hub',
     'South Metro Development Board',
     'Mixed-use civic and community building managed across offices.',
+    null,
     '00000000-0000-0000-0000-000000000002',
     '00000000-0000-0000-0000-000000000003',
     '10000000-0000-0000-0000-000000000003',
@@ -173,6 +176,7 @@ values
     'Kochi Waterfront Housing',
     'Blue Tide Communities',
     'Residential master planning and phased waterfront housing package.',
+    null,
     '00000000-0000-0000-0000-000000000003',
     '00000000-0000-0000-0000-000000000002',
     '10000000-0000-0000-0000-000000000002',
@@ -186,6 +190,7 @@ set
   name = excluded.name,
   client_name = excluded.client_name,
   description = excluded.description,
+  photo_url = excluded.photo_url,
   originating_office_id = excluded.originating_office_id,
   managing_office_id = excluded.managing_office_id,
   lead_person_id = excluded.lead_person_id,
@@ -351,7 +356,7 @@ values
   (
     '50000000-0000-0000-0000-000000000001',
     'Malabar Arts Center Brief',
-    'https://files.mandala.local/projects/malabar-arts-center/brief.pdf',
+    'https://files.kolam.local/projects/malabar-arts-center/brief.pdf',
     'pdf',
     '20000000-0000-0000-0000-000000000001',
     'brief',
@@ -362,7 +367,7 @@ values
   (
     '50000000-0000-0000-0000-000000000002',
     'Bangalore Civic Hub Site Plan',
-    'https://files.mandala.local/projects/bangalore-civic-hub/site-plan.dwg',
+    'https://files.kolam.local/projects/bangalore-civic-hub/site-plan.dwg',
     'dwg',
     '20000000-0000-0000-0000-000000000002',
     'drawing',
@@ -373,7 +378,7 @@ values
   (
     '50000000-0000-0000-0000-000000000003',
     'Waterfront Housing Moodboard',
-    'https://files.mandala.local/projects/kochi-waterfront-housing/moodboard.png',
+    'https://files.kolam.local/projects/kochi-waterfront-housing/moodboard.png',
     'png',
     '20000000-0000-0000-0000-000000000003',
     'reference',
@@ -383,8 +388,8 @@ values
   ),
   (
     '50000000-0000-0000-0000-000000000004',
-    'Mandala Presentation Template',
-    'https://files.mandala.local/library/templates/presentation-template.pptx',
+    'kolam Presentation Template',
+    'https://files.kolam.local/library/templates/presentation-template.pptx',
     'pptx',
     null,
     'template',
@@ -395,7 +400,7 @@ values
   (
     '50000000-0000-0000-0000-000000000005',
     'Facade Material Reference Library',
-    'https://files.mandala.local/library/references/facade-material-reference.pdf',
+    'https://files.kolam.local/library/references/facade-material-reference.pdf',
     'pdf',
     null,
     'reference',
@@ -477,3 +482,118 @@ set
   completed = excluded.completed,
   created_at = excluded.created_at,
   completed_at = excluded.completed_at;
+
+insert into public.user_accounts (
+  id,
+  person_id,
+  email,
+  active
+)
+values
+  (
+    '70000000-0000-0000-0000-000000000001',
+    '10000000-0000-0000-0000-000000000001',
+    'anjali.menon@kolam.local',
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000002',
+    '10000000-0000-0000-0000-000000000002',
+    'vikram.rao@kolam.local',
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000003',
+    '10000000-0000-0000-0000-000000000003',
+    'meera.joseph@kolam.local',
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000004',
+    'arjun.thomas@kolam.local',
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000005',
+    '10000000-0000-0000-0000-000000000005',
+    'nisha.varghese@kolam.local',
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000006',
+    '10000000-0000-0000-0000-000000000006',
+    'devika.paul@kolam.local',
+    true
+  ),
+  (
+    '70000000-0000-0000-0000-000000000007',
+    null,
+    'client@kerala-cultural-trust.example',
+    true
+  )
+on conflict (id) do update
+set
+  person_id = excluded.person_id,
+  email = excluded.email,
+  active = excluded.active;
+
+insert into public.role_assignments (
+  id,
+  user_account_id,
+  role,
+  office_id,
+  assigned_by_user_account_id,
+  active
+)
+values
+  (
+    '80000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000001',
+    'partner',
+    null,
+    '70000000-0000-0000-0000-000000000001',
+    true
+  ),
+  (
+    '80000000-0000-0000-0000-000000000002',
+    '70000000-0000-0000-0000-000000000006',
+    'admin',
+    '00000000-0000-0000-0000-000000000002',
+    '70000000-0000-0000-0000-000000000001',
+    true
+  ),
+  (
+    '80000000-0000-0000-0000-000000000003',
+    '70000000-0000-0000-0000-000000000006',
+    'admin',
+    '00000000-0000-0000-0000-000000000003',
+    '70000000-0000-0000-0000-000000000001',
+    true
+  )
+on conflict (id) do update
+set
+  user_account_id = excluded.user_account_id,
+  role = excluded.role,
+  office_id = excluded.office_id,
+  assigned_by_user_account_id = excluded.assigned_by_user_account_id,
+  active = excluded.active;
+
+insert into public.client_project_access (
+  id,
+  user_account_id,
+  project_id,
+  active
+)
+values
+  (
+    '90000000-0000-0000-0000-000000000001',
+    '70000000-0000-0000-0000-000000000007',
+    '20000000-0000-0000-0000-000000000001',
+    true
+  )
+on conflict (id) do update
+set
+  user_account_id = excluded.user_account_id,
+  project_id = excluded.project_id,
+  active = excluded.active;

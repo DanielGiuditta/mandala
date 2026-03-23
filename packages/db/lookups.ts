@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
+
 import { createServerSupabaseClient } from "./supabaseServer"
 
 export interface OfficeRow {
@@ -9,6 +11,7 @@ export interface PersonRow {
   id: string
   full_name: string
   title: string | null
+  photo_url: string | null
   office_id: string
   annual_salary: number | string
   availability_hours_per_week: number | string
@@ -16,12 +19,24 @@ export interface PersonRow {
   active: boolean
 }
 
-export async function fetchOfficeRows(ids?: string[]): Promise<OfficeRow[]> {
+export interface LookupQueryOptions {
+  accessToken?: string | null
+  client?: SupabaseClient
+}
+
+function resolveLookupClient(options: LookupQueryOptions = {}): SupabaseClient | null {
+  return options.client ?? createServerSupabaseClient({ accessToken: options.accessToken })
+}
+
+export async function fetchOfficeRows(
+  ids?: string[],
+  options: LookupQueryOptions = {},
+): Promise<OfficeRow[]> {
   if (ids && ids.length === 0) {
     return []
   }
 
-  const client = createServerSupabaseClient()
+  const client = resolveLookupClient(options)
 
   if (!client) {
     return []
@@ -42,12 +57,15 @@ export async function fetchOfficeRows(ids?: string[]): Promise<OfficeRow[]> {
   return (data ?? []) as OfficeRow[]
 }
 
-export async function fetchPeopleRows(ids?: string[]): Promise<PersonRow[]> {
+export async function fetchPeopleRows(
+  ids?: string[],
+  options: LookupQueryOptions = {},
+): Promise<PersonRow[]> {
   if (ids && ids.length === 0) {
     return []
   }
 
-  const client = createServerSupabaseClient()
+  const client = resolveLookupClient(options)
 
   if (!client) {
     return []
@@ -56,7 +74,7 @@ export async function fetchPeopleRows(ids?: string[]): Promise<PersonRow[]> {
   let query = client
     .from("people")
     .select(
-      "id, full_name, title, office_id, annual_salary, availability_hours_per_week, email, active",
+      "id, full_name, title, photo_url, office_id, annual_salary, availability_hours_per_week, email, active",
     )
     .order("full_name")
 

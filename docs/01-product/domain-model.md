@@ -21,6 +21,12 @@ Core entities:
 - ResourceDocument
 - ChecklistItem
 
+Supporting authorization models:
+
+- UserAccount
+- RoleAssignment
+- ClientProjectAccess
+
 ## Office
 
 Represents a firm office.
@@ -58,6 +64,7 @@ Represents a person who can work on projects.
 - `id`
 - `fullName`
 - `title`
+- `photoUrl`
 - `officeId`
 - `annualSalary`
 - `availabilityHoursPerWeek`
@@ -83,6 +90,7 @@ Represents a person who can work on projects.
 
 - utilization uses actual logged project time, not planned assignment hours
 - `availableHoursInPeriod` must use the same time window as `loggedHoursInPeriod`
+- `title` is a job title, not an authorization role
 
 ### Relationships
 
@@ -103,6 +111,7 @@ A project may originate in one office and be managed by another.
 - `name`
 - `clientName`
 - `description`
+- `photoUrl`
 - `originatingOfficeId`
 - `managingOfficeId`
 - `leadPersonId`
@@ -128,6 +137,7 @@ The managing office owns:
 - staffing
 - project execution
 - labor cost reporting
+- office-scoped project management permissions
 
 ## Assignment
 
@@ -237,6 +247,78 @@ Represents a lightweight to-do on a project.
 - checklist items are not tied to stage gating in V1
 - this is not a full task-management system in V1
 
+## UserAccount
+
+Represents a login identity for an internal staff member or a client user.
+
+### Fields
+
+- `id`
+- `personId`
+- `email`
+- `active`
+
+### Relationships
+
+- UserAccount → Person (optional)
+- UserAccount → RoleAssignments
+- UserAccount → ClientProjectAccess
+
+### Notes
+
+- internal users usually link to a `Person`
+- client users may exist without a `Person`
+- this model is separate from `Person.title`
+
+## RoleAssignment
+
+Represents an elevated internal authorization role plus optional office scope.
+
+### Fields
+
+- `id`
+- `userAccountId`
+- `role`
+- `officeId`
+- `assignedByUserAccountId`
+- `active`
+
+### Relationships
+
+- RoleAssignment → UserAccount
+- RoleAssignment → Office
+- RoleAssignment → AssignedByUserAccount
+
+### Notes
+
+- persisted elevated roles in V1 are `partner` and `admin`
+- `partner` is instance-scoped and does not use office scope
+- `admin` is office-scoped and one user may hold admin scope for multiple offices
+- assigning admins is partner-only in V1
+
+## ClientProjectAccess
+
+Represents explicit read access for a client user to a project.
+
+### Fields
+
+- `id`
+- `userAccountId`
+- `projectId`
+- `active`
+
+### Relationships
+
+- ClientProjectAccess → UserAccount
+- ClientProjectAccess → Project
+
+### Notes
+
+- client access is never inferred from `Project.clientName`
+- client users are read-only in V1
+- project-lead permissions are derived from `Project.leadPersonId`, not a separate table
+- employee permissions are derived from the internal `UserAccount` to `Person` link plus project assignment relationships
+
 ## Project stage labels
 
 `Project.stage` is a lifecycle label, not a separate entity in V1.
@@ -253,7 +335,11 @@ Represents a lightweight to-do on a project.
 ### Notes
 
 - stage is currently a label, not a workflow gate
-- admins control stage changes in V1
+- the V1 stage set is fixed
+- partners can change stage on any project
+- admins can change stage on projects managed by their scoped offices
+- project leads can change stage on projects they lead
+- changing the global stage set is outside V1
 
 ## Key reporting views
 

@@ -1,0 +1,128 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+
+import type { ProjectDocumentItem } from "@mandala/db";
+
+import { formatDateTime } from "./project-detail-utils";
+import { ProjectCardHeader } from "./project-card-header";
+
+interface ProjectResourcesCardProps {
+  addResourceAction: (input: {
+    category?: string | null;
+    description?: string | null;
+    fileType?: string | null;
+    fileUrl: string;
+    name: string;
+    projectId: string;
+  }) => Promise<{ error: string | null; ok: boolean }>;
+  documents: ProjectDocumentItem[];
+  projectId: string;
+}
+
+export function ProjectResourcesCard({
+  addResourceAction,
+  documents,
+  projectId,
+}: ProjectResourcesCardProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [showAdd, setShowAdd] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const visibleDocuments = showAll ? documents : documents.slice(0, 3);
+
+  return (
+    <section className="pd-card">
+      <ProjectCardHeader
+        addAriaLabel="Add resource"
+        onAddClick={() => setShowAdd((value) => !value)}
+        title="Resources"
+      />
+
+      {showAdd ? (
+        <form
+          className="pd-inline-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            const name = String(formData.get("name") ?? "").trim();
+            const fileUrl = String(formData.get("fileUrl") ?? "").trim();
+            const fileType = String(formData.get("fileType") ?? "").trim();
+            const category = String(formData.get("category") ?? "").trim();
+            const description = String(formData.get("description") ?? "").trim();
+
+            if (!name || !fileUrl) {
+              setFormError("Name and file URL are required.");
+              return;
+            }
+
+            setFormError(null);
+            startTransition(async () => {
+              const result = await addResourceAction({
+                category: category || null,
+                description: description || null,
+                fileType: fileType || null,
+                fileUrl,
+                name,
+                projectId,
+              });
+              if (!result.ok) {
+                setFormError(result.error ?? "Unable to add resource.");
+                return;
+              }
+
+              setShowAdd(false);
+              router.refresh();
+            });
+          }}
+        >
+          <input name="name" placeholder="Resource name" required type="text" />
+          <input name="fileUrl" placeholder="https://..." required type="url" />
+          <input name="fileType" placeholder="File type (optional)" type="text" />
+          <input name="category" placeholder="Category (optional)" type="text" />
+          <input name="description" placeholder="Description (optional)" type="text" />
+          <button className="pd-primary-button" disabled={isPending} type="submit">
+            Add resource
+          </button>
+        </form>
+      ) : null}
+
+      {formError ? <p className="pd-form-error">{formError}</p> : null}
+
+      <div className="pd-list">
+        {visibleDocuments.length === 0 ? (
+          <p className="pd-empty">No resources yet.</p>
+        ) : (
+          visibleDocuments.map((document) => (
+            <article className="pd-list-item" key={document.id}>
+              <div className="pd-list-item-main">
+                <span aria-hidden className="pd-doc-icon">
+                  []
+                </span>
+                <div>
+                  <a className="pd-link" href={document.fileUrl} rel="noreferrer" target="_blank">
+                    {document.name}
+                  </a>
+                  <p className="pd-meta-text">
+                    {document.fileType ?? "Unknown type"} · {document.category ?? "Uncategorized"}
+                  </p>
+                </div>
+              </div>
+              <div className="pd-list-item-aside">
+                <span className="pd-meta-text">{formatDateTime(document.createdAt)}</span>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
+      {documents.length > 3 ? (
+        <button className="pd-text-button" onClick={() => setShowAll((value) => !value)} type="button">
+          {showAll ? "Show less" : "See more"}
+        </button>
+      ) : null}
+    </section>
+  );
+}
