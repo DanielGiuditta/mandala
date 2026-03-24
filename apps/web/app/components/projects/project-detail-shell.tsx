@@ -191,7 +191,6 @@ export function ProjectDetailShell({
             className="pd-entity-header"
             media={<ProjectPhoto name={data.project.name} photoUrl={data.project.photoUrl} projectId={data.project.id} />}
             title={data.project.name}
-            titleAs="h1"
           />
           <div className="pd-entity-content">
             <ProjectDetailGlance project={data.project} timeSummary={data.timeSummary} />
