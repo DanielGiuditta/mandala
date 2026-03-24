@@ -1,8 +1,6 @@
-import Link from "next/link"
-
-import { listPeople } from "@mandala/db"
-
 import { getViewerRequestContext } from "../../lib/auth/session"
+import { EntityReturnLink } from "../components/entity-return-link"
+import { getCachedPeople } from "./data-cache"
 
 interface PeoplePageProps {
   searchParams: Promise<{
@@ -27,7 +25,7 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
     officeId: params.office || undefined,
     query: params.q || undefined,
   }
-  const data = await listPeople(filters, viewerContext)
+  const data = await getCachedPeople(filters, viewerContext)
 
   return (
     <main className="stack">
@@ -116,7 +114,9 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
                 {data.people.map((person) => (
                   <tr key={person.id}>
                     <td>
-                      <Link href={`/people/${person.id}`}>{person.fullName}</Link>
+                      <EntityReturnLink href={`/people/${person.id}`} scope="people">
+                        {person.fullName}
+                      </EntityReturnLink>
                       {!person.active ? <span className="muted"> · inactive</span> : null}
                     </td>
                     <td>{person.title ?? "No title"}</td>

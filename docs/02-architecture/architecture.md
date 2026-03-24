@@ -53,3 +53,13 @@ Office-scoped admin checks should use:
 - Shared domain package should also own authorization role enums and scope rules.
 - Authorization roles must not be stored in `Person.title`.
 - App code composes modules; it should not redefine domain constants.
+
+## Route architecture
+
+Entity-heavy areas should prefer a persistent master-detail route structure over flat sibling pages when the design expects an in-context workspace.
+
+- Keep the list or rail mounted in a shared segment layout.
+- Render detail via nested or intercepted routes so the URL still reflects the selected entity.
+- Use the same pattern for Projects and People so navigation behavior stays consistent.
+- Do not rebuild the entire entity workspace on every list/detail hop if a shared layout can preserve it.
+- Direct loads of detail URLs must still work without relying on client-only state.

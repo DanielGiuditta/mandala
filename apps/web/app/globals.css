@@ -361,10 +361,6 @@ a {
   padding: 0 16px;
 }
 
-.app-domain-detail {
-  padding: 0;
-}
-
 .entity-header {
   align-items: center;
   background: var(--figma-color-background-base);
@@ -612,6 +608,48 @@ th {
   min-height: 0;
   overflow-x: auto;
   padding: 0 0 136px;
+}
+
+.entity-route-shell {
+  min-height: calc(100vh - 1px);
+  position: relative;
+}
+
+.entity-modal {
+  inset: 0;
+  position: absolute;
+  z-index: 30;
+}
+
+.entity-modal-backdrop {
+  background: rgba(12, 15, 18, 0.12);
+  backdrop-filter: blur(2px);
+  inset: 0;
+  position: absolute;
+}
+
+.entity-modal-panel {
+  background: var(--figma-color-background-base);
+  border-left: 1px solid var(--figma-color-border-default);
+  box-shadow: 0 0 16px #6f778024;
+  margin-left: auto;
+  max-width: min(1180px, 100%);
+  min-height: 100%;
+  overflow-y: auto;
+  position: relative;
+  width: calc(100% - 32px);
+}
+
+.entity-modal-panel-project {
+  padding: 0;
+}
+
+.entity-modal-panel-people {
+  padding: 16px;
+}
+
+.entity-modal-state-card {
+  margin: 16px;
 }
 
 .projects-notice-dock {
@@ -1767,6 +1805,7 @@ th {
 }
 
 .pd-page {
+  margin: 0 -16px;
   padding: 0;
 }
 
@@ -2299,6 +2338,10 @@ th {
 
   .projects-domain {
     overflow-x: auto;
+  }
+
+  .entity-modal-panel {
+    width: 100%;
   }
 
   .app-logo-name {

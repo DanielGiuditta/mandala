@@ -13,8 +13,6 @@ interface AppFrameProps {
 export function AppFrame({ children, shell }: AppFrameProps) {
   const pathname = usePathname()
   const hideShell = pathname === "/login"
-  const isProjectDetailRoute =
-    pathname.startsWith("/projects/") && pathname !== "/projects"
 
   if (hideShell) {
     return children
@@ -23,7 +21,7 @@ export function AppFrame({ children, shell }: AppFrameProps) {
   return (
     <div className="app-shell app-shell-figma">
       <AppSidebar shell={shell} />
-      <div className={`app-domain ${isProjectDetailRoute ? "app-domain-detail" : ""}`}>
+      <div className="app-domain">
         {children}
       </div>
     </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { ProjectListItem } from "@mandala/db";
@@ -17,7 +16,7 @@ import {
   getFallbackAvatarColor,
   getFallbackAvatarInitial,
 } from "./project-avatar-utils";
-import { rememberProjectsReturnUrl } from "./project-navigation";
+import { EntityReturnLink } from "../entity-return-link";
 
 interface ProjectListTableProps {
   activeProjectId?: string;
@@ -193,10 +192,6 @@ export function ProjectListTable({
     return items;
   }, [projects, sortDirection, sortKey]);
 
-  function handleProjectLinkClick() {
-    rememberProjectsReturnUrl(`${window.location.pathname}${window.location.search}`);
-  }
-
   return (
     <div className={mode === "collapsed" ? "projects-list-collapsed" : "projects-list"}>
       {mode === "table" ? (
@@ -224,11 +219,11 @@ export function ProjectListTable({
           const isActive = project.id === activeProjectId;
 
           return (
-            <Link
+            <EntityReturnLink
               className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
               href={`/projects/${project.id}`}
               key={project.id}
-              onClick={handleProjectLinkClick}
+              scope="projects"
             >
               {project.photoUrl ? (
                 <img
@@ -253,7 +248,7 @@ export function ProjectListTable({
                 </span>
               )}
               <span className="projects-collapsed-row-text">{project.name}</span>
-            </Link>
+            </EntityReturnLink>
           );
         })
       ) : (
@@ -286,9 +281,9 @@ export function ProjectListTable({
                   {getFallbackAvatarInitial(project.name, "P")}
                 </span>
               )}
-              <Link href={`/projects/${project.id}`} onClick={handleProjectLinkClick}>
+              <EntityReturnLink href={`/projects/${project.id}`} scope="projects">
                 {project.name}
-              </Link>
+              </EntityReturnLink>
             </div>
             <div className="projects-cell">
               <span className="projects-cell-value">

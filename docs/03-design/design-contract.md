@@ -47,6 +47,7 @@ If none of those exist, the task is design exploration, not implementation.
 - Do not guess icons, imagery, or chart data.
 - Do not hardcode shell identity data from mockups. App chrome such as user names, role labels, office labels, and session state must come from the real app session or preview auth path.
 - If a Figma table or dashboard shows fields that are not in the current query contract, extend the backend with documented derived values first or keep the UI honest by hiding/relabeling the field. Never ship placeholder dashes for invented backend fields.
+- If a design shows list and detail in the same workspace, implement it with a persistent segment layout and route-backed detail slot or intercepted route when possible. Do not translate that pattern into two unrelated full-page renders that tear down the list on every click.
 
 ## Required Figma hygiene
 

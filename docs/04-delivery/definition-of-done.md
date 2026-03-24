@@ -18,6 +18,7 @@ A task is done only when all relevant items below are satisfied.
 ## Design
 - UI work references a real design source.
 - Any deviation is documented.
+- For entity workspaces, list/detail navigation does not regress into unnecessary full-page teardown when a shared segment layout can preserve the workspace.
 
 ## Validation
 - Relevant checks were run, or the exact reason they were not is stated.

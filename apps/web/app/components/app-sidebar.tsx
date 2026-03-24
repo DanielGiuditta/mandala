@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import { signOutAction } from "../login/actions"
@@ -54,7 +53,6 @@ function formatTierLabel(value: string | null): string {
 }
 
 export function AppSidebar({ shell }: { shell: AppShellState }) {
-  const pathname = usePathname()
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
   const profileName = shell.displayName ?? "kolam user"
@@ -77,10 +75,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   }, [])
 
   const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
-  const isProjectDetailRoute =
-    pathname.startsWith("/projects/") && pathname !== "/projects"
-  const isSidebarOpen =
-    !isForcedCollapsed && !isManuallyCollapsed && !isProjectDetailRoute
+  const isSidebarOpen = !isForcedCollapsed && !isManuallyCollapsed
 
   return (
     <aside className={`app-sidebar ${isSidebarOpen ? "app-sidebar-open" : "app-sidebar-closed"}`}>
