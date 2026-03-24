@@ -18,11 +18,41 @@ function isProtectedPath(pathname: string): boolean {
   )
 }
 
+function hasAuthCookie(request: NextRequest): boolean {
+  return request.cookies
+    .getAll()
+    .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"))
+}
+
+function isPrefetchRequest(request: NextRequest): boolean {
+  return (
+    request.headers.has("next-router-prefetch") ||
+    request.headers.get("purpose") === "prefetch"
+  )
+}
+
+function isRscNavigationRequest(request: NextRequest): boolean {
+  return (
+    request.nextUrl.searchParams.has("_rsc") ||
+    request.headers.has("rsc") ||
+    request.headers.has("next-router-state-tree")
+  )
+}
+
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !key) {
+    return NextResponse.next({
+      request,
+    })
+  }
+
+  // Client-side route transitions already resolve auth in the server component tree.
+  // Skipping the middleware refresh here avoids a second Supabase auth roundtrip
+  // on every in-app navigation while keeping full-document requests protected.
+  if (hasAuthCookie(request) && (isPrefetchRequest(request) || isRscNavigationRequest(request))) {
     return NextResponse.next({
       request,
     })

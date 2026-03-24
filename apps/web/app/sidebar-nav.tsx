@@ -40,7 +40,6 @@ export function SidebarNav({ isOpen }: SidebarNavProps) {
             }`}
             href={item.href}
             key={item.href}
-            prefetch={false}
           >
             <FigmaIcon src={item.iconSrc} />
             <span className={`app-sidebar-nav-label ${isOpen ? "" : "app-sidebar-nav-label-hidden"}`}>

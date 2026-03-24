@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import type {
   CreateProjectInput,
   ProjectDetailData,
@@ -25,6 +23,7 @@ import type {
 import { ProjectResourcesCard } from "./project-resources-card";
 import { ProjectStaffCard } from "./project-staff-card";
 import { ProjectTasksCard } from "./project-tasks-card";
+import { ProjectDetailCloseButton } from "./project-detail-close-button";
 import { ProjectPhoto } from "./project-detail-utils";
 import { ProjectWorklogCard } from "./project-worklog-card";
 import { EntityHeader } from "../entity-header";
@@ -175,21 +174,7 @@ export function ProjectDetailShell({
         />
         <section className="pd-entity">
           <EntityHeader
-            action={
-              <Link
-                aria-label="Close and return to projects"
-                className="entity-header-close-button"
-                href="/projects"
-                prefetch={false}
-              >
-                <img
-                  alt=""
-                  aria-hidden
-                  className="entity-header-close-icon"
-                  src="/figma/nav/close-icon.svg"
-                />
-              </Link>
-            }
+            action={<ProjectDetailCloseButton />}
             className="pd-entity-header"
             media={<ProjectPhoto name={data.project.name} photoUrl={data.project.photoUrl} projectId={data.project.id} />}
             title={data.project.name}
