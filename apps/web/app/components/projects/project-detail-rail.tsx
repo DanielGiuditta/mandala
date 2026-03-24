@@ -1,16 +1,19 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
-import type { ProjectListItem } from "@mandala/db";
-
 import { EntityHeader } from "../entity-header";
-import { ProjectListTable } from "./project-list-table";
+import type { ProjectRailItem } from "@mandala/db";
+import {
+  getFallbackAvatarColor,
+  getFallbackAvatarInitial,
+} from "./project-avatar-utils";
 
 interface ProjectDetailRailProps {
   activeProjectId: string;
   configured: boolean;
   createProjectTrigger: ReactNode;
   forbidden: boolean;
-  projects: ProjectListItem[];
+  projects: ProjectRailItem[];
 }
 
 export function ProjectDetailRail({
@@ -27,13 +30,56 @@ export function ProjectDetailRail({
         className="pd-rail-header"
         title="Projects"
       />
-      <ProjectListTable
-        activeProjectId={activeProjectId}
-        configured={configured}
-        forbidden={forbidden}
-        mode="collapsed"
-        projects={projects}
-      />
+      <div className="projects-list-collapsed">
+        {forbidden ? (
+          <div className="projects-list-empty">
+            No project access for the current viewer.
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="projects-list-empty">
+            {configured
+              ? "No projects are available."
+              : "Configure the database connection to load projects."}
+          </div>
+        ) : (
+          projects.map((project) => {
+            const isActive = project.id === activeProjectId;
+
+            return (
+              <Link
+                className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
+                href={`/projects/${project.id}`}
+                key={project.id}
+                prefetch={false}
+              >
+                {project.photoUrl ? (
+                  <img
+                    alt=""
+                    aria-hidden
+                    className="projects-project-thumb-image"
+                    loading="lazy"
+                    src={project.photoUrl}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="projects-project-thumb-fallback"
+                    style={{
+                      backgroundColor: getFallbackAvatarColor(
+                        project.name,
+                        project.id,
+                      ),
+                    }}
+                  >
+                    {getFallbackAvatarInitial(project.name, "P")}
+                  </span>
+                )}
+                <span className="projects-collapsed-row-text">{project.name}</span>
+              </Link>
+            );
+          })
+        )}
+      </div>
     </aside>
   );
 }

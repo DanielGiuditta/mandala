@@ -3,7 +3,7 @@ import Link from "next/link";
 import type {
   CreateProjectInput,
   ProjectDetailData,
-  ProjectListItem,
+  ProjectRailItem,
 } from "@mandala/db";
 import type {
   ProjectDetailActionResult,
@@ -40,7 +40,7 @@ interface ProjectDetailShellProps {
   officeOptions: ProjectCreateOfficeOption[];
   peopleOptions: Array<{ fullName: string; id: string }>;
   projectId: string;
-  railProjects: ProjectListItem[];
+  railProjects: ProjectRailItem[];
 }
 
 type AddStaffAction = (
@@ -179,7 +179,12 @@ export function ProjectDetailShell({
         <section className="pd-entity">
           <EntityHeader
             action={
-              <Link aria-label="Close and return to projects" className="entity-header-close-button" href="/projects">
+              <Link
+                aria-label="Close and return to projects"
+                className="entity-header-close-button"
+                href="/projects"
+                prefetch={false}
+              >
                 <img
                   alt=""
                   aria-hidden

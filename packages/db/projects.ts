@@ -187,6 +187,22 @@ export interface ProjectDetailData {
   viewerLabel: string | null;
 }
 
+export interface ProjectRailItem {
+  id: string;
+  name: string;
+  photoUrl: string | null;
+}
+
+export interface ProjectRailData {
+  accessMessage: string | null;
+  configured: boolean;
+  configMessage: string | null;
+  forbidden: boolean;
+  offices: ProjectOfficeFilter[];
+  projects: ProjectRailItem[];
+  viewerLabel: string | null;
+}
+
 export interface ProjectListData {
   accessMessage: string | null;
   configured: boolean;
@@ -557,6 +573,24 @@ function emptyProjectListData(
   };
 }
 
+function emptyProjectRailData(
+  configured: boolean,
+  configMessage: string | null,
+  accessMessage: string | null,
+  viewerLabel: string | null,
+  forbidden: boolean,
+): ProjectRailData {
+  return {
+    accessMessage,
+    configured,
+    configMessage,
+    forbidden,
+    offices: [],
+    projects: [],
+    viewerLabel,
+  };
+}
+
 function emptyProjectDetailData(
   configured: boolean,
   configMessage: string | null,
@@ -682,6 +716,31 @@ function listPreviewProjects(
         !canViewInternalProject(viewer, toProjectPermissionSubject(row)),
       ),
     ),
+    viewerLabel: null,
+  };
+}
+
+function listPreviewProjectRail(
+  viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+): ProjectRailData {
+  const visibleProjectRows = [...previewProjects]
+    .filter((row) => canViewProjectSummary(viewer, toProjectPermissionSubject(row)))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  return {
+    accessMessage: null,
+    configured: false,
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    forbidden: false,
+    offices: previewOffices.map((office) => ({
+      id: office.id,
+      name: office.name,
+    })),
+    projects: visibleProjectRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      photoUrl: row.photo_url ?? null,
+    })),
     viewerLabel: null,
   };
 }
@@ -1013,6 +1072,77 @@ export async function listProjects(
         ),
       ),
     ),
+    viewerLabel,
+  };
+}
+
+export async function listProjectRailData(
+  context: ViewerRequestContext = {},
+): Promise<ProjectRailData> {
+  const viewerAccess = await getCurrentViewerAccess(context);
+  const viewerLabel = getViewerLabel(viewerAccess.summary);
+  const status = getDatabaseStatus();
+  const client = status.configured
+    ? createServerSupabaseClient({ accessToken: context.accessToken })
+    : null;
+
+  if (!viewerAccess.viewer) {
+    return emptyProjectRailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      true,
+    );
+  }
+
+  if (!client) {
+    const previewData = listPreviewProjectRail(viewerAccess.viewer);
+
+    return {
+      ...previewData,
+      accessMessage: viewerAccess.accessMessage,
+      viewerLabel,
+    };
+  }
+
+  const [{ data: projectData, error: projectError }, offices] = await Promise.all([
+    client
+      .from("projects")
+      .select("id, name, photo_url, managing_office_id, lead_person_id")
+      .order("name"),
+    fetchOfficeRows(undefined, { client }),
+  ]);
+
+  if (projectError) {
+    throw projectError;
+  }
+
+  const visibleProjectRows = ((projectData ?? []) as Array<{
+    id: string;
+    lead_person_id: string | null;
+    managing_office_id: string;
+    name: string;
+    photo_url: string | null;
+  }>).filter((row) =>
+    canViewProjectSummary(viewerAccess.viewer!, {
+      id: row.id,
+      leadPersonId: row.lead_person_id,
+      managingOfficeId: row.managing_office_id,
+    }),
+  );
+
+  return {
+    accessMessage: viewerAccess.accessMessage,
+    configured: status.configured,
+    configMessage: status.message,
+    forbidden: false,
+    offices: offices.map((office) => ({ id: office.id, name: office.name })),
+    projects: visibleProjectRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      photoUrl: row.photo_url ?? null,
+    })),
     viewerLabel,
   };
 }

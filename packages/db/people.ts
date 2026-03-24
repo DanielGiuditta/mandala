@@ -90,6 +90,18 @@ export interface PeopleListData {
   viewerLabel: string | null
 }
 
+export interface PeopleOptionsData {
+  accessMessage: string | null
+  forbidden: boolean
+  configMessage: string | null
+  configured: boolean
+  people: Array<{
+    id: string
+    fullName: string
+  }>
+  viewerLabel: string | null
+}
+
 export interface PersonDetailAssignmentItem {
   active: boolean
   endDate: string | null
@@ -238,6 +250,23 @@ function emptyPeopleListData(
   }
 }
 
+function emptyPeopleOptionsData(
+  configured: boolean,
+  configMessage: string | null,
+  accessMessage: string | null,
+  viewerLabel: string | null,
+  forbidden: boolean,
+): PeopleOptionsData {
+  return {
+    accessMessage,
+    configMessage,
+    configured,
+    forbidden,
+    people: [],
+    viewerLabel,
+  }
+}
+
 function emptyPersonDetailData(
   configured: boolean,
   configMessage: string | null,
@@ -281,6 +310,23 @@ function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
     people: filteredPeople.map((row) =>
       buildPersonListItem(row, assignmentsByPersonId, officesById),
     ),
+    viewerLabel: null,
+  }
+}
+
+function listPreviewPeopleOptions(): PeopleOptionsData {
+  return {
+    accessMessage: null,
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    configured: false,
+    forbidden: false,
+    people: previewPeople
+      .filter((person) => person.active)
+      .sort((left, right) => left.full_name.localeCompare(right.full_name))
+      .map((person) => ({
+        fullName: person.full_name,
+        id: person.id,
+      })),
     viewerLabel: null,
   }
 }
@@ -527,6 +573,69 @@ export async function listPeople(
     people: filteredPeople.map((row) =>
       buildPersonListItem(row, assignmentsByPersonId, officesById),
     ),
+    viewerLabel,
+  }
+}
+
+export async function listPeopleOptions(
+  context: ViewerRequestContext = {},
+): Promise<PeopleOptionsData> {
+  const viewerAccess = await getCurrentViewerAccess(context)
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
+  const status = getDatabaseStatus()
+  const client = status.configured
+    ? createServerSupabaseClient({ accessToken: context.accessToken })
+    : null
+
+  if (!viewerAccess.viewer) {
+    return emptyPeopleOptionsData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!canViewPeopleDirectory(viewerAccess.viewer)) {
+    return emptyPeopleOptionsData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage ?? "Current viewer cannot access the people directory.",
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!client) {
+    const previewData = listPreviewPeopleOptions()
+
+    return {
+      ...previewData,
+      accessMessage: viewerAccess.accessMessage,
+      viewerLabel,
+    }
+  }
+
+  const { data, error } = await client
+    .from("people")
+    .select("id, full_name")
+    .eq("active", true)
+    .order("full_name")
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    accessMessage: viewerAccess.accessMessage,
+    configMessage: status.message,
+    configured: status.configured,
+    forbidden: false,
+    people: ((data ?? []) as Array<{ id: string; full_name: string }>).map((person) => ({
+      fullName: person.full_name,
+      id: person.id,
+    })),
     viewerLabel,
   }
 }

@@ -1,4 +1,8 @@
-import { listPeople, listProjects, getProjectDetail } from "@mandala/db";
+import {
+  getProjectDetail,
+  listPeopleOptions,
+  listProjectRailData,
+} from "@mandala/db";
 import { notFound } from "next/navigation";
 
 import { ProjectDetailShell } from "../../components/projects/project-detail-shell";
@@ -18,8 +22,8 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
   const viewerContext = await getViewerRequestContext();
   const [data, railData, peopleData] = await Promise.all([
     getProjectDetail(projectId, viewerContext),
-    listProjects({}, viewerContext),
-    listPeople({}, viewerContext),
+    listProjectRailData(viewerContext),
+    listPeopleOptions(viewerContext),
   ]);
 
   if (data.configured && !data.project && !data.forbidden) {
@@ -28,9 +32,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
 
   const peopleOptions = peopleData.forbidden
     ? []
-    : peopleData.people
-        .filter((person) => person.active)
-        .map((person) => ({ id: person.id, fullName: person.fullName }));
+    : peopleData.people;
 
   return (
     <ProjectDetailShell

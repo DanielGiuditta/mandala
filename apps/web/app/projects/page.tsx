@@ -1,4 +1,4 @@
-import { listPeople, listProjects } from "@mandala/db";
+import { listPeopleOptions, listProjects } from "@mandala/db";
 import { isProjectStage } from "@mandala/domain";
 
 import { getViewerRequestContext } from "../../lib/auth/session";
@@ -28,13 +28,11 @@ export default async function ProjectsPage({
   };
   const [data, peopleData] = await Promise.all([
     listProjects(filters, viewerContext),
-    listPeople({}, viewerContext),
+    listPeopleOptions(viewerContext),
   ]);
   const leadOptions = peopleData.forbidden
     ? []
-    : peopleData.people
-        .filter((person) => person.active)
-        .map((person) => ({ id: person.id, fullName: person.fullName }));
+    : peopleData.people;
 
   return (
     <main className="stack">
