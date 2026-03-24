@@ -3,41 +3,18 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-function cameFromProjects(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  if (!document.referrer) {
-    return false;
-  }
-
-  try {
-    const referrer = new URL(document.referrer);
-
-    return (
-      referrer.origin === window.location.origin &&
-      referrer.pathname.startsWith("/projects")
-    );
-  } catch {
-    return false;
-  }
-}
+import { getProjectsReturnUrl } from "./project-navigation";
 
 export function ProjectDetailCloseButton() {
   const router = useRouter();
+  const returnUrl = getProjectsReturnUrl() ?? "/projects";
 
   useEffect(() => {
-    router.prefetch("/projects");
-  }, [router]);
+    router.prefetch(returnUrl);
+  }, [returnUrl, router]);
 
   function handleClick() {
-    if (cameFromProjects()) {
-      router.back();
-      return;
-    }
-
-    router.push("/projects");
+    router.push(returnUrl);
   }
 
   return (

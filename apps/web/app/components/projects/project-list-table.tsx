@@ -17,6 +17,7 @@ import {
   getFallbackAvatarColor,
   getFallbackAvatarInitial,
 } from "./project-avatar-utils";
+import { rememberProjectsReturnUrl } from "./project-navigation";
 
 interface ProjectListTableProps {
   activeProjectId?: string;
@@ -192,6 +193,10 @@ export function ProjectListTable({
     return items;
   }, [projects, sortDirection, sortKey]);
 
+  function handleProjectLinkClick() {
+    rememberProjectsReturnUrl(`${window.location.pathname}${window.location.search}`);
+  }
+
   return (
     <div className={mode === "collapsed" ? "projects-list-collapsed" : "projects-list"}>
       {mode === "table" ? (
@@ -223,6 +228,7 @@ export function ProjectListTable({
               className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
               href={`/projects/${project.id}`}
               key={project.id}
+              onClick={handleProjectLinkClick}
             >
               {project.photoUrl ? (
                 <img
@@ -280,7 +286,9 @@ export function ProjectListTable({
                   {getFallbackAvatarInitial(project.name, "P")}
                 </span>
               )}
-              <Link href={`/projects/${project.id}`}>{project.name}</Link>
+              <Link href={`/projects/${project.id}`} onClick={handleProjectLinkClick}>
+                {project.name}
+              </Link>
             </div>
             <div className="projects-cell">
               <span className="projects-cell-value">
