@@ -12,7 +12,7 @@ import {
 } from "@mandala/domain"
 import { cache } from "react"
 
-import { fetchOfficeRows, fetchPeopleRows, type OfficeRow, type PersonRow } from "./lookups"
+import type { OfficeRow, PersonRow } from "./lookups"
 import {
   previewAssignments,
   previewClientProjectAccess,
@@ -52,8 +52,45 @@ interface ClientProjectAccessRow {
   active: boolean
 }
 
-interface AssignmentProjectRow {
-  project_id: string
+// Response shape from get_viewer_access_context DB function
+interface ViewerAccessContextResponse {
+  found: boolean
+  userAccount?: {
+    id: string
+    personId: string | null
+    email: string
+    active: boolean
+  }
+  roleAssignments?: Array<{
+    id: string
+    userAccountId: string
+    role: string
+    officeId: string | null
+    assignedByUserAccountId: string
+    active: boolean
+  }>
+  clientProjectAccess?: Array<{
+    id: string
+    userAccountId: string
+    projectId: string
+    active: boolean
+  }>
+  person?: {
+    id: string
+    fullName: string
+    title: string | null
+    photoUrl: string | null
+    officeId: string
+    annualSalary: number | string
+    availabilityHoursPerWeek: number | string
+    email: string | null
+    active: boolean
+  }
+  office?: {
+    id: string
+    name: string
+  }
+  activeAssignedProjectIds?: string[]
 }
 
 export interface ViewerSummary {
@@ -285,27 +322,89 @@ function getPreviewViewerAccess(selection: ViewerSelection): CurrentViewerAccess
   }
 }
 
-async function findLiveUserAccount(
+function buildViewerAccessFromDbResponse(
+  response: ViewerAccessContextResponse,
   sessionEmail: string,
-  accessToken: string,
-): Promise<UserAccountRow | null> {
-  const client = createServerSupabaseClient({ accessToken })
-
-  if (!client) {
-    return null
+): CurrentViewerAccess {
+  if (!response.found || !response.userAccount) {
+    return {
+      accessMessage: `No kolam user account matches ${sessionEmail}.`,
+      summary: null,
+      viewer: null,
+    }
   }
 
-  const { data, error } = await client
-    .from("user_accounts")
-    .select("id, person_id, email, active")
-    .ilike("email", sessionEmail)
-    .maybeSingle()
-
-  if (error) {
-    throw error
+  const userAccount: UserAccount = {
+    id: response.userAccount.id,
+    personId: response.userAccount.personId,
+    email: response.userAccount.email,
+    active: response.userAccount.active,
   }
 
-  return (data as UserAccountRow | null) ?? null
+  if (!userAccount.active) {
+    return {
+      accessMessage: `Viewer account ${userAccount.email} is inactive.`,
+      summary: null,
+      viewer: null,
+    }
+  }
+
+  const roleAssignments: RoleAssignment[] = (response.roleAssignments ?? [])
+    .filter((ra) => isAuthorizationRole(ra.role))
+    .map((ra) => ({
+      id: ra.id,
+      userAccountId: ra.userAccountId,
+      role: ra.role as RoleAssignment["role"],
+      officeId: ra.officeId,
+      assignedByUserAccountId: ra.assignedByUserAccountId,
+      active: ra.active,
+    }))
+
+  const clientProjectAccess: ClientProjectAccess[] = (response.clientProjectAccess ?? []).map(
+    (cpa) => ({
+      id: cpa.id,
+      userAccountId: cpa.userAccountId,
+      projectId: cpa.projectId,
+      active: cpa.active,
+    }),
+  )
+
+  const person: PersonRow | null = response.person
+    ? {
+        id: response.person.id,
+        full_name: response.person.fullName,
+        title: response.person.title,
+        photo_url: response.person.photoUrl,
+        office_id: response.person.officeId,
+        annual_salary: response.person.annualSalary,
+        availability_hours_per_week: response.person.availabilityHoursPerWeek,
+        email: response.person.email,
+        active: response.person.active,
+      }
+    : null
+
+  const office: OfficeRow | null = response.office
+    ? {
+        id: response.office.id,
+        name: response.office.name,
+      }
+    : null
+
+  const activeAssignedProjectIds = response.activeAssignedProjectIds ?? []
+
+  const viewer = buildAuthorizationViewer(
+    userAccount,
+    roleAssignments,
+    clientProjectAccess,
+    activeAssignedProjectIds,
+  )
+  const summary = buildViewerSummary(viewer, userAccount, person, office)
+
+  return {
+    accessMessage: null,
+    summary,
+    viewer,
+  }
 }
 
 const getLiveViewerAccess = cache(
@@ -337,79 +436,17 @@ const getLiveViewerAccess = cache(
       }
     }
 
-    const accountRow = await findLiveUserAccount(sessionEmail, accessToken)
+    // Single consolidated DB call instead of 6 separate queries
+    const { data, error } = await client.rpc("get_viewer_access_context")
 
-    if (!accountRow) {
-      return setCachedValue(liveViewerAccessCache, sessionEmail, {
-        accessMessage: `No kolam user account matches ${sessionEmail}.`,
-        summary: null,
-        viewer: null,
-      })
+    if (error) {
+      throw error
     }
 
-    const userAccount = toUserAccount(accountRow)
+    const response = data as ViewerAccessContextResponse
+    const result = buildViewerAccessFromDbResponse(response, sessionEmail)
 
-    if (!userAccount.active) {
-      return setCachedValue(liveViewerAccessCache, sessionEmail, {
-        accessMessage: `Viewer account ${userAccount.email} is inactive.`,
-        summary: null,
-        viewer: null,
-      })
-    }
-
-    const [roleAssignmentResponse, clientProjectAccessResponse, people, assignmentResponse] =
-      await Promise.all([
-        client
-          .from("role_assignments")
-          .select("id, user_account_id, role, office_id, assigned_by_user_account_id, active")
-          .eq("user_account_id", userAccount.id)
-          .eq("active", true),
-        client
-          .from("client_project_access")
-          .select("id, user_account_id, project_id, active")
-          .eq("user_account_id", userAccount.id)
-          .eq("active", true),
-        userAccount.personId
-          ? fetchPeopleRows([userAccount.personId], { client })
-          : Promise.resolve([]),
-        userAccount.personId
-          ? client
-              .from("assignments")
-              .select("project_id")
-              .eq("person_id", userAccount.personId)
-              .eq("active", true)
-          : Promise.resolve({ data: [], error: null }),
-      ])
-
-    if (roleAssignmentResponse.error) throw roleAssignmentResponse.error
-    if (clientProjectAccessResponse.error) throw clientProjectAccessResponse.error
-    if (assignmentResponse.error) throw assignmentResponse.error
-
-    const roleAssignments = ((roleAssignmentResponse.data ?? []) as RoleAssignmentRow[])
-      .map((assignment) => toRoleAssignment(assignment))
-      .filter((assignment): assignment is RoleAssignment => Boolean(assignment))
-    const clientProjectAccess = (
-      (clientProjectAccessResponse.data ?? []) as ClientProjectAccessRow[]
-    ).map((access) => toClientProjectAccess(access))
-    const person = people[0] ?? null
-    const offices = person ? await fetchOfficeRows([person.office_id], { client }) : []
-    const office = offices[0] ?? null
-    const activeAssignedProjectIds = ((assignmentResponse.data ?? []) as AssignmentProjectRow[]).map(
-      (assignment) => assignment.project_id,
-    )
-    const viewer = buildAuthorizationViewer(
-      userAccount,
-      roleAssignments,
-      clientProjectAccess,
-      activeAssignedProjectIds,
-    )
-    const summary = buildViewerSummary(viewer, userAccount, person, office)
-
-    return setCachedValue(liveViewerAccessCache, sessionEmail, {
-      accessMessage: null,
-      summary,
-      viewer,
-    })
+    return setCachedValue(liveViewerAccessCache, sessionEmail, result)
   },
 )
 
