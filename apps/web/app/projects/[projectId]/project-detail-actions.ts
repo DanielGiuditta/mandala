@@ -15,9 +15,10 @@ import {
   updateProjectChecklistItem,
   updateProjectTimeEntry,
 } from "@mandala/db";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getViewerRequestContext } from "../../../lib/auth/session";
+import { getProjectTag, getProjectsTag } from "../data-cache";
 
 export interface ProjectDetailActionResult {
   error: string | null;
@@ -33,6 +34,8 @@ function actionFailure(error: unknown): ProjectDetailActionResult {
 
 function actionSuccess(projectId: string): ProjectDetailActionResult {
   invalidateProjectReadCaches();
+  revalidateTag(getProjectsTag());
+  revalidateTag(getProjectTag(projectId));
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
 

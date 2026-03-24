@@ -1,9 +1,9 @@
-import { listProjects } from "@mandala/db";
 import { isProjectStage } from "@mandala/domain";
 
 import { getViewerRequestContext } from "../../lib/auth/session";
 import { ProjectsDomainList } from "../components/projects-domain-list";
 import { createProjectAction, loadPeopleOptionsAction } from "./actions";
+import { getCachedProjects } from "./data-cache";
 
 interface ProjectsPageProps {
   searchParams: Promise<{
@@ -26,7 +26,7 @@ export default async function ProjectsPage({
     stage:
       params.stage && isProjectStage(params.stage) ? params.stage : undefined,
   };
-  const data = await listProjects(filters, viewerContext);
+  const data = await getCachedProjects(filters, viewerContext);
 
   return (
     <main className="stack">

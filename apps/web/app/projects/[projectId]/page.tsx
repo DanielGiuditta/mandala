@@ -1,12 +1,12 @@
-import {
-  getProjectDetail,
-  listProjectRailData,
-} from "@mandala/db";
 import { notFound } from "next/navigation";
 
 import { ProjectDetailShell } from "../../components/projects/project-detail-shell";
 import { createProjectAction, loadPeopleOptionsAction } from "../actions";
 import { getViewerRequestContext } from "../../../lib/auth/session";
+import {
+  getCachedProjectDetail,
+  getCachedProjectRailData,
+} from "../data-cache";
 
 interface ProjectDetailPageProps {
   params: Promise<{
@@ -20,8 +20,8 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
   const { projectId } = await params;
   const viewerContext = await getViewerRequestContext();
   const [data, railData] = await Promise.all([
-    getProjectDetail(projectId, viewerContext),
-    listProjectRailData(viewerContext),
+    getCachedProjectDetail(projectId, viewerContext),
+    getCachedProjectRailData(viewerContext),
   ]);
 
   if (data.configured && !data.project && !data.forbidden) {
