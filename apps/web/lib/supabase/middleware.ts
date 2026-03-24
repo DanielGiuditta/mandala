@@ -43,11 +43,22 @@ function isRscNavigationRequest(request: NextRequest): boolean {
   )
 }
 
+const SESSION_REFRESH_WINDOW_MS = 60_000
+
+function isSessionFresh(expiresAt?: number | null): boolean {
+  if (!expiresAt) {
+    return false
+  }
+
+  return expiresAt * 1000 > Date.now() + SESSION_REFRESH_WINDOW_MS
+}
+
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const pathname = request.nextUrl.pathname
 
-  if (isAssetPath(request.nextUrl.pathname)) {
+  if (isAssetPath(pathname)) {
     return NextResponse.next({
       request,
     })
@@ -59,10 +70,22 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     })
   }
 
+  if (!hasAuthCookie(request)) {
+    if (isProtectedPath(pathname)) {
+      const loginUrl = new URL("/login", request.url)
+      loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+      return NextResponse.redirect(loginUrl)
+    }
+
+    return NextResponse.next({
+      request,
+    })
+  }
+
   // Client-side route transitions already resolve auth in the server component tree.
   // Skipping the middleware refresh here avoids a second Supabase auth roundtrip
   // on every in-app navigation while keeping full-document requests protected.
-  if (hasAuthCookie(request) && (isPrefetchRequest(request) || isRscNavigationRequest(request))) {
+  if (isPrefetchRequest(request) || isRscNavigationRequest(request)) {
     return NextResponse.next({
       request,
     })
@@ -85,11 +108,23 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
       },
     },
   })
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  if (session?.user && isSessionFresh(session.expires_at)) {
+    if (pathname === "/login") {
+      return NextResponse.redirect(
+        new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
+      )
+    }
+
+    return response
+  }
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  const pathname = request.nextUrl.pathname
 
   if (!user && isProtectedPath(pathname)) {
     const loginUrl = new URL("/login", request.url)
