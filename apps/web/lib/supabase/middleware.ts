@@ -18,6 +18,10 @@ function isProtectedPath(pathname: string): boolean {
   )
 }
 
+function isAssetPath(pathname: string): boolean {
+  return /\.[a-z0-9]+$/i.test(pathname) || pathname.startsWith("/figma/")
+}
+
 function hasAuthCookie(request: NextRequest): boolean {
   return request.cookies
     .getAll()
@@ -42,6 +46,12 @@ function isRscNavigationRequest(request: NextRequest): boolean {
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (isAssetPath(request.nextUrl.pathname)) {
+    return NextResponse.next({
+      request,
+    })
+  }
 
   if (!url || !key) {
     return NextResponse.next({
