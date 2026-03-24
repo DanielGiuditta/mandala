@@ -34,6 +34,7 @@ export default async function PersonDetailModalPage({
             className="secondary"
             fallbackHref="/people"
             label="Back to people"
+            preferBack
             scope="people"
           />
         }

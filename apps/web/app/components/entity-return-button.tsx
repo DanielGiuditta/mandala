@@ -14,6 +14,7 @@ interface EntityReturnButtonProps {
   fallbackHref: string;
   iconSrc?: string;
   label?: string;
+  preferBack?: boolean;
   scope: EntityReturnScope;
 }
 
@@ -23,6 +24,7 @@ export function EntityReturnButton({
   fallbackHref,
   iconSrc,
   label,
+  preferBack = false,
   scope,
 }: EntityReturnButtonProps) {
   const router = useRouter();
@@ -33,7 +35,12 @@ export function EntityReturnButton({
   }, [returnUrl, router]);
 
   function handleClick() {
-    router.push(returnUrl);
+    if (preferBack) {
+      router.back();
+      return;
+    }
+
+    router.replace(returnUrl);
   }
 
   return (

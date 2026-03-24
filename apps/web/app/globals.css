@@ -615,6 +615,19 @@ th {
   position: relative;
 }
 
+.entity-route-content {
+  min-height: inherit;
+}
+
+.entity-route-shell-modal-open {
+  overflow: hidden;
+}
+
+.entity-route-shell-modal-open .entity-route-content {
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .entity-modal {
   inset: 0;
   position: absolute;
@@ -642,6 +655,14 @@ th {
 
 .entity-modal-panel-project {
   padding: 0;
+}
+
+.entity-modal-panel-project-workspace {
+  background: transparent;
+  border-left: none;
+  box-shadow: none;
+  max-width: none;
+  width: 100%;
 }
 
 .entity-modal-panel-people {

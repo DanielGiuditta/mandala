@@ -1,4 +1,5 @@
 import type { ProjectDetailData } from "@mandala/db";
+import type { ReactNode } from "react";
 import type { ProjectDetailActionResult } from "../../projects/[projectId]/project-detail-actions";
 import {
   addResourceAction,
@@ -18,6 +19,7 @@ import { ProjectTasksCard } from "./project-tasks-card";
 import { ProjectWorklogCard } from "./project-worklog-card";
 
 interface ProjectDetailEntityProps {
+  closeControl?: ReactNode;
   data: ProjectDetailData;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
@@ -78,6 +80,7 @@ type EditWorklogAction = (
 ) => Promise<ProjectDetailActionResult>;
 
 export function ProjectDetailEntity({
+  closeControl,
   data,
   loadPeopleOptionsAction,
   projectId,
@@ -117,7 +120,7 @@ export function ProjectDetailEntity({
   return (
     <section className="pd-entity">
       <EntityHeader
-        action={<ProjectDetailCloseButton />}
+        action={closeControl ?? <ProjectDetailCloseButton />}
         className="pd-entity-header"
         media={
           <ProjectPhoto

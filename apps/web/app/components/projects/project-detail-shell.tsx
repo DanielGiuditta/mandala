@@ -3,6 +3,7 @@ import type {
   ProjectDetailData,
   ProjectRailItem,
 } from "@mandala/db";
+import type { ReactNode } from "react";
 
 import { ProjectDetailRail } from "./project-detail-rail";
 import { ProjectDetailEntity } from "./project-detail-entity";
@@ -12,6 +13,7 @@ import type {
 } from "./project-create-types";
 
 interface ProjectDetailShellProps {
+  closeControl?: ReactNode;
   createProjectAction: (
     input: CreateProjectInput,
   ) => Promise<{ projectId: string }>;
@@ -26,6 +28,7 @@ interface ProjectDetailShellProps {
 }
 
 export function ProjectDetailShell({
+  closeControl,
   createProjectAction,
   data,
   loadPeopleOptionsAction,
@@ -82,6 +85,7 @@ export function ProjectDetailShell({
           projects={railProjects}
         />
         <ProjectDetailEntity
+          closeControl={closeControl}
           data={data}
           loadPeopleOptionsAction={loadPeopleOptionsAction}
           projectId={projectId}

@@ -1,9 +1,12 @@
 import { notFound } from "next/navigation";
 
 import { ProjectDetailOverlay } from "../../../components/projects/project-detail-overlay";
-import { loadPeopleOptionsAction } from "../../actions";
+import { createProjectAction, loadPeopleOptionsAction } from "../../actions";
 import { getViewerRequestContext } from "../../../../lib/auth/session";
-import { getCachedProjectDetail } from "../../data-cache";
+import {
+  getCachedProjectDetail,
+  getCachedProjectRailData,
+} from "../../data-cache";
 
 interface ProjectDetailModalPageProps {
   params: Promise<{
@@ -18,7 +21,10 @@ export default async function ProjectDetailModalPage({
 }: ProjectDetailModalPageProps) {
   const { projectId } = await params;
   const viewerContext = await getViewerRequestContext();
-  const data = await getCachedProjectDetail(projectId, viewerContext);
+  const [data, railData] = await Promise.all([
+    getCachedProjectDetail(projectId, viewerContext),
+    getCachedProjectRailData(viewerContext),
+  ]);
 
   if (data.configured && !data.project && !data.forbidden) {
     notFound();
@@ -26,9 +32,12 @@ export default async function ProjectDetailModalPage({
 
   return (
     <ProjectDetailOverlay
+      createProjectAction={createProjectAction}
       data={data}
       loadPeopleOptionsAction={loadPeopleOptionsAction}
+      officeOptions={railData.offices}
       projectId={projectId}
+      railProjects={railData.projects}
     />
   );
 }

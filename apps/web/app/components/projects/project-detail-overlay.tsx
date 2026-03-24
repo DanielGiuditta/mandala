@@ -1,56 +1,50 @@
-import type { ProjectDetailData } from "@mandala/db";
+import type {
+  CreateProjectInput,
+  ProjectDetailData,
+  ProjectRailItem,
+} from "@mandala/db";
 
 import { EntityModal } from "../entity-modal";
-import { EntityReturnButton } from "../entity-return-button";
-import { ProjectDetailEntity } from "./project-detail-entity";
+import { ProjectDetailCloseButton } from "./project-detail-close-button";
+import { ProjectDetailShell } from "./project-detail-shell";
+import type { ProjectCreateOfficeOption } from "./project-create-types";
 
 interface ProjectDetailOverlayProps {
+  createProjectAction: (
+    input: CreateProjectInput,
+  ) => Promise<{ projectId: string }>;
   data: ProjectDetailData;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
     people: Array<{ fullName: string; id: string }>;
   }>;
+  officeOptions: ProjectCreateOfficeOption[];
   projectId: string;
+  railProjects: ProjectRailItem[];
 }
 
 export function ProjectDetailOverlay({
+  createProjectAction,
   data,
   loadPeopleOptionsAction,
+  officeOptions,
   projectId,
+  railProjects,
 }: ProjectDetailOverlayProps) {
   return (
-    <EntityModal panelClassName="entity-modal-panel-project">
-      {data.forbidden ? (
-        <section className="pd-card entity-modal-state-card">
-          <div className="button-row">
-            <EntityReturnButton
-              className="secondary"
-              fallbackHref="/projects"
-              label="Back to projects"
-              scope="projects"
-            />
-          </div>
-          <div className="pd-card-header">
-            <h2 className="pd-card-title">Project access</h2>
-          </div>
-          <p className="pd-empty">
-            {data.accessMessage ??
-              "This viewer does not have access to the requested project."}
-          </p>
-          {data.viewerLabel ? (
-            <p className="pd-meta-text">Viewer: {data.viewerLabel}</p>
-          ) : null}
-          {!data.configured && data.configMessage ? (
-            <p className="pd-meta-text">{data.configMessage}</p>
-          ) : null}
-        </section>
-      ) : (
-        <ProjectDetailEntity
-          data={data}
-          loadPeopleOptionsAction={loadPeopleOptionsAction}
-          projectId={projectId}
-        />
-      )}
+    <EntityModal
+      panelClassName="entity-modal-panel-project-workspace"
+      showBackdrop={false}
+    >
+      <ProjectDetailShell
+        closeControl={<ProjectDetailCloseButton preferBack />}
+        createProjectAction={createProjectAction}
+        data={data}
+        loadPeopleOptionsAction={loadPeopleOptionsAction}
+        officeOptions={officeOptions}
+        projectId={projectId}
+        railProjects={railProjects}
+      />
     </EntityModal>
   );
 }

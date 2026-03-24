@@ -50,7 +50,7 @@ export function ProjectDetailRail({
                 className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
                 href={`/projects/${project.id}`}
                 key={project.id}
-                prefetch={false}
+                prefetch
               >
                 {project.photoUrl ? (
                   <img
