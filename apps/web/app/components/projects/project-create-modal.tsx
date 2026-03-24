@@ -13,8 +13,10 @@ import { ProjectAddButton } from "./project-add-button";
 import { ProjectCreateForm } from "./project-create-form";
 
 interface ProjectCreateModalProps {
-  leadOptions: ProjectCreateLeadOption[];
-  leadOptionsUnavailable: boolean;
+  loadLeadOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: ProjectCreateLeadOption[];
+  }>;
   officeOptions: ProjectCreateOfficeOption[];
   onCreateProjectAction: (
     input: CreateProjectInput,
@@ -22,12 +24,16 @@ interface ProjectCreateModalProps {
 }
 
 export function ProjectCreateModal({
-  leadOptions,
-  leadOptionsUnavailable,
+  loadLeadOptionsAction,
   officeOptions,
   onCreateProjectAction,
 }: ProjectCreateModalProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [leadOptions, setLeadOptions] = useState<ProjectCreateLeadOption[]>([]);
+  const [leadOptionsUnavailable, setLeadOptionsUnavailable] = useState(false);
+  const [leadOptionsStatus, setLeadOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const titleId = useId();
   const router = useRouter();
 
@@ -45,6 +51,39 @@ export function ProjectCreateModal({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || leadOptionsStatus !== "idle") {
+      return;
+    }
+
+    let isCancelled = false;
+
+    setLeadOptionsStatus("loading");
+    void loadLeadOptionsAction()
+      .then((result) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setLeadOptions(result.people);
+        setLeadOptionsUnavailable(result.forbidden);
+        setLeadOptionsStatus("ready");
+      })
+      .catch(() => {
+        if (isCancelled) {
+          return;
+        }
+
+        setLeadOptions([]);
+        setLeadOptionsUnavailable(true);
+        setLeadOptionsStatus("error");
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, leadOptionsStatus, loadLeadOptionsAction]);
 
   return (
     <>
@@ -78,7 +117,9 @@ export function ProjectCreateModal({
             </header>
 
             <ProjectCreateForm
-              hasLeadOptionGap={leadOptionsUnavailable}
+              hasLeadOptionGap={
+                leadOptionsUnavailable || leadOptionsStatus === "error"
+              }
               leadOptions={leadOptions}
               officeOptions={officeOptions}
               onCancel={() => setIsOpen(false)}

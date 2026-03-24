@@ -45,6 +45,8 @@ import {
   getDatabaseStatus,
 } from "./supabaseServer";
 
+const PROJECT_READ_CACHE_TTL_MS = 15_000;
+
 interface ProjectRow {
   id: string;
   name: string;
@@ -108,6 +110,85 @@ interface TimeEntryRow {
   hours: number | string;
   notes: string | null;
   source: string | null;
+}
+
+interface CacheEntry<T> {
+  expiresAt: number;
+  value: T;
+}
+
+const projectListCache = new Map<string, CacheEntry<ProjectListData>>();
+const projectRailCache = new Map<string, CacheEntry<ProjectRailData>>();
+const projectDetailCache = new Map<string, CacheEntry<ProjectDetailData>>();
+
+function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = store.get(key);
+
+  if (!entry) {
+    return null;
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    store.delete(key);
+    return null;
+  }
+
+  return entry.value;
+}
+
+function setCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string, value: T): T {
+  store.set(key, {
+    expiresAt: Date.now() + PROJECT_READ_CACHE_TTL_MS,
+    value,
+  });
+
+  return value;
+}
+
+function normalizeCacheEmail(context: ViewerRequestContext): string | null {
+  const sessionEmail = context.sessionEmail?.trim().toLowerCase();
+  return sessionEmail || null;
+}
+
+function getProjectListCacheKey(
+  filters: ProjectListFilters,
+  context: ViewerRequestContext,
+): string | null {
+  const sessionEmail = normalizeCacheEmail(context);
+
+  if (!sessionEmail) {
+    return null;
+  }
+
+  return JSON.stringify({
+    officeId: filters.officeId ?? "",
+    query: filters.query?.trim().toLowerCase() ?? "",
+    sessionEmail,
+    stage: filters.stage ?? "",
+  });
+}
+
+function getProjectRailCacheKey(context: ViewerRequestContext): string | null {
+  return normalizeCacheEmail(context);
+}
+
+function getProjectDetailCacheKey(
+  projectId: string,
+  context: ViewerRequestContext,
+): string | null {
+  const sessionEmail = normalizeCacheEmail(context);
+
+  if (!sessionEmail) {
+    return null;
+  }
+
+  return `${sessionEmail}:${projectId}`;
+}
+
+export function invalidateProjectReadCaches(): void {
+  projectListCache.clear();
+  projectRailCache.clear();
+  projectDetailCache.clear();
 }
 
 export interface ProjectOfficeFilter {
@@ -948,6 +1029,13 @@ export async function listProjects(
   filters: ProjectListFilters = {},
   context: ViewerRequestContext = {},
 ): Promise<ProjectListData> {
+  const cacheKey = getProjectListCacheKey(filters, context);
+  const cachedValue = cacheKey ? getCachedValue(projectListCache, cacheKey) : null;
+
+  if (cachedValue) {
+    return cachedValue;
+  }
+
   const viewerAccess = await getCurrentViewerAccess(context);
   const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
@@ -969,11 +1057,15 @@ export async function listProjects(
   if (!client) {
     const previewData = listPreviewProjects(filters, viewerAccess.viewer);
 
-    return {
+    const previewResult = {
       ...previewData,
       accessMessage: viewerAccess.accessMessage,
       viewerLabel,
     };
+
+    return cacheKey
+      ? setCachedValue(projectListCache, cacheKey, previewResult)
+      : previewResult;
   }
 
   const [{ data: projectData, error: projectError }, offices] =
@@ -1053,7 +1145,7 @@ export async function listProjects(
     peopleById,
   );
 
-  return {
+  const result = {
     accessMessage: viewerAccess.accessMessage,
     configured: status.configured,
     configMessage: status.message,
@@ -1074,11 +1166,20 @@ export async function listProjects(
     ),
     viewerLabel,
   };
+
+  return cacheKey ? setCachedValue(projectListCache, cacheKey, result) : result;
 }
 
 export async function listProjectRailData(
   context: ViewerRequestContext = {},
 ): Promise<ProjectRailData> {
+  const cacheKey = getProjectRailCacheKey(context);
+  const cachedValue = cacheKey ? getCachedValue(projectRailCache, cacheKey) : null;
+
+  if (cachedValue) {
+    return cachedValue;
+  }
+
   const viewerAccess = await getCurrentViewerAccess(context);
   const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
@@ -1099,11 +1200,15 @@ export async function listProjectRailData(
   if (!client) {
     const previewData = listPreviewProjectRail(viewerAccess.viewer);
 
-    return {
+    const previewResult = {
       ...previewData,
       accessMessage: viewerAccess.accessMessage,
       viewerLabel,
     };
+
+    return cacheKey
+      ? setCachedValue(projectRailCache, cacheKey, previewResult)
+      : previewResult;
   }
 
   const [{ data: projectData, error: projectError }, offices] = await Promise.all([
@@ -1132,7 +1237,7 @@ export async function listProjectRailData(
     }),
   );
 
-  return {
+  const result = {
     accessMessage: viewerAccess.accessMessage,
     configured: status.configured,
     configMessage: status.message,
@@ -1145,6 +1250,8 @@ export async function listProjectRailData(
     })),
     viewerLabel,
   };
+
+  return cacheKey ? setCachedValue(projectRailCache, cacheKey, result) : result;
 }
 
 export async function createProject(
@@ -1590,6 +1697,13 @@ export async function getProjectDetail(
   projectId: string,
   context: ViewerRequestContext = {},
 ): Promise<ProjectDetailData> {
+  const cacheKey = getProjectDetailCacheKey(projectId, context);
+  const cachedValue = cacheKey ? getCachedValue(projectDetailCache, cacheKey) : null;
+
+  if (cachedValue) {
+    return cachedValue;
+  }
+
   const viewerAccess = await getCurrentViewerAccess(context);
   const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
@@ -1628,7 +1742,7 @@ export async function getProjectDetail(
       previewData.project !== null &&
       !canViewInternalProject(viewerAccess.viewer, previewData.project);
 
-    return {
+    const previewResult = {
       ...previewData,
       accessMessage: restrictedToSummary
         ? "Client access is currently limited to the project summary."
@@ -1642,6 +1756,10 @@ export async function getProjectDetail(
         : previewData.timeSummary,
       viewerLabel,
     };
+
+    return cacheKey
+      ? setCachedValue(projectDetailCache, cacheKey, previewResult)
+      : previewResult;
   }
 
   const { data: projectRow, error: projectError } = await client
@@ -1775,7 +1893,7 @@ export async function getProjectDetail(
   );
 
   if (restrictedToSummary) {
-    return {
+    const summaryOnlyResult = {
       accessMessage:
         "Client access is currently limited to the project summary.",
       checklistItems: [],
@@ -1789,6 +1907,10 @@ export async function getProjectDetail(
       timeSummary: emptyTimeSummary(),
       viewerLabel,
     };
+
+    return cacheKey
+      ? setCachedValue(projectDetailCache, cacheKey, summaryOnlyResult)
+      : summaryOnlyResult;
   }
 
   const staffing = assignmentRows.map((assignmentRow) => {
@@ -1877,7 +1999,7 @@ export async function getProjectDetail(
     }
   }
 
-  return {
+  const result = {
     accessMessage: viewerAccess.accessMessage,
     checklistItems,
     configured: status.configured,
@@ -1911,4 +2033,6 @@ export async function getProjectDetail(
     },
     viewerLabel,
   };
+
+  return cacheKey ? setCachedValue(projectDetailCache, cacheKey, result) : result;
 }

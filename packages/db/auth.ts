@@ -27,6 +27,7 @@ const DEFAULT_PREVIEW_VIEWER_EMAIL = "anjali.menon@kolam.local"
 const PREVIEW_VIEWER_MESSAGE =
   "Set KOLAM_VIEWER_EMAIL or KOLAM_VIEWER_USER_ACCOUNT_ID to evaluate permissions in preview mode."
 const SIGN_IN_REQUIRED_MESSAGE = "Sign in to continue."
+const LIVE_VIEWER_CACHE_TTL_MS = 15_000
 
 interface UserAccountRow {
   id: string
@@ -76,6 +77,37 @@ export interface ViewerRequestContext {
 interface ViewerSelection {
   userAccountId: string | null
   email: string | null
+}
+
+interface CacheEntry<T> {
+  expiresAt: number
+  value: T
+}
+
+const liveViewerAccessCache = new Map<string, CacheEntry<CurrentViewerAccess>>()
+
+function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = store.get(key)
+
+  if (!entry) {
+    return null
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    store.delete(key)
+    return null
+  }
+
+  return entry.value
+}
+
+function setCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string, value: T): T {
+  store.set(key, {
+    expiresAt: Date.now() + LIVE_VIEWER_CACHE_TTL_MS,
+    value,
+  })
+
+  return value
 }
 
 function getViewerSelection(): ViewerSelection {
@@ -289,6 +321,12 @@ const getLiveViewerAccess = cache(
       }
     }
 
+    const cachedAccess = getCachedValue(liveViewerAccessCache, sessionEmail)
+
+    if (cachedAccess) {
+      return cachedAccess
+    }
+
     const client = createServerSupabaseClient({ accessToken })
 
     if (!client) {
@@ -302,21 +340,21 @@ const getLiveViewerAccess = cache(
     const accountRow = await findLiveUserAccount(sessionEmail, accessToken)
 
     if (!accountRow) {
-      return {
+      return setCachedValue(liveViewerAccessCache, sessionEmail, {
         accessMessage: `No kolam user account matches ${sessionEmail}.`,
         summary: null,
         viewer: null,
-      }
+      })
     }
 
     const userAccount = toUserAccount(accountRow)
 
     if (!userAccount.active) {
-      return {
+      return setCachedValue(liveViewerAccessCache, sessionEmail, {
         accessMessage: `Viewer account ${userAccount.email} is inactive.`,
         summary: null,
         viewer: null,
-      }
+      })
     }
 
     const [roleAssignmentResponse, clientProjectAccessResponse, people, assignmentResponse] =
@@ -367,11 +405,11 @@ const getLiveViewerAccess = cache(
     )
     const summary = buildViewerSummary(viewer, userAccount, person, office)
 
-    return {
+    return setCachedValue(liveViewerAccessCache, sessionEmail, {
       accessMessage: null,
       summary,
       viewer,
-    }
+    })
   },
 )
 

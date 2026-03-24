@@ -1,9 +1,9 @@
-import { listPeopleOptions, listProjects } from "@mandala/db";
+import { listProjects } from "@mandala/db";
 import { isProjectStage } from "@mandala/domain";
 
 import { getViewerRequestContext } from "../../lib/auth/session";
 import { ProjectsDomainList } from "../components/projects-domain-list";
-import { createProjectAction } from "./actions";
+import { createProjectAction, loadPeopleOptionsAction } from "./actions";
 
 interface ProjectsPageProps {
   searchParams: Promise<{
@@ -26,21 +26,14 @@ export default async function ProjectsPage({
     stage:
       params.stage && isProjectStage(params.stage) ? params.stage : undefined,
   };
-  const [data, peopleData] = await Promise.all([
-    listProjects(filters, viewerContext),
-    listPeopleOptions(viewerContext),
-  ]);
-  const leadOptions = peopleData.forbidden
-    ? []
-    : peopleData.people;
+  const data = await listProjects(filters, viewerContext);
 
   return (
     <main className="stack">
       <ProjectsDomainList
         createProjectAction={createProjectAction}
         data={data}
-        leadOptions={leadOptions}
-        leadOptionsUnavailable={peopleData.forbidden}
+        loadPeopleOptionsAction={loadPeopleOptionsAction}
       />
     </main>
   );

@@ -1,7 +1,6 @@
 import type { CreateProjectInput, ProjectListData } from "@mandala/db";
 
 import { EntityHeader } from "./entity-header";
-import type { ProjectCreateLeadOption } from "./projects/project-create-types";
 import { ProjectListFilters } from "./projects/project-list-filters";
 import { ProjectCreateModal } from "./projects/project-create-modal";
 import { ProjectListTable } from "./projects/project-list-table";
@@ -11,23 +10,23 @@ interface ProjectsDomainListProps {
     input: CreateProjectInput,
   ) => Promise<{ projectId: string }>;
   data: ProjectListData;
-  leadOptions: ProjectCreateLeadOption[];
-  leadOptionsUnavailable: boolean;
+  loadPeopleOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: Array<{ fullName: string; id: string }>;
+  }>;
 }
 
 export function ProjectsDomainList({
   createProjectAction,
   data,
-  leadOptions,
-  leadOptionsUnavailable,
+  loadPeopleOptionsAction,
 }: ProjectsDomainListProps) {
   return (
     <section className="projects-domain">
       <EntityHeader
         action={
           <ProjectCreateModal
-            leadOptions={leadOptions}
-            leadOptionsUnavailable={leadOptionsUnavailable}
+            loadLeadOptionsAction={loadPeopleOptionsAction}
             officeOptions={data.offices}
             onCreateProjectAction={createProjectAction}
           />

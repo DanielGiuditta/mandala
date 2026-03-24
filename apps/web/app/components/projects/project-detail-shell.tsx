@@ -20,7 +20,6 @@ import { ProjectDetailGlance } from "./project-detail-glance";
 import { ProjectDetailRail } from "./project-detail-rail";
 import { ProjectCreateModal } from "./project-create-modal";
 import type {
-  ProjectCreateLeadOption,
   ProjectCreateOfficeOption,
 } from "./project-create-types";
 import { ProjectResourcesCard } from "./project-resources-card";
@@ -35,10 +34,11 @@ interface ProjectDetailShellProps {
     input: CreateProjectInput,
   ) => Promise<{ projectId: string }>;
   data: ProjectDetailData;
-  leadOptions: ProjectCreateLeadOption[];
-  leadOptionsUnavailable: boolean;
+  loadPeopleOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: Array<{ fullName: string; id: string }>;
+  }>;
   officeOptions: ProjectCreateOfficeOption[];
-  peopleOptions: Array<{ fullName: string; id: string }>;
   projectId: string;
   railProjects: ProjectRailItem[];
 }
@@ -97,10 +97,8 @@ type EditWorklogAction = (
 export function ProjectDetailShell({
   createProjectAction,
   data,
-  leadOptions,
-  leadOptionsUnavailable,
+  loadPeopleOptionsAction,
   officeOptions,
-  peopleOptions,
   projectId,
   railProjects,
 }: ProjectDetailShellProps) {
@@ -167,8 +165,7 @@ export function ProjectDetailShell({
           configured={data.configured}
           createProjectTrigger={
             <ProjectCreateModal
-              leadOptions={leadOptions}
-              leadOptionsUnavailable={leadOptionsUnavailable}
+              loadLeadOptionsAction={loadPeopleOptionsAction}
               officeOptions={officeOptions}
               onCreateProjectAction={createProjectAction}
             />
@@ -216,7 +213,7 @@ export function ProjectDetailShell({
                   <ProjectTasksCard
                     addTaskAction={taskActions.addTaskAction}
                     checklistItems={data.checklistItems}
-                    peopleOptions={peopleOptions}
+                    loadPeopleOptionsAction={loadPeopleOptionsAction}
                     projectId={projectId}
                     updateTaskAction={taskActions.updateTaskAction}
                   />
@@ -230,7 +227,7 @@ export function ProjectDetailShell({
                 <div className="pd-col-side">
                   <ProjectStaffCard
                     addStaffAction={staffActions.addStaffAction}
-                    peopleOptions={peopleOptions}
+                    loadPeopleOptionsAction={loadPeopleOptionsAction}
                     projectId={projectId}
                     staffing={data.staffing}
                   />

@@ -11,6 +11,7 @@ import {
   createProjectAssignment,
   createProjectChecklistItem,
   createProjectDocument,
+  invalidateProjectReadCaches,
   updateProjectChecklistItem,
   updateProjectTimeEntry,
 } from "@mandala/db";
@@ -31,6 +32,7 @@ function actionFailure(error: unknown): ProjectDetailActionResult {
 }
 
 function actionSuccess(projectId: string): ProjectDetailActionResult {
+  invalidateProjectReadCaches();
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
 

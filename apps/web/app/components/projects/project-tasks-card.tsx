@@ -15,7 +15,10 @@ interface ProjectTasksCardProps {
     title: string;
   }) => Promise<{ error: string | null; ok: boolean }>;
   checklistItems: ProjectChecklistItem[];
-  peopleOptions: Array<{ fullName: string; id: string }>;
+  loadPeopleOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: Array<{ fullName: string; id: string }>;
+  }>;
   projectId: string;
   updateTaskAction: (input: {
     assignedPersonId?: string | null;
@@ -29,7 +32,7 @@ interface ProjectTasksCardProps {
 export function ProjectTasksCard({
   addTaskAction,
   checklistItems,
-  peopleOptions,
+  loadPeopleOptionsAction,
   projectId,
   updateTaskAction,
 }: ProjectTasksCardProps) {
@@ -39,6 +42,10 @@ export function ProjectTasksCard({
   const [showAdd, setShowAdd] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [peopleOptions, setPeopleOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [peopleOptionsStatus, setPeopleOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable" | "error"
+  >("idle");
 
   const sortedItems = useMemo(
     () =>
@@ -50,6 +57,24 @@ export function ProjectTasksCard({
     [checklistItems],
   );
   const visibleItems = showAll ? sortedItems : sortedItems.slice(0, 2);
+
+  async function ensurePeopleOptions() {
+    if (peopleOptionsStatus === "ready" || peopleOptionsStatus === "loading") {
+      return;
+    }
+
+    setPeopleOptionsStatus("loading");
+
+    try {
+      const result = await loadPeopleOptionsAction();
+      setPeopleOptions(result.people);
+      setPeopleOptionsStatus(
+        result.forbidden ? "unavailable" : "ready",
+      );
+    } catch {
+      setPeopleOptionsStatus("error");
+    }
+  }
 
   function runAction(action: () => Promise<{ error: string | null; ok: boolean }>) {
     setFormError(null);
@@ -70,7 +95,17 @@ export function ProjectTasksCard({
     <section className="pd-card">
       <ProjectCardHeader
         addAriaLabel="Add task"
-        onAddClick={() => setShowAdd((value) => !value)}
+        onAddClick={() => {
+          setShowAdd((value) => {
+            const nextValue = !value;
+
+            if (nextValue) {
+              void ensurePeopleOptions();
+            }
+
+            return nextValue;
+          });
+        }}
         title="Tasks"
       />
 
@@ -98,7 +133,11 @@ export function ProjectTasksCard({
           }}
         >
           <input aria-label="Task title" name="title" placeholder="Task title" required type="text" />
-          <select aria-label="Task assignee" name="assignedPersonId">
+          <select
+            aria-label="Task assignee"
+            disabled={peopleOptionsStatus === "loading"}
+            name="assignedPersonId"
+          >
             <option value="">Unassigned</option>
             {peopleOptions.map((person) => (
               <option key={person.id} value={person.id}>
@@ -149,8 +188,12 @@ export function ProjectTasksCard({
                       );
                     }}
                   >
-                    <input defaultValue={item.title} name="title" required type="text" />
-                    <select defaultValue={item.assignedPersonId ?? ""} name="assignedPersonId">
+                      <input defaultValue={item.title} name="title" required type="text" />
+                    <select
+                      defaultValue={item.assignedPersonId ?? ""}
+                      disabled={peopleOptionsStatus === "loading"}
+                      name="assignedPersonId"
+                    >
                       <option value="">Unassigned</option>
                       {peopleOptions.map((person) => (
                         <option key={person.id} value={person.id}>
@@ -206,7 +249,14 @@ export function ProjectTasksCard({
                           <span>{item.assignedPersonName}</span>
                         </span>
                       ) : null}
-                      <button className="pd-text-button" onClick={() => setEditingItemId(item.id)} type="button">
+                      <button
+                        className="pd-text-button"
+                        onClick={() => {
+                          void ensurePeopleOptions();
+                          setEditingItemId(item.id);
+                        }}
+                        type="button"
+                      >
                         Edit
                       </button>
                     </div>

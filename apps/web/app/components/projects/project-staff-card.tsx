@@ -17,14 +17,17 @@ interface ProjectStaffCardProps {
     projectId: string;
     startDate?: string | null;
   }) => Promise<{ error: string | null; ok: boolean }>;
-  peopleOptions: Array<{ fullName: string; id: string }>;
+  loadPeopleOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: Array<{ fullName: string; id: string }>;
+  }>;
   projectId: string;
   staffing: ProjectAssignmentItem[];
 }
 
 export function ProjectStaffCard({
   addStaffAction,
-  peopleOptions,
+  loadPeopleOptionsAction,
   projectId,
   staffing,
 }: ProjectStaffCardProps) {
@@ -32,6 +35,10 @@ export function ProjectStaffCard({
   const [isPending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [peopleOptions, setPeopleOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [peopleOptionsStatus, setPeopleOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable" | "error"
+  >("idle");
   const sortedStaffing = useMemo(
     () =>
       [...staffing].sort(
@@ -40,11 +47,39 @@ export function ProjectStaffCard({
     [staffing],
   );
 
+  async function ensurePeopleOptions() {
+    if (peopleOptionsStatus === "ready" || peopleOptionsStatus === "loading") {
+      return;
+    }
+
+    setPeopleOptionsStatus("loading");
+
+    try {
+      const result = await loadPeopleOptionsAction();
+      setPeopleOptions(result.people);
+      setPeopleOptionsStatus(
+        result.forbidden ? "unavailable" : "ready",
+      );
+    } catch {
+      setPeopleOptionsStatus("error");
+    }
+  }
+
   return (
     <section className="pd-card">
       <ProjectCardHeader
         addAriaLabel="Add staff assignment"
-        onAddClick={() => setShowAdd((value) => !value)}
+        onAddClick={() => {
+          setShowAdd((value) => {
+            const nextValue = !value;
+
+            if (nextValue) {
+              void ensurePeopleOptions();
+            }
+
+            return nextValue;
+          });
+        }}
         title="Staff"
       />
 
@@ -85,7 +120,12 @@ export function ProjectStaffCard({
             });
           }}
         >
-          <select aria-label="Person" name="personId" required>
+          <select
+            aria-label="Person"
+            disabled={peopleOptionsStatus !== "ready"}
+            name="personId"
+            required
+          >
             <option value="">Select person</option>
             {peopleOptions.map((person) => (
               <option key={person.id} value={person.id}>
@@ -97,7 +137,11 @@ export function ProjectStaffCard({
           <input name="startDate" type="date" />
           <input name="endDate" type="date" />
           <input name="notes" placeholder="Notes (optional)" type="text" />
-          <button className="pd-primary-button" disabled={isPending} type="submit">
+          <button
+            className="pd-primary-button"
+            disabled={isPending || peopleOptionsStatus !== "ready"}
+            type="submit"
+          >
             Add staff
           </button>
         </form>

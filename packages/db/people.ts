@@ -23,6 +23,8 @@ import {
 } from "./previewData"
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 
+const PEOPLE_READ_CACHE_TTL_MS = 15_000
+
 interface AssignmentRow {
   id: string
   person_id: string
@@ -50,6 +52,42 @@ interface TimeEntryRow {
   hours: number | string
   notes: string | null
   source: string | null
+}
+
+interface CacheEntry<T> {
+  expiresAt: number
+  value: T
+}
+
+const peopleOptionsCache = new Map<string, CacheEntry<PeopleOptionsData>>()
+
+function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
+  const entry = store.get(key)
+
+  if (!entry) {
+    return null
+  }
+
+  if (entry.expiresAt <= Date.now()) {
+    store.delete(key)
+    return null
+  }
+
+  return entry.value
+}
+
+function setCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string, value: T): T {
+  store.set(key, {
+    expiresAt: Date.now() + PEOPLE_READ_CACHE_TTL_MS,
+    value,
+  })
+
+  return value
+}
+
+function getPeopleOptionsCacheKey(context: ViewerRequestContext): string | null {
+  const sessionEmail = context.sessionEmail?.trim().toLowerCase()
+  return sessionEmail || null
 }
 
 interface ChecklistItemRow {
@@ -580,6 +618,13 @@ export async function listPeople(
 export async function listPeopleOptions(
   context: ViewerRequestContext = {},
 ): Promise<PeopleOptionsData> {
+  const cacheKey = getPeopleOptionsCacheKey(context)
+  const cachedValue = cacheKey ? getCachedValue(peopleOptionsCache, cacheKey) : null
+
+  if (cachedValue) {
+    return cachedValue
+  }
+
   const viewerAccess = await getCurrentViewerAccess(context)
   const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
@@ -610,11 +655,13 @@ export async function listPeopleOptions(
   if (!client) {
     const previewData = listPreviewPeopleOptions()
 
-    return {
+    const previewResult = {
       ...previewData,
       accessMessage: viewerAccess.accessMessage,
       viewerLabel,
     }
+
+    return cacheKey ? setCachedValue(peopleOptionsCache, cacheKey, previewResult) : previewResult
   }
 
   const { data, error } = await client
@@ -627,7 +674,7 @@ export async function listPeopleOptions(
     throw error
   }
 
-  return {
+  const result = {
     accessMessage: viewerAccess.accessMessage,
     configMessage: status.message,
     configured: status.configured,
@@ -638,6 +685,8 @@ export async function listPeopleOptions(
     })),
     viewerLabel,
   }
+
+  return cacheKey ? setCachedValue(peopleOptionsCache, cacheKey, result) : result
 }
 
 export async function updatePersonPhoto(
