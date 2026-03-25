@@ -23,6 +23,10 @@ const COOL_PASTEL_GRADIENTS: readonly AvatarGradient[] = [
 
 const PERSON_FALLBACK_TEXT_COLOR = "#5b3524";
 const PROJECT_FALLBACK_TEXT_COLOR = "#25465a";
+const LEGACY_FALLBACK_COLORS = [
+  ...WARM_PASTEL_GRADIENTS.map((gradient) => gradient.start),
+  ...COOL_PASTEL_GRADIENTS.map((gradient) => gradient.start),
+] as const;
 
 export function getFallbackAvatarInitial(
   value: string,
@@ -35,6 +39,15 @@ export function getFallbackAvatarInitial(
   }
 
   return trimmed.charAt(0).toUpperCase();
+}
+
+export function getFallbackAvatarColor(
+  value: string,
+  fallbackKey = "fallback",
+): string {
+  const hash = getFallbackAvatarHash(value, fallbackKey);
+
+  return LEGACY_FALLBACK_COLORS[hash % LEGACY_FALLBACK_COLORS.length];
 }
 
 function getFallbackAvatarHash(
