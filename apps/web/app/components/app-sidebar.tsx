@@ -176,6 +176,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     let isCancelled = false
 
     async function hydrateTracker() {
+      setTrackerVisible(true)
       setTrackerLoading(true)
       setTrackerAccessMessage(null)
       setTrackerError(null)
@@ -190,11 +191,12 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
 
         if (response.forbidden || !response.configured) {
           clearTimeTrackerStorage(trackerSessionEmail)
-          setTrackerVisible(false)
           setTrackerProjects([])
           setTrackerSelectedProjectId("")
           setTrackerRunningState(null)
-          setTrackerAccessMessage(null)
+          setTrackerAccessMessage(
+            response.accessMessage ?? response.configMessage ?? "Time tracker is unavailable.",
+          )
           return
         }
 
@@ -246,7 +248,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           return
         }
         clearTimeTrackerStorage(trackerSessionEmail)
-        setTrackerVisible(false)
+        setTrackerVisible(true)
         setTrackerProjects([])
         setTrackerSelectedProjectId("")
         setTrackerRunningState(null)
