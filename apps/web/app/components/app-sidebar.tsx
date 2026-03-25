@@ -1,14 +1,11 @@
 "use client"
 
+import type { SelfTimeTrackerData } from "@mandala/db"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
 import { signOutAction } from "../login/actions"
 import { SidebarNav } from "../sidebar-nav"
-import {
-  loadSelfTimeTrackerAction,
-  recordSelfTimeTrackerEntryAction,
-} from "../time-tracker/actions"
 import { AppMenuSelect } from "./app-menu-select"
 
 export interface AppShellState {
@@ -32,6 +29,12 @@ interface RunningTrackerState {
 interface TimeTrackerStorageKeys {
   running: string
   selectedProjectId: string
+}
+
+interface TimeTrackerMutationResponse {
+  error: string | null
+  ok: boolean
+  todayHours: number | null
 }
 
 function BrandMark() {
@@ -114,9 +117,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const [trackerLoading, setTrackerLoading] = useState(false)
   const [trackerSaving, setTrackerSaving] = useState(false)
   const [trackerAccessMessage, setTrackerAccessMessage] = useState<string | null>(null)
-  const [trackerProjects, setTrackerProjects] = useState<
-    Awaited<ReturnType<typeof loadSelfTimeTrackerAction>>["projects"]
-  >([])
+  const [trackerProjects, setTrackerProjects] = useState<SelfTimeTrackerData["projects"]>([])
   const [trackerSelectedProjectId, setTrackerSelectedProjectId] = useState("")
   const [trackerRunningState, setTrackerRunningState] = useState<RunningTrackerState | null>(null)
   const [trackerError, setTrackerError] = useState<string | null>(null)
@@ -183,7 +184,15 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
 
       try {
         const localDate = getLocalDateString(new Date())
-        const response = await loadSelfTimeTrackerAction({ localDate })
+        const trackerResponse = await fetch(
+          `/api/time-tracker?localDate=${encodeURIComponent(localDate)}`,
+          {
+            credentials: "same-origin",
+            method: "GET",
+          },
+        )
+
+        const response = (await trackerResponse.json()) as SelfTimeTrackerData
 
         if (isCancelled) {
           return
@@ -279,12 +288,20 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     const entryDate = getLocalDateString(new Date())
 
     try {
-      const result = await recordSelfTimeTrackerEntryAction({
-        entryDate,
-        projectId: trackerRunningState.projectId,
-        startedAt: trackerRunningState.startedAt,
-        stoppedAt,
+      const response = await fetch("/api/time-tracker", {
+        body: JSON.stringify({
+          entryDate,
+          projectId: trackerRunningState.projectId,
+          startedAt: trackerRunningState.startedAt,
+          stoppedAt,
+        }),
+        credentials: "same-origin",
+        headers: {
+          "content-type": "application/json",
+        },
+        method: "POST",
       })
+      const result = (await response.json()) as TimeTrackerMutationResponse
 
       if (!result.ok || result.todayHours == null) {
         setTrackerError(result.error ?? "Unable to save tracked time.")
