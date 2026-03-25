@@ -1,5 +1,7 @@
 import type { ProjectListItem } from "@mandala/db";
 
+import { formatInrCompact } from "../currency-formatters";
+
 export function formatStageLabel(stage: string): string {
   if (stage === "onHold") {
     return "On hold";
@@ -31,11 +33,7 @@ export function formatCurrency(value: number | null): string {
     return "Restricted";
   }
 
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    maximumFractionDigits: 0,
-    style: "currency",
-  }).format(value);
+  return formatInrCompact(value);
 }
 
 export function formatHours(value: number | null): string {

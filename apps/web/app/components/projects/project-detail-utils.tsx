@@ -1,3 +1,4 @@
+import { formatInrCompact } from "../currency-formatters";
 import { getFallbackAvatarColor, getFallbackAvatarInitial } from "./project-avatar-utils";
 
 export function formatDate(value?: string | null): string {
@@ -44,10 +45,7 @@ export function formatDateTime(value?: string | null): string {
 }
 
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    style: "currency",
-  }).format(value);
+  return formatInrCompact(value);
 }
 
 export function formatHours(value: number): string {
@@ -60,14 +58,10 @@ export function formatHoursMetric(value: number): string {
 
 export function formatCostMetric(value: number): string {
   if (!Number.isFinite(value)) {
-    return "$0";
+    return "₹0";
   }
 
-  return new Intl.NumberFormat("en-US", {
-    currency: "USD",
-    maximumFractionDigits: 0,
-    style: "currency",
-  }).format(value);
+  return formatInrCompact(value);
 }
 
 export function formatStageLabel(stage: string): string {
