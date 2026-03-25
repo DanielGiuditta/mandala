@@ -9,6 +9,7 @@ import {
   loadSelfTimeTrackerAction,
   recordSelfTimeTrackerEntryAction,
 } from "../time-tracker/actions"
+import { AppMenuSelect } from "./app-menu-select"
 
 export interface AppShellState {
   accessMessage: string | null
@@ -112,6 +113,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const [trackerVisible, setTrackerVisible] = useState(false)
   const [trackerLoading, setTrackerLoading] = useState(false)
   const [trackerSaving, setTrackerSaving] = useState(false)
+  const [trackerAccessMessage, setTrackerAccessMessage] = useState<string | null>(null)
   const [trackerProjects, setTrackerProjects] = useState<
     Awaited<ReturnType<typeof loadSelfTimeTrackerAction>>["projects"]
   >([])
@@ -147,9 +149,15 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     trackerVisible &&
     !trackerLoading &&
     !trackerSaving &&
+    !trackerAccessMessage &&
     !trackerRunningState &&
     Boolean(trackerSelectedProjectId)
-  const canStopTracker = trackerVisible && !trackerLoading && !trackerSaving && Boolean(trackerRunningState)
+  const canStopTracker =
+    trackerVisible &&
+    !trackerLoading &&
+    !trackerSaving &&
+    !trackerAccessMessage &&
+    Boolean(trackerRunningState)
 
   useEffect(() => {
     if (!isSidebarOpen || !shell.isAuthenticated || !sessionEmail) {
@@ -157,6 +165,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
       setTrackerProjects([])
       setTrackerSelectedProjectId("")
       setTrackerRunningState(null)
+      setTrackerAccessMessage(null)
       setTrackerError(null)
       setTrackerLoading(false)
       setTrackerSaving(false)
@@ -168,6 +177,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
 
     async function hydrateTracker() {
       setTrackerLoading(true)
+      setTrackerAccessMessage(null)
       setTrackerError(null)
 
       try {
@@ -184,6 +194,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           setTrackerProjects([])
           setTrackerSelectedProjectId("")
           setTrackerRunningState(null)
+          setTrackerAccessMessage(null)
           return
         }
 
@@ -217,6 +228,9 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           nextRunningState = null
           nextSelectedProjectId = ""
           clearTimeTrackerStorage(trackerSessionEmail)
+        } else if (response.accessMessage) {
+          nextRunningState = null
+          clearTimeTrackerStorage(trackerSessionEmail)
         } else if (nextRunningState) {
           nextSelectedProjectId = nextRunningState.projectId
           localStorage.setItem(storageKeys.selectedProjectId, nextSelectedProjectId)
@@ -225,6 +239,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         setTrackerProjects(response.projects)
         setTrackerSelectedProjectId(nextSelectedProjectId)
         setTrackerRunningState(nextRunningState)
+        setTrackerAccessMessage(response.accessMessage)
         setTrackerVisible(true)
       } catch (error) {
         if (isCancelled) {
@@ -235,6 +250,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         setTrackerProjects([])
         setTrackerSelectedProjectId("")
         setTrackerRunningState(null)
+        setTrackerAccessMessage(null)
         setTrackerError(error instanceof Error ? error.message : "Unable to load tracker.")
       } finally {
         if (!isCancelled) {
@@ -397,20 +413,14 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         {isSidebarOpen && trackerVisible ? (
           <section className="app-time-tracker" aria-label="Time tracker">
             <p className="app-time-tracker-title">Time tracker</p>
-            <select
-              aria-label="Tracked project"
-              className="app-select-input app-time-tracker-select"
+            <AppMenuSelect
+              ariaLabel="Tracked project"
               disabled={trackerLoading || trackerSaving || Boolean(trackerRunningState)}
-              onChange={(event) => handleTrackerSelectionChange(event.currentTarget.value)}
+              options={trackerProjects.map((project) => ({ label: project.name, value: project.id }))}
+              placeholder="Select project"
               value={trackerSelectedProjectId}
-            >
-              <option value="">Select project</option>
-              {trackerProjects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={handleTrackerSelectionChange}
+            />
 
             {trackerRunningState ? (
               <button
@@ -435,6 +445,9 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
             <p className="app-time-tracker-today">
               {trackerSelectedProject ? `${formatTodayHours(trackerSelectedProject.todayHours)} h today` : "0 h today"}
             </p>
+            {trackerAccessMessage ? (
+              <p className="pd-form-error app-time-tracker-error">{trackerAccessMessage}</p>
+            ) : null}
             {trackerError ? <p className="pd-form-error app-time-tracker-error">{trackerError}</p> : null}
           </section>
         ) : null}

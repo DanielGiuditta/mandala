@@ -6,7 +6,11 @@ import {
   getCurrentViewerAccess,
   type ViewerRequestContext,
 } from "./auth";
-import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer";
+import {
+  createServerSupabaseClient,
+  createServiceRoleSupabaseClient,
+  getDatabaseStatus,
+} from "./supabaseServer";
 
 interface TrackerProjectRow {
   active: boolean;
@@ -32,6 +36,10 @@ interface TrackerTimeEntryRow {
   person_id: string;
   project_id: string;
   source: string | null;
+}
+
+interface TrackerIdRow {
+  id: string;
 }
 
 interface TodayHoursRow {
@@ -98,6 +106,11 @@ function emptyTrackerData(
   };
 }
 
+function normalizeEmail(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
 function normalizeRequiredText(value: string, fieldName: string): string {
   const normalized = value.trim();
 
@@ -148,6 +161,44 @@ function toProjectPermissionSubject(project: TrackerProjectRow) {
   };
 }
 
+function createTrackerDatabaseClient(
+  context: ViewerRequestContext,
+): SupabaseClient | null {
+  return (
+    createServiceRoleSupabaseClient() ??
+    createServerSupabaseClient({ accessToken: context.accessToken })
+  );
+}
+
+async function resolveTrackerPersonId(
+  context: ViewerRequestContext,
+  viewer: Awaited<ReturnType<typeof getCurrentViewerAccess>>["viewer"],
+): Promise<string | null> {
+  if (viewer?.personId) {
+    return viewer.personId;
+  }
+
+  const sessionEmail = normalizeEmail(context.sessionEmail);
+  const client = createServiceRoleSupabaseClient();
+
+  if (!viewer || !sessionEmail || !client) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("people")
+    .select("id")
+    .ilike("email", sessionEmail)
+    .eq("active", true);
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as TrackerIdRow[];
+  return rows.length === 1 ? rows[0].id : null;
+}
+
 async function resolveTrackerContext(
   context: ViewerRequestContext,
 ): Promise<ResolvedTrackerContext> {
@@ -160,12 +211,15 @@ async function resolveTrackerContext(
   }
 
   const viewerAccess = await getCurrentViewerAccess(context);
+  const personId = await resolveTrackerPersonId(context, viewerAccess.viewer);
 
-  if (!viewerAccess.viewer?.personId) {
-    throw new Error(viewerAccess.accessMessage ?? "Sign in to track time.");
+  if (!viewerAccess.viewer || !personId) {
+    throw new Error(
+      viewerAccess.accessMessage ?? "Finish account setup to track time.",
+    );
   }
 
-  const client = createServerSupabaseClient({ accessToken: context.accessToken });
+  const client = createTrackerDatabaseClient(context);
 
   if (!client) {
     throw new Error(
@@ -175,8 +229,11 @@ async function resolveTrackerContext(
 
   return {
     client,
-    personId: viewerAccess.viewer.personId,
-    viewer: viewerAccess.viewer,
+    personId,
+    viewer: {
+      ...viewerAccess.viewer,
+      personId,
+    },
   };
 }
 
@@ -184,11 +241,15 @@ async function listTrackableProjectRows(
   client: SupabaseClient,
   viewer: ResolvedTrackerContext["viewer"],
 ): Promise<TrackerProjectRow[]> {
-  if (!viewer.personId) {
+  if (!viewer.active) {
     return [];
   }
 
-  const { data, error } = await client.rpc("list_time_tracker_projects_for_current_user");
+  const { data, error } = await client
+    .from("projects")
+    .select(PROJECT_ROW_SELECT)
+    .eq("active", true)
+    .order("name");
 
   if (error) {
     throw error;
@@ -209,7 +270,8 @@ async function getTodayHoursByProjectId(
     return new Map();
   }
 
-  const { data, error } = await client
+  const trackerClient = createServiceRoleSupabaseClient() ?? client;
+  const { data, error } = await trackerClient
     .from("time_entries")
     .select("project_id, hours")
     .eq("person_id", personId)
@@ -273,7 +335,8 @@ async function resolveAssignmentId(
   projectId: string,
   entryDate: string,
 ): Promise<string | null> {
-  const { data, error } = await client
+  const trackerClient = createServiceRoleSupabaseClient() ?? client;
+  const { data, error } = await trackerClient
     .from("assignments")
     .select("id, start_date, end_date")
     .eq("active", true)
@@ -311,7 +374,7 @@ export async function getSelfTimeTrackerData(
     );
   }
 
-  if (!viewerAccess.viewer?.personId) {
+  if (!viewerAccess.viewer) {
     return emptyTrackerData(
       true,
       status.message,
@@ -320,7 +383,7 @@ export async function getSelfTimeTrackerData(
     );
   }
 
-  const client = createServerSupabaseClient({ accessToken: context.accessToken });
+  const client = createTrackerDatabaseClient(context);
 
   if (!client) {
     return emptyTrackerData(
@@ -331,16 +394,24 @@ export async function getSelfTimeTrackerData(
     );
   }
 
-  const projects = await listTrackableProjectRows(client, viewerAccess.viewer);
-  const todayHoursByProjectId = await getTodayHoursByProjectId(
-    client,
-    viewerAccess.viewer.personId,
-    input.localDate,
-    projects.map((project) => project.id),
-  );
+  const personId = await resolveTrackerPersonId(context, viewerAccess.viewer);
+  const trackerViewer = personId
+    ? { ...viewerAccess.viewer, personId }
+    : viewerAccess.viewer;
+  const projects = await listTrackableProjectRows(client, trackerViewer);
+  const todayHoursByProjectId = personId
+    ? await getTodayHoursByProjectId(
+        client,
+        personId,
+        input.localDate,
+        projects.map((project) => project.id),
+      )
+    : new Map<string, number>();
 
   return {
-    accessMessage: null,
+    accessMessage: personId
+      ? null
+      : "Finish account setup to record time.",
     configured: true,
     configMessage: status.message,
     forbidden: false,

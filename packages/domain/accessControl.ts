@@ -232,7 +232,7 @@ export function canTrackOwnTimeForProject(
   viewer: AuthorizationViewer,
   project: ProjectPermissionSubject,
 ): boolean {
-  if (!viewer.active || !viewer.personId) {
+  if (!viewer.active) {
     return false
   }
 
