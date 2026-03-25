@@ -5,6 +5,10 @@ import { useEffect, useState } from "react"
 
 import { signOutAction } from "../login/actions"
 import { SidebarNav } from "../sidebar-nav"
+import {
+  loadSelfTimeTrackerAction,
+  recordSelfTimeTrackerEntryAction,
+} from "../time-tracker/actions"
 
 export interface AppShellState {
   accessMessage: string | null
@@ -17,6 +21,17 @@ export interface AppShellState {
 }
 
 const NAV_FORCE_COLLAPSE_WIDTH = 800
+const TIME_TRACKER_STORAGE_PREFIX = "mandala.timeTracker"
+
+interface RunningTrackerState {
+  projectId: string
+  startedAt: string
+}
+
+interface TimeTrackerStorageKeys {
+  running: string
+  selectedProjectId: string
+}
 
 function BrandMark() {
   return (
@@ -52,11 +67,60 @@ function formatTierLabel(value: string | null): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function getLocalDateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function formatTodayHours(hours: number): string {
+  const rounded = Math.round(hours * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.?0+$/, "")
+}
+
+function isRunningTrackerState(value: unknown): value is RunningTrackerState {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+
+  const candidate = value as { projectId?: unknown; startedAt?: unknown }
+  if (typeof candidate.projectId !== "string" || typeof candidate.startedAt !== "string") {
+    return false
+  }
+
+  return !Number.isNaN(new Date(candidate.startedAt).getTime())
+}
+
+function getTimeTrackerStorageKeys(sessionEmail: string): TimeTrackerStorageKeys {
+  const namespace = `${TIME_TRACKER_STORAGE_PREFIX}:${sessionEmail.toLowerCase()}`
+  return {
+    running: `${namespace}:running`,
+    selectedProjectId: `${namespace}:selectedProjectId`,
+  }
+}
+
+function clearTimeTrackerStorage(sessionEmail: string) {
+  const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+  localStorage.removeItem(storageKeys.running)
+  localStorage.removeItem(storageKeys.selectedProjectId)
+}
+
 export function AppSidebar({ shell }: { shell: AppShellState }) {
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
+  const [trackerVisible, setTrackerVisible] = useState(false)
+  const [trackerLoading, setTrackerLoading] = useState(false)
+  const [trackerSaving, setTrackerSaving] = useState(false)
+  const [trackerProjects, setTrackerProjects] = useState<
+    Awaited<ReturnType<typeof loadSelfTimeTrackerAction>>["projects"]
+  >([])
+  const [trackerSelectedProjectId, setTrackerSelectedProjectId] = useState("")
+  const [trackerRunningState, setTrackerRunningState] = useState<RunningTrackerState | null>(null)
+  const [trackerError, setTrackerError] = useState<string | null>(null)
   const profileName = shell.displayName ?? "kolam user"
   const profileInitial = profileName.charAt(0).toUpperCase()
+  const sessionEmail = shell.sessionEmail
   const shellItems = [
     shell.configured ? "Live data" : "Preview data",
     shell.officeName ? `Office: ${shell.officeName}` : null,
@@ -76,6 +140,187 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
 
   const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
   const isSidebarOpen = !isForcedCollapsed && !isManuallyCollapsed
+  const trackerSelectedProject = trackerProjects.find(
+    (project) => project.id === trackerSelectedProjectId,
+  )
+  const canStartTracker =
+    trackerVisible &&
+    !trackerLoading &&
+    !trackerSaving &&
+    !trackerRunningState &&
+    Boolean(trackerSelectedProjectId)
+  const canStopTracker = trackerVisible && !trackerLoading && !trackerSaving && Boolean(trackerRunningState)
+
+  useEffect(() => {
+    if (!isSidebarOpen || !shell.isAuthenticated || !sessionEmail) {
+      setTrackerVisible(false)
+      setTrackerProjects([])
+      setTrackerSelectedProjectId("")
+      setTrackerRunningState(null)
+      setTrackerError(null)
+      setTrackerLoading(false)
+      setTrackerSaving(false)
+      return
+    }
+
+    const trackerSessionEmail: string = sessionEmail
+    let isCancelled = false
+
+    async function hydrateTracker() {
+      setTrackerLoading(true)
+      setTrackerError(null)
+
+      try {
+        const localDate = getLocalDateString(new Date())
+        const response = await loadSelfTimeTrackerAction({ localDate })
+
+        if (isCancelled) {
+          return
+        }
+
+        if (response.forbidden || !response.configured) {
+          clearTimeTrackerStorage(trackerSessionEmail)
+          setTrackerVisible(false)
+          setTrackerProjects([])
+          setTrackerSelectedProjectId("")
+          setTrackerRunningState(null)
+          return
+        }
+
+        const storageKeys = getTimeTrackerStorageKeys(trackerSessionEmail)
+        const storedSelectedProjectId = localStorage.getItem(storageKeys.selectedProjectId)
+        const storedRunningStateRaw = localStorage.getItem(storageKeys.running)
+        const availableProjectIds = new Set(response.projects.map((project) => project.id))
+
+        let nextRunningState: RunningTrackerState | null = null
+        if (storedRunningStateRaw) {
+          try {
+            const parsedRunningState = JSON.parse(storedRunningStateRaw)
+            if (isRunningTrackerState(parsedRunningState)) {
+              nextRunningState = parsedRunningState
+            } else {
+              localStorage.removeItem(storageKeys.running)
+            }
+          } catch {
+            localStorage.removeItem(storageKeys.running)
+          }
+        }
+
+        let nextSelectedProjectId = ""
+        if (storedSelectedProjectId && availableProjectIds.has(storedSelectedProjectId)) {
+          nextSelectedProjectId = storedSelectedProjectId
+        } else {
+          localStorage.removeItem(storageKeys.selectedProjectId)
+        }
+
+        if (nextRunningState && !availableProjectIds.has(nextRunningState.projectId)) {
+          nextRunningState = null
+          nextSelectedProjectId = ""
+          clearTimeTrackerStorage(trackerSessionEmail)
+        } else if (nextRunningState) {
+          nextSelectedProjectId = nextRunningState.projectId
+          localStorage.setItem(storageKeys.selectedProjectId, nextSelectedProjectId)
+        }
+
+        setTrackerProjects(response.projects)
+        setTrackerSelectedProjectId(nextSelectedProjectId)
+        setTrackerRunningState(nextRunningState)
+        setTrackerVisible(true)
+      } catch (error) {
+        if (isCancelled) {
+          return
+        }
+        clearTimeTrackerStorage(trackerSessionEmail)
+        setTrackerVisible(false)
+        setTrackerProjects([])
+        setTrackerSelectedProjectId("")
+        setTrackerRunningState(null)
+        setTrackerError(error instanceof Error ? error.message : "Unable to load tracker.")
+      } finally {
+        if (!isCancelled) {
+          setTrackerLoading(false)
+        }
+      }
+    }
+
+    void hydrateTracker()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [isSidebarOpen, shell.isAuthenticated, sessionEmail])
+
+  async function handleTrackerStop() {
+    if (!sessionEmail || !trackerRunningState || trackerSaving || trackerLoading) {
+      return
+    }
+
+    setTrackerSaving(true)
+    setTrackerError(null)
+    const stoppedAt = new Date().toISOString()
+    const entryDate = getLocalDateString(new Date())
+
+    try {
+      const result = await recordSelfTimeTrackerEntryAction({
+        entryDate,
+        projectId: trackerRunningState.projectId,
+        startedAt: trackerRunningState.startedAt,
+        stoppedAt,
+      })
+
+      if (!result.ok || result.todayHours == null) {
+        setTrackerError(result.error ?? "Unable to save tracked time.")
+        return
+      }
+
+      const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+      localStorage.removeItem(storageKeys.running)
+      setTrackerRunningState(null)
+      setTrackerProjects((previous) =>
+        previous.map((project) =>
+          project.id === trackerRunningState.projectId
+            ? { ...project, todayHours: result.todayHours ?? project.todayHours }
+            : project,
+        ),
+      )
+    } catch (error) {
+      setTrackerError(error instanceof Error ? error.message : "Unable to save tracked time.")
+    } finally {
+      setTrackerSaving(false)
+    }
+  }
+
+  function handleTrackerStart() {
+    if (!sessionEmail || !trackerSelectedProjectId || trackerLoading || trackerSaving) {
+      return
+    }
+
+    const runningState: RunningTrackerState = {
+      projectId: trackerSelectedProjectId,
+      startedAt: new Date().toISOString(),
+    }
+    const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+    localStorage.setItem(storageKeys.running, JSON.stringify(runningState))
+    localStorage.setItem(storageKeys.selectedProjectId, trackerSelectedProjectId)
+    setTrackerRunningState(runningState)
+    setTrackerError(null)
+  }
+
+  function handleTrackerSelectionChange(nextProjectId: string) {
+    if (!sessionEmail || trackerRunningState) {
+      return
+    }
+
+    const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+    if (!nextProjectId) {
+      localStorage.removeItem(storageKeys.selectedProjectId)
+      setTrackerSelectedProjectId("")
+      return
+    }
+
+    localStorage.setItem(storageKeys.selectedProjectId, nextProjectId)
+    setTrackerSelectedProjectId(nextProjectId)
+  }
 
   return (
     <aside className={`app-sidebar ${isSidebarOpen ? "app-sidebar-open" : "app-sidebar-closed"}`}>
@@ -148,18 +393,65 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         ) : null}
       </div>
 
-      <div className={`app-sidebar-profile ${isSidebarOpen ? "" : "app-sidebar-profile-closed"}`}>
-        <div
-          aria-hidden="true"
-          className={`app-profile-avatar app-profile-avatar-fallback ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
-        >
-          {profileInitial}
-        </div>
-        {isSidebarOpen ? (
-          <div>
-            <p className="app-profile-name">{profileName}</p>
-          </div>
+      <div className={`app-sidebar-bottom ${isSidebarOpen ? "" : "app-sidebar-bottom-closed"}`}>
+        {isSidebarOpen && trackerVisible ? (
+          <section className="app-time-tracker" aria-label="Time tracker">
+            <p className="app-time-tracker-title">Time tracker</p>
+            <select
+              aria-label="Tracked project"
+              className="app-select-input app-time-tracker-select"
+              disabled={trackerLoading || trackerSaving || Boolean(trackerRunningState)}
+              onChange={(event) => handleTrackerSelectionChange(event.currentTarget.value)}
+              value={trackerSelectedProjectId}
+            >
+              <option value="">Select project</option>
+              {trackerProjects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+
+            {trackerRunningState ? (
+              <button
+                className="app-time-tracker-button app-time-tracker-button-stop"
+                disabled={!canStopTracker}
+                onClick={() => void handleTrackerStop()}
+                type="button"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                className="app-time-tracker-button"
+                disabled={!canStartTracker}
+                onClick={handleTrackerStart}
+                type="button"
+              >
+                Start
+              </button>
+            )}
+
+            <p className="app-time-tracker-today">
+              {trackerSelectedProject ? `${formatTodayHours(trackerSelectedProject.todayHours)} h today` : "0 h today"}
+            </p>
+            {trackerError ? <p className="pd-form-error app-time-tracker-error">{trackerError}</p> : null}
+          </section>
         ) : null}
+
+        <div className={`app-sidebar-profile ${isSidebarOpen ? "" : "app-sidebar-profile-closed"}`}>
+          <div
+            aria-hidden="true"
+            className={`app-profile-avatar app-profile-avatar-fallback ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
+          >
+            {profileInitial}
+          </div>
+          {isSidebarOpen ? (
+            <div>
+              <p className="app-profile-name">{profileName}</p>
+            </div>
+          ) : null}
+        </div>
       </div>
     </aside>
   )

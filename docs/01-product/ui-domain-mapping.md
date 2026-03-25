@@ -31,6 +31,7 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - "Assign To Project" → create `Assignment`
 - "Add Checklist Item" → create `ChecklistItem`
 - "Complete Checklist Item" → update `ChecklistItem.completed`
+- "Track My Time" / "Start Timer" / "Stop Timer" → create a self-authored manual `TimeEntry` through the lightweight sidebar tracker on any active project
 - "View Project Time" → read `TimeEntry`
 - "Upload Document" → create `ResourceDocument`
 - "Grant Client Access" → create `ClientProjectAccess`
@@ -42,7 +43,7 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - Do not use "Division" or "Cost Center" unless the product docs explicitly add them.
 - Use office-based language for organization and reporting.
 - Do not treat checklist items as stage gates in V1.
-- Do not add a dedicated V1 web "Log Time" action; time capture happens in the native Windows checker.
+- Do not add a dedicated V1 web "Log Time" screen or workflow. Only the lightweight self-only sidebar tracker is allowed in the web app, and it may target any active project.
 - Do not use `Person.title` to store authorization roles.
 - Do not infer client permissions from `Project.clientName`.
 - Treat "Project Lead" as a permission derived from `Project.leadPersonId`, not a standalone entity.

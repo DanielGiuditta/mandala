@@ -10,6 +10,8 @@ This document defines the effective user tiers for V1 and the minimum data neede
 
 - `Person.title` is a job title, not a permission role.
 - `Person.supervisorPersonId` is a reporting relationship, not a permission role assignment.
+- The lightweight sidebar tracker is available to any signed-in internal user account and is self-only. It may create manual `TimeEntry` rows only for that signed-in person's own time.
+- Internal time tracking identity resolves from the signed-in internal user account email to a person record, using the explicit `UserAccount.personId` link when present and otherwise a unique matching `Person.email`.
 - A person's recorded supervisor may review and correct that person's tracked project time in V1.
 - `Office.partnerPersonId` identifies the partner responsible for an office. It does not by itself grant instance-wide partner permissions.
 - `Project.leadPersonId` remains the source of truth for who leads a project. Project-lead permissions derive from that relationship once the lead person is linked to a user account.
@@ -44,6 +46,8 @@ Internal user linked to a `Person` record without broader elevated scope.
 
 Employees can contribute checklist items and project documents on projects where they are actively assigned or are the lead.
 
+Employees may record their own manual project time through the sidebar tracker on any active project.
+
 ### `noAccount`
 
 Person record without a linked application login yet.
@@ -67,7 +71,8 @@ Clients never receive internal write permissions.
 | Set project lead | Yes | Yes | No | No | No | Same scope as project updates. |
 | Assign people to projects | Yes | Yes | Yes | No | No | Admin scope uses `Project.managingOfficeId`. Project leads act only on projects they lead. |
 | Change project stage | Yes | Yes | Yes | No | No | Same scope as assignment management. |
-| Edit project time entries | Yes | Yes | Yes | No | No | Same scope as assignment management. A person's recorded supervisor may also edit that person's time entries. |
+| Track own time via sidebar tracker | Yes | Yes | Yes | Yes | No | Self only. Any signed-in internal user may create their own manual `TimeEntry` on any active project. The system resolves the signed-in email to the person's backing record. |
+| Edit project time entries | Yes | Yes | Yes | No | No | Partners and admins retain elevated time-entry edit scope. Project leads may edit time for projects they lead. A person's recorded supervisor may also edit that person's time entries. |
 | Add checklist items | Yes | Yes | Yes | Yes | No | Employees act only on projects they are actively assigned to or lead. |
 | Upload project documents | Yes | Yes | Yes | Yes | No | Same scope as checklist contribution. |
 | Assign admins | Yes | No | No | No | No | Partner-only in V1. |
@@ -93,6 +98,7 @@ Application-level login identity.
 
 - internal users link to a `Person`
 - client users may exist without a `Person`
+- for self time tracking, internal identity may also resolve by a unique `Person.email` match when the explicit `personId` link is missing
 
 ### `RoleAssignment`
 

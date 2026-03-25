@@ -2,7 +2,7 @@
 
 ## Suggested top-level shape
 
-- `apps/web` — user-facing application
+- `apps/web` — user-facing application, including the lightweight self-only sidebar tracker
 - `apps/desktop-agent` — Windows companion app for V1 project selection and time capture
 - `packages/ui` — shared components and tokens
 - `packages/domain` — shared schemas, types, enums, and pure business logic
@@ -14,6 +14,8 @@
 The product has two interfaces with shared domain rules:
 1. the web application
 2. a Windows companion app for V1 time capture
+
+The Windows companion app remains the primary V1 time-capture surface, but the web shell may also expose a lightweight self-only sidebar tracker that writes manual time entries for any active project for the signed-in internal user, resolving the signed-in email to the backing person identity.
 
 A monorepo avoids duplicating domain types, permission enums, workflow keys, and design-system primitives.
 

@@ -298,9 +298,87 @@ a {
   width: 240px;
 }
 
+.app-sidebar-bottom {
+  display: grid;
+  gap: 16px;
+}
+
+.app-sidebar-bottom-closed {
+  gap: 0;
+}
+
 .app-sidebar-profile-closed {
   justify-content: center;
   width: 36px;
+}
+
+.app-time-tracker {
+  display: grid;
+  gap: 12px;
+  padding: 0 8px;
+  width: 240px;
+}
+
+.app-time-tracker-title {
+  color: var(--figma-subtle-fg);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.app-time-tracker-select {
+  appearance: none;
+  background: var(--figma-color-background-base);
+  border: none;
+  border-radius: 24px;
+  color: var(--figma-color-text-primary);
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 40px;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.app-time-tracker-select:disabled {
+  opacity: 0.75;
+}
+
+.app-time-tracker-button {
+  align-items: center;
+  appearance: none;
+  background: #2a74e8;
+  border: none;
+  border-radius: 24px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 600;
+  height: 40px;
+  justify-content: center;
+  width: 100%;
+}
+
+.app-time-tracker-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.app-time-tracker-button-stop {
+  background: var(--figma-color-text-primary);
+}
+
+.app-time-tracker-today {
+  color: var(--figma-fg);
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+  min-height: 20px;
+}
+
+.app-time-tracker-error {
+  margin: 0;
 }
 
 .app-profile-avatar {

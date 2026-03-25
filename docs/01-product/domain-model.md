@@ -184,6 +184,8 @@ In V1, time is captured primarily through the native Windows checker.
 
 At machine login or session start, the person selects the current project from a dropdown.
 
+The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
+
 ### Fields
 
 - `id`
@@ -203,8 +205,9 @@ At machine login or session start, the person selects the current project from a
 
 - `source` distinguishes Windows checker sync from any manual correction or import path
 - approvals are deferred in V1
-- `assignmentId` may be optional in the schema but should be linked when possible
-- dedicated web time-entry and manager review flows are out of scope for V1
+- `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
+- the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
+- dedicated web time-entry flows are out of scope for V1, but supervisors and project leads may still correct tracked time
 
 ## ResourceDocument
 

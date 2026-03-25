@@ -44,6 +44,7 @@ Project-lead permissions should be derived from `projects.lead_person_id`, not m
 - office-scoped project management policies should anchor on `projects.managing_office_id`
 - project-lead policies should derive from the linked user account's `person_id = projects.lead_person_id`
 - employee contribution policies should derive from active assignment or lead relationships
+- self time-tracker policies may resolve the current internal person from the linked user account or, when needed, a unique `people.email` match for the signed-in email
 - client policies should derive only from explicit `client_project_access`
 - salary and hourly-cost reads should remain internal and should not be exposed to client users
 - client access should start with restricted project summary data unless the product docs later add explicit client-visibility fields for documents, checklist items, or time

@@ -228,6 +228,17 @@ export function canEditProjectTime(
   return canAssignPeopleToProject(viewer, project)
 }
 
+export function canTrackOwnTimeForProject(
+  viewer: AuthorizationViewer,
+  project: ProjectPermissionSubject,
+): boolean {
+  if (!viewer.active || !viewer.personId) {
+    return false
+  }
+
+  return true
+}
+
 export function canAddChecklistItemsToProject(
   viewer: AuthorizationViewer,
   project: ProjectPermissionSubject,

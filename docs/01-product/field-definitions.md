@@ -81,6 +81,8 @@ Where the time entry originated, such as native Windows checker sync or a manual
 ### `assignmentId`
 Optional link to the related assignment when available.
 
+It may remain null for valid tracked time when the person is not staffed to the selected project.
+
 ## ResourceDocument
 
 ### `projectId`

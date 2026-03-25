@@ -66,9 +66,13 @@ In V1, people capture time primarily through a native Windows checker.
 
 At machine login or session start, the person selects the current project from a dropdown.
 
+The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
+
+That tracker may let the person pick any active project, start or stop a timer, and write a single manual time entry when the timer stops. The signed-in email resolves to the person's backing record for storage.
+
 Time tracking is intended for simple operational tracking and rough project cost visibility.
 
-Dedicated web time-entry screens, manager time review, and time-card approval workflows are out of scope for V1.
+Dedicated web time-entry screens and time-card approval workflows are out of scope for V1. Supervisors and project leads may still correct tracked time after the fact.
 
 ### 2.6 Salary drives labor cost
 
