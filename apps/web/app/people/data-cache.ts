@@ -1,6 +1,8 @@
 import {
   getPersonDetail,
   listPeople,
+  listPeopleOptions,
+  type PeopleOptionsData,
   type PeopleListData,
   type PeopleListFilters,
   type PersonDetailData,
@@ -10,6 +12,7 @@ import {
 import { unstable_cache } from "next/cache";
 
 const PEOPLE_TAG = "people";
+const PEOPLE_OPTIONS_TAG = "people-options";
 const PEOPLE_REVALIDATE_SECONDS = 15;
 
 function normalizeFilterValue(value?: string | null): string {
@@ -18,6 +21,14 @@ function normalizeFilterValue(value?: string | null): string {
 
 function getViewerCacheKey(context: ViewerRequestContext): string {
   return context.sessionEmail?.trim().toLowerCase() ?? "anonymous";
+}
+
+export function getPeopleTag(): string {
+  return PEOPLE_TAG;
+}
+
+export function getPeopleOptionsTag(): string {
+  return PEOPLE_OPTIONS_TAG;
 }
 
 export async function getCachedPeople(
@@ -73,6 +84,26 @@ export async function getCachedPeopleRailData(
     {
       revalidate: PEOPLE_REVALIDATE_SECONDS,
       tags: [PEOPLE_TAG],
+    },
+  )();
+}
+
+export async function getCachedPeopleOptions(
+  context: ViewerRequestContext,
+): Promise<Pick<PeopleOptionsData, "forbidden" | "people">> {
+  return unstable_cache(
+    async () => {
+      const data = await listPeopleOptions(context);
+
+      return {
+        forbidden: data.forbidden,
+        people: data.people,
+      };
+    },
+    ["people-options", getViewerCacheKey(context)],
+    {
+      revalidate: PEOPLE_REVALIDATE_SECONDS,
+      tags: [PEOPLE_OPTIONS_TAG],
     },
   )();
 }

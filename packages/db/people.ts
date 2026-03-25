@@ -80,6 +80,10 @@ interface CacheEntry<T> {
 
 const peopleOptionsCache = new Map<string, CacheEntry<PeopleOptionsData>>()
 
+export function invalidatePeopleReadCaches(): void {
+  peopleOptionsCache.clear()
+}
+
 function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
   const entry = store.get(key)
 

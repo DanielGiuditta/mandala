@@ -1,5 +1,6 @@
 import { getViewerRequestContext } from "../../lib/auth/session"
 import { PeopleDomainList } from "../components/people-domain-list"
+import { createPersonAction, loadPeopleOptionsAction } from "./actions"
 import { getCachedPeople } from "./data-cache"
 
 interface PeoplePageProps {
@@ -22,7 +23,11 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
 
   return (
     <main className="stack">
-      <PeopleDomainList data={data} />
+      <PeopleDomainList
+        data={data}
+        loadSupervisorOptionsAction={loadPeopleOptionsAction}
+        onCreatePersonAction={createPersonAction}
+      />
     </main>
   )
 }
