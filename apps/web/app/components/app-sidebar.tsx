@@ -2,6 +2,7 @@
 
 import type { SelfTimeTrackerData } from "@mandala/db"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import { signOutAction } from "../login/actions"
@@ -146,7 +147,36 @@ function clearTimeTrackerStorage(sessionEmail: string) {
   localStorage.removeItem(storageKeys.selectedProjectId)
 }
 
+function readTimeTrackerStorage(sessionEmail: string): {
+  runningState: RunningTrackerState | null
+  selectedProjectId: string
+} {
+  const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+  const storedSelectedProjectId = localStorage.getItem(storageKeys.selectedProjectId) ?? ""
+  const storedRunningStateRaw = localStorage.getItem(storageKeys.running)
+  let runningState: RunningTrackerState | null = null
+
+  if (storedRunningStateRaw) {
+    try {
+      const parsedRunningState = JSON.parse(storedRunningStateRaw)
+      if (isRunningTrackerState(parsedRunningState)) {
+        runningState = parsedRunningState
+      } else {
+        localStorage.removeItem(storageKeys.running)
+      }
+    } catch {
+      localStorage.removeItem(storageKeys.running)
+    }
+  }
+
+  return {
+    runningState,
+    selectedProjectId: storedSelectedProjectId || runningState?.projectId || "",
+  }
+}
+
 export function AppSidebar({ shell }: { shell: AppShellState }) {
+  const router = useRouter()
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
   const [trackerVisible, setTrackerVisible] = useState(false)
@@ -221,10 +251,13 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     let isCancelled = false
 
     async function hydrateTracker() {
+      const persistedState = readTimeTrackerStorage(trackerSessionEmail)
       setTrackerVisible(true)
       setTrackerLoading(true)
       setTrackerAccessMessage(null)
       setTrackerError(null)
+      setTrackerSelectedProjectId(persistedState.selectedProjectId)
+      setTrackerRunningState(persistedState.runningState)
 
       try {
         const localDate = getLocalDateString(new Date())
@@ -254,23 +287,11 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         }
 
         const storageKeys = getTimeTrackerStorageKeys(trackerSessionEmail)
-        const storedSelectedProjectId = localStorage.getItem(storageKeys.selectedProjectId)
-        const storedRunningStateRaw = localStorage.getItem(storageKeys.running)
+        const persistedTrackerState = readTimeTrackerStorage(trackerSessionEmail)
+        const storedSelectedProjectId = persistedTrackerState.selectedProjectId
         const availableProjectIds = new Set(response.projects.map((project) => project.id))
 
-        let nextRunningState: RunningTrackerState | null = null
-        if (storedRunningStateRaw) {
-          try {
-            const parsedRunningState = JSON.parse(storedRunningStateRaw)
-            if (isRunningTrackerState(parsedRunningState)) {
-              nextRunningState = parsedRunningState
-            } else {
-              localStorage.removeItem(storageKeys.running)
-            }
-          } catch {
-            localStorage.removeItem(storageKeys.running)
-          }
-        }
+        let nextRunningState = persistedTrackerState.runningState
 
         let nextSelectedProjectId = ""
         if (storedSelectedProjectId && availableProjectIds.has(storedSelectedProjectId)) {
@@ -300,11 +321,11 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         if (isCancelled) {
           return
         }
-        clearTimeTrackerStorage(trackerSessionEmail)
+        const persistedTrackerState = readTimeTrackerStorage(trackerSessionEmail)
         setTrackerVisible(true)
         setTrackerProjects([])
-        setTrackerSelectedProjectId("")
-        setTrackerRunningState(null)
+        setTrackerSelectedProjectId(persistedTrackerState.selectedProjectId)
+        setTrackerRunningState(persistedTrackerState.runningState)
         setTrackerAccessMessage(null)
         setTrackerError(error instanceof Error ? error.message : "Unable to load tracker.")
       } finally {
@@ -375,6 +396,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
             : project,
         ),
       )
+      router.refresh()
     } catch (error) {
       setTrackerError(error instanceof Error ? error.message : "Unable to save tracked time.")
     } finally {
