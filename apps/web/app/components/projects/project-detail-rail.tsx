@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { EntityHeader } from "../entity-header";
 import type { ProjectRailItem } from "@mandala/db";
 import {
-  getFallbackAvatarColor,
   getFallbackAvatarInitial,
+  getProjectFallbackAvatarStyle,
 } from "./project-avatar-utils";
 
 interface ProjectDetailRailProps {
@@ -64,12 +64,7 @@ export function ProjectDetailRail({
                   <span
                     aria-hidden
                     className="projects-project-thumb-fallback"
-                    style={{
-                      backgroundColor: getFallbackAvatarColor(
-                        project.name,
-                        project.id,
-                      ),
-                    }}
+                    style={getProjectFallbackAvatarStyle(project.name, project.id)}
                   >
                     {getFallbackAvatarInitial(project.name, "P")}
                   </span>

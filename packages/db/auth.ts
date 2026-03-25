@@ -21,7 +21,11 @@ import {
   previewRoleAssignments,
   previewUserAccounts,
 } from "./previewData"
-import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
+import {
+  createServerSupabaseClient,
+  createServiceRoleSupabaseClient,
+  getDatabaseStatus,
+} from "./supabaseServer"
 
 const DEFAULT_PREVIEW_VIEWER_EMAIL = "anjali.menon@kolam.local"
 const PREVIEW_VIEWER_MESSAGE =
@@ -98,6 +102,7 @@ export interface ViewerSummary {
   displayName: string
   email: string
   officeName: string | null
+  photoUrl: string | null
   primaryTier: EffectiveUserTier | null
 }
 
@@ -228,7 +233,109 @@ function buildViewerSummary(
     displayName: person?.full_name ?? userAccount.email,
     email: userAccount.email,
     officeName: office?.name ?? null,
+    photoUrl: person?.photo_url ?? null,
     primaryTier: getViewerBaseTier(viewer),
+  }
+}
+
+interface ViewerIdentityFallback {
+  activeAssignedProjectIds: string[]
+  office: OfficeRow | null
+  person: PersonRow
+}
+
+async function resolveViewerIdentityFallback(
+  sessionEmail: string,
+): Promise<ViewerIdentityFallback | null> {
+  const client = createServiceRoleSupabaseClient()
+
+  if (!client) {
+    return null
+  }
+
+  const { data: peopleData, error: peopleError } = await client
+    .from("people")
+    .select(
+      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+    )
+    .ilike("email", sessionEmail)
+    .eq("active", true)
+
+  if (peopleError) {
+    return null
+  }
+
+  const people = (peopleData ?? []) as PersonRow[]
+
+  if (people.length !== 1) {
+    return null
+  }
+
+  const person = people[0]
+  const [{ data: officeData, error: officeError }, { data: assignmentData, error: assignmentError }] =
+    await Promise.all([
+      client.from("offices").select("id, name").eq("id", person.office_id).maybeSingle(),
+      client
+        .from("assignments")
+        .select("project_id")
+        .eq("person_id", person.id)
+        .eq("active", true),
+    ])
+
+  if (officeError || assignmentError) {
+    return null
+  }
+
+  return {
+    activeAssignedProjectIds: [
+      ...new Set(
+        ((assignmentData ?? []) as Array<{ project_id: string }>).map((assignment) => assignment.project_id),
+      ),
+    ],
+    office: officeData ? ((officeData as OfficeRow)) : null,
+    person,
+  }
+}
+
+async function hydrateViewerAccessContextResponse(
+  response: ViewerAccessContextResponse,
+  sessionEmail: string,
+): Promise<ViewerAccessContextResponse> {
+  if (!response.found || !response.userAccount || response.person) {
+    return response
+  }
+
+  const identityFallback = await resolveViewerIdentityFallback(sessionEmail)
+
+  if (!identityFallback) {
+    return response
+  }
+
+  return {
+    ...response,
+    activeAssignedProjectIds: identityFallback.activeAssignedProjectIds,
+    office: identityFallback.office
+      ? {
+          id: identityFallback.office.id,
+          name: identityFallback.office.name,
+        }
+      : undefined,
+    person: {
+      id: identityFallback.person.id,
+      fullName: identityFallback.person.full_name,
+      title: identityFallback.person.title,
+      photoUrl: identityFallback.person.photo_url,
+      officeId: identityFallback.person.office_id,
+      supervisorPersonId: identityFallback.person.supervisor_person_id,
+      annualSalary: identityFallback.person.annual_salary,
+      availabilityHoursPerWeek: identityFallback.person.availability_hours_per_week,
+      email: identityFallback.person.email,
+      active: identityFallback.person.active,
+    },
+    userAccount: {
+      ...response.userAccount,
+      personId: identityFallback.person.id,
+    },
   }
 }
 
@@ -445,7 +552,10 @@ const getLiveViewerAccess = cache(
       throw error
     }
 
-    const response = data as ViewerAccessContextResponse
+    const response = await hydrateViewerAccessContextResponse(
+      data as ViewerAccessContextResponse,
+      sessionEmail,
+    )
     const result = buildViewerAccessFromDbResponse(response, sessionEmail)
 
     return setCachedValue(liveViewerAccessCache, sessionEmail, result)

@@ -1,12 +1,24 @@
-import type { PersonDetailData, PersonListItem } from "@mandala/db";
+import type { PersonDetailData, PersonListItem, UpdatePersonInput } from "@mandala/db";
 import type { ReactNode } from "react";
 
 import { PersonDetailEntity } from "./person-detail-entity";
 import { PersonDetailRail } from "./person-detail-rail";
+import type {
+  PersonCreateOfficeOption,
+  PersonCreateSupervisorOption,
+} from "./person-create-types";
 
 interface PersonDetailShellProps {
   closeControl?: ReactNode;
   data: PersonDetailData;
+  loadSupervisorOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: PersonCreateSupervisorOption[];
+  }>;
+  officeOptions: PersonCreateOfficeOption[];
+  onUpdatePersonAction: (
+    input: UpdatePersonInput,
+  ) => Promise<{ personId: string }>;
   personId: string;
   railPeople: PersonListItem[];
 }
@@ -14,9 +26,20 @@ interface PersonDetailShellProps {
 export function PersonDetailShell({
   closeControl,
   data,
+  loadSupervisorOptionsAction,
+  officeOptions,
+  onUpdatePersonAction,
   personId,
   railPeople,
 }: PersonDetailShellProps) {
+  const titleSuggestions = Array.from(
+    new Set(
+      railPeople
+        .map((person) => person.title?.trim())
+        .filter((title): title is string => Boolean(title)),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
+
   if (data.forbidden) {
     const message =
       data.accessMessage ?? "This viewer does not have access to the requested person.";
@@ -57,7 +80,14 @@ export function PersonDetailShell({
           forbidden={data.forbidden}
           people={railPeople}
         />
-        <PersonDetailEntity closeControl={closeControl} data={data} />
+        <PersonDetailEntity
+          closeControl={closeControl}
+          data={data}
+          loadSupervisorOptionsAction={loadSupervisorOptionsAction}
+          officeOptions={officeOptions}
+          onUpdatePersonAction={onUpdatePersonAction}
+          titleSuggestions={titleSuggestions}
+        />
       </div>
     </main>
   );

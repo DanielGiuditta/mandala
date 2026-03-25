@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef } from "react"
 
-import { getProjectFallbackColor, getProjectFallbackInitial } from "./project-create-utils"
+import { getProjectFallbackInitial, getProjectFallbackStyle } from "./project-create-utils"
 
 interface ProjectPhotoInputProps {
   inputId: string
   photoFile: File | null
+  photoUrl?: string | null
   projectName: string
   onPhotoChange: (file: File | null) => void
 }
@@ -14,6 +15,7 @@ interface ProjectPhotoInputProps {
 export function ProjectPhotoInput({
   inputId,
   photoFile,
+  photoUrl = null,
   projectName,
   onPhotoChange,
 }: ProjectPhotoInputProps) {
@@ -50,17 +52,17 @@ export function ProjectPhotoInput({
         onClick={() => fileInputRef.current?.click()}
         type="button"
       >
-        {previewUrl ? (
+        {previewUrl || photoUrl ? (
           <img
             alt="Selected project photo preview"
             className="project-create-photo-preview-image"
-            src={previewUrl}
+            src={previewUrl ?? photoUrl ?? undefined}
           />
         ) : (
           <span
             aria-hidden
             className="project-create-photo-fallback"
-            style={{ backgroundColor: getProjectFallbackColor(projectName) }}
+            style={getProjectFallbackStyle(projectName)}
           >
             {getProjectFallbackInitial(projectName)}
           </span>

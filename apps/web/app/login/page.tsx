@@ -59,7 +59,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <div>
             <h2>Sign in</h2>
             <p className="muted">
-              Use a Supabase Auth user whose email matches <code>public.user_accounts.email</code>.
+              Use the invited email and password for your linked <code>public.user_accounts</code>{" "}
+              record. First-time users should open their invite email to set a password.
             </p>
           </div>
         </div>

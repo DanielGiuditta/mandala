@@ -3,7 +3,10 @@ import Link from "next/link";
 import type { PersonListItem } from "@mandala/db";
 
 import { EntityHeader } from "../entity-header";
-import { getFallbackAvatarColor, getFallbackAvatarInitial } from "../projects/project-avatar-utils";
+import {
+  getFallbackAvatarInitial,
+  getPersonFallbackAvatarStyle,
+} from "../projects/project-avatar-utils";
 
 interface PersonDetailRailProps {
   activePersonId: string;
@@ -44,9 +47,7 @@ export function PersonDetailRail({
                   <span
                     aria-hidden
                     className="people-avatar-fallback"
-                    style={{
-                      backgroundColor: getFallbackAvatarColor(person.fullName, person.id),
-                    }}
+                    style={getPersonFallbackAvatarStyle(person.fullName, person.id)}
                   >
                     {getFallbackAvatarInitial(person.fullName, "P")}
                   </span>

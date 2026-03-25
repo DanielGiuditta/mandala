@@ -1,6 +1,7 @@
 import { listLibraryDocuments } from "@mandala/db"
 
 import { getViewerRequestContext } from "../../lib/auth/session"
+import { LibraryFiltersForm } from "./library-filters-form"
 
 interface LibraryPageProps {
   searchParams: Promise<{
@@ -41,38 +42,11 @@ export default async function LibraryPage({ searchParams }: LibraryPageProps) {
         {data.forbidden ? (
           <div className="empty-state">The shared library is available to internal users only.</div>
         ) : (
-          <form className="stack" method="get">
-            <div className="filters">
-              <label>
-                Search
-                <input
-                  defaultValue={data.filters.query ?? ""}
-                  name="q"
-                  placeholder="Document name or category"
-                  type="search"
-                />
-              </label>
-
-              <label>
-                Category
-                <select defaultValue={data.filters.category ?? ""} name="category">
-                  <option value="">All categories</option>
-                  {data.categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="button-row">
-              <button type="submit">Apply filters</button>
-              <a className="secondary" href="/library">
-                Reset
-              </a>
-            </div>
-          </form>
+          <LibraryFiltersForm
+            categories={data.categories}
+            category={data.filters.category ?? ""}
+            query={data.filters.query ?? ""}
+          />
         )}
       </section>
 

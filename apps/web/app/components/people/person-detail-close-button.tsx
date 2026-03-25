@@ -1,6 +1,7 @@
 "use client";
 
 import { EntityReturnButton } from "../entity-return-button";
+import { CloseButtonIcon } from "../close-button-icon";
 
 export function PersonDetailCloseButton({
   preferBack = false,
@@ -10,9 +11,9 @@ export function PersonDetailCloseButton({
   return (
     <EntityReturnButton
       ariaLabel="Close and return to people"
-      className="entity-header-close-button"
+      className="app-close-button"
       fallbackHref="/people"
-      iconSrc="/figma/nav/close-icon.svg"
+      icon={<CloseButtonIcon />}
       preferBack={preferBack}
       scope="people"
     />

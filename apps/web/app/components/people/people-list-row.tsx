@@ -2,7 +2,8 @@ import type { PersonListItem } from "@mandala/db";
 
 import {
   getFallbackAvatarInitial,
-  getFallbackAvatarColor,
+  getPersonFallbackAvatarStyle,
+  getProjectFallbackAvatarStyle,
 } from "../projects/project-avatar-utils";
 import { EntityReturnLink } from "../entity-return-link";
 import {
@@ -38,9 +39,7 @@ export function PeopleListRow({ person, rowIndex }: PeopleListRowProps) {
           <span
             aria-hidden
             className="people-avatar-fallback"
-            style={{
-              backgroundColor: getFallbackAvatarColor(person.fullName, person.id),
-            }}
+            style={getPersonFallbackAvatarStyle(person.fullName, person.id)}
           >
             {getPersonInitials(person)}
           </span>
@@ -71,9 +70,7 @@ export function PeopleListRow({ person, rowIndex }: PeopleListRowProps) {
                   <span
                     aria-hidden
                     className="people-project-chip-fallback"
-                    style={{
-                      backgroundColor: getFallbackAvatarColor(project.projectName, project.projectId),
-                    }}
+                    style={getProjectFallbackAvatarStyle(project.projectName, project.projectId)}
                   >
                     {getFallbackAvatarInitial(project.projectName)}
                   </span>
@@ -109,12 +106,10 @@ export function PeopleListRow({ person, rowIndex }: PeopleListRowProps) {
               <span
                 aria-hidden
                 className="people-reference-fallback"
-                style={{
-                  backgroundColor: getFallbackAvatarColor(
-                    person.supervisorName,
-                    person.supervisorPersonId ?? person.id,
-                  ),
-                }}
+                style={getPersonFallbackAvatarStyle(
+                  person.supervisorName,
+                  person.supervisorPersonId ?? person.id,
+                )}
               >
                 {getInitialsFromName(person.supervisorName)}
               </span>

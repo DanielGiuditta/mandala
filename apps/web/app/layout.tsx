@@ -32,6 +32,7 @@ export default async function RootLayout({
             displayName: viewerAccess.summary?.displayName ?? null,
             isAuthenticated: session.isAuthenticated,
             officeName: viewerAccess.summary?.officeName ?? null,
+            photoUrl: viewerAccess.summary?.photoUrl ?? null,
             primaryTier: viewerAccess.summary?.primaryTier ?? null,
             sessionEmail: session.sessionEmail,
           }}

@@ -7,7 +7,11 @@ import { useEffect, useState } from "react"
 
 import { signOutAction } from "../login/actions"
 import { SidebarNav } from "../sidebar-nav"
-import { AppMenuSelect } from "./app-menu-select"
+import {
+  getFallbackAvatarInitial,
+  getPersonFallbackAvatarStyle,
+} from "./projects/project-avatar-utils"
+import { SelectDropdownField } from "./ui/dropdown"
 
 export interface AppShellState {
   accessMessage: string | null
@@ -15,6 +19,7 @@ export interface AppShellState {
   displayName: string | null
   isAuthenticated: boolean
   officeName: string | null
+  photoUrl: string | null
   primaryTier: string | null
   sessionEmail: string | null
 }
@@ -188,8 +193,9 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const [trackerRunningState, setTrackerRunningState] = useState<RunningTrackerState | null>(null)
   const [trackerNowTimestamp, setTrackerNowTimestamp] = useState(() => Date.now())
   const [trackerError, setTrackerError] = useState<string | null>(null)
-  const profileName = shell.displayName ?? "kolam user"
-  const profileInitial = profileName.charAt(0).toUpperCase()
+  const profileName = shell.displayName ?? shell.sessionEmail ?? "kolam user"
+  const profileInitial = getFallbackAvatarInitial(profileName, "K")
+  const profileAvatarStyle = getPersonFallbackAvatarStyle(profileName, "app-shell")
   const sessionEmail = shell.sessionEmail
   const shellItems = [
     shell.configured ? "Live data" : "Preview data",
@@ -512,7 +518,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         {isSidebarOpen && trackerVisible ? (
           <section className="app-time-tracker" aria-label="Time tracker">
             <p className="app-time-tracker-title">Time tracker</p>
-            <AppMenuSelect
+            <SelectDropdownField
               ariaLabel="Tracked project"
               disabled={trackerLoading || trackerSaving || Boolean(trackerRunningState)}
               options={trackerProjects.map((project) => ({ label: project.name, value: project.id }))}
@@ -554,12 +560,22 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         ) : null}
 
         <div className={`app-sidebar-profile ${isSidebarOpen ? "" : "app-sidebar-profile-closed"}`}>
-          <div
-            aria-hidden="true"
-            className={`app-profile-avatar app-profile-avatar-fallback ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
-          >
-            {profileInitial}
-          </div>
+          {shell.photoUrl ? (
+            <img
+              alt=""
+              aria-hidden
+              className={`app-profile-avatar ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
+              src={shell.photoUrl}
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className={`app-profile-avatar app-profile-avatar-fallback ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
+              style={profileAvatarStyle}
+            >
+              {profileInitial}
+            </div>
+          )}
           {isSidebarOpen ? (
             <div>
               <p className="app-profile-name">{profileName}</p>

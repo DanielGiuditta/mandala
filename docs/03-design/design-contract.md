@@ -11,6 +11,11 @@ A design task must point to one of the following:
 
 If none of those exist, the task is design exploration, not implementation.
 
+Implementation is component-first:
+- use an existing approved component when one already matches the need
+- if no suitable component exists, add or document the component first
+- do not recreate approved UI with ad hoc one-off markup
+
 ## Source-of-truth order
 
 1. Approved Figma node / frame
@@ -41,6 +46,7 @@ If none of those exist, the task is design exploration, not implementation.
 ## Hard constraints
 
 - Do not hardcode random pixel values if tokens/variables exist.
+- Only ship UI through components. Reuse an existing component when it exists; otherwise create a documented reusable component instead of inventing a bespoke fragment inline.
 - Do not invent hover, loading, empty, or error states unless documented.
 - Do not replace a shared component with a custom one unless the contract requires it.
 - Do not build an entire complex screen from one giant generated block.

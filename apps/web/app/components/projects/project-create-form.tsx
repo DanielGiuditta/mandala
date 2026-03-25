@@ -4,10 +4,12 @@ import { useId, useMemo, useState } from "react";
 
 import type { ProjectStage } from "@mandala/domain";
 
+import { NativeDateDropdownField, SelectDropdownField } from "../ui/dropdown";
 import { ProjectPhotoInput } from "./project-photo-input";
 import type {
   CreateProjectFormInput,
   CreateProjectPayload,
+  ProjectCreateMode,
   ProjectCreateLeadOption,
   ProjectCreateOfficeOption,
 } from "./project-create-types";
@@ -20,7 +22,9 @@ import {
 
 interface ProjectCreateFormProps {
   hasLeadOptionGap: boolean;
+  initialFormInput?: CreateProjectFormInput;
   leadOptions: ProjectCreateLeadOption[];
+  mode?: ProjectCreateMode;
   officeOptions: ProjectCreateOfficeOption[];
   onCancel: () => void;
   onSave: (submission: {
@@ -42,9 +46,25 @@ const DEFAULT_FORM_INPUT: CreateProjectFormInput = {
   targetCompletionDate: null,
 };
 
+function getInitialFormInput(
+  officeOptions: ProjectCreateOfficeOption[],
+  initialFormInput?: CreateProjectFormInput,
+): CreateProjectFormInput {
+  if (initialFormInput) {
+    return initialFormInput;
+  }
+
+  return {
+    ...DEFAULT_FORM_INPUT,
+    officeId: officeOptions.length === 1 ? officeOptions[0].id : "",
+  };
+}
+
 export function ProjectCreateForm({
   hasLeadOptionGap,
+  initialFormInput,
   leadOptions,
+  mode = "create",
   officeOptions,
   onCancel,
   onSave,
@@ -58,9 +78,27 @@ export function ProjectCreateForm({
   const completionDateInputId = useId();
   const stageInputId = useId();
   const photoInputId = useId();
-  const [form, setForm] = useState<CreateProjectFormInput>(DEFAULT_FORM_INPUT);
+  const [form, setForm] = useState<CreateProjectFormInput>(() =>
+    getInitialFormInput(officeOptions, initialFormInput),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const officeSelectOptions = useMemo(
+    () => officeOptions.map((office) => ({ label: office.name, value: office.id })),
+    [officeOptions],
+  );
+  const leadSelectOptions = useMemo(
+    () => leadOptions.map((lead) => ({ label: lead.fullName, value: lead.id })),
+    [leadOptions],
+  );
+  const stageSelectOptions = useMemo(
+    () =>
+      PROJECT_CREATE_STAGE_OPTIONS.map((stage) => ({
+        label: formatProjectStageLabel(stage),
+        value: stage,
+      })),
+    [],
+  );
 
   const requiredFieldMessage = useMemo(() => {
     const errors: string[] = [];
@@ -143,6 +181,7 @@ export function ProjectCreateForm({
             inputId={photoInputId}
             onPhotoChange={(file) => updateField("photoFile", file)}
             photoFile={form.photoFile ?? null}
+            photoUrl={form.photoUrl ?? null}
             projectName={form.name}
           />
         </div>
@@ -174,109 +213,56 @@ export function ProjectCreateForm({
 
       <label className="project-create-field" htmlFor={officeInputId}>
         <span className="project-create-label">Office</span>
-        <span className="project-create-select-wrap">
-          <select
-            className="project-create-select-input"
-            id={officeInputId}
-            onChange={(event) => updateField("officeId", event.target.value)}
-            required
-            value={form.officeId}
-          >
-            <option value="">Select office...</option>
-            {officeOptions.map((office) => (
-              <option key={office.id} value={office.id}>
-                {office.name}
-              </option>
-            ))}
-          </select>
-          <span aria-hidden className="project-create-select-chevron">
-            v
-          </span>
-        </span>
+        <SelectDropdownField
+          ariaLabel="Office"
+          options={officeSelectOptions}
+          placeholder="Select office..."
+          value={form.officeId}
+          onValueChange={(nextValue) => updateField("officeId", nextValue)}
+        />
       </label>
 
       <label className="project-create-field" htmlFor={leadInputId}>
         <span className="project-create-label">Lead</span>
-        <span className="project-create-select-wrap">
-          <select
-            className="project-create-select-input"
-            id={leadInputId}
-            onChange={(event) =>
-              updateField("leadPersonId", event.target.value)
-            }
-            value={form.leadPersonId ?? ""}
-          >
-            <option value="">Select lead...</option>
-            {leadOptions.map((lead) => (
-              <option key={lead.id} value={lead.id}>
-                {lead.fullName}
-              </option>
-            ))}
-          </select>
-          <span aria-hidden className="project-create-select-chevron">
-            v
-          </span>
-        </span>
+        <SelectDropdownField
+          ariaLabel="Lead"
+          options={leadSelectOptions}
+          placeholder="Select lead..."
+          value={form.leadPersonId ?? ""}
+          onValueChange={(nextValue) => updateField("leadPersonId", nextValue)}
+        />
       </label>
 
       <div className="project-create-dates-stage-row">
         <label className="project-create-field" htmlFor={startDateInputId}>
           <span className="project-create-label">Start Date</span>
-          <span className="project-create-pill-field">
-            <input
-              className="project-create-date-input"
-              id={startDateInputId}
-              onChange={(event) =>
-                updateField("startDate", event.target.value || null)
-              }
-              type="date"
-              value={form.startDate ?? ""}
-            />
-            <span aria-hidden className="project-create-pill-icon">
-              v
-            </span>
-          </span>
+          <NativeDateDropdownField
+            ariaLabel="Start Date"
+            id={startDateInputId}
+            onValueChange={(nextValue) => updateField("startDate", nextValue || null)}
+            value={form.startDate ?? ""}
+          />
         </label>
 
         <label className="project-create-field" htmlFor={completionDateInputId}>
           <span className="project-create-label">Completion</span>
-          <span className="project-create-pill-field">
-            <input
-              className="project-create-date-input"
-              id={completionDateInputId}
-              onChange={(event) =>
-                updateField("targetCompletionDate", event.target.value || null)
-              }
-              type="date"
-              value={form.targetCompletionDate ?? ""}
-            />
-            <span aria-hidden className="project-create-pill-icon">
-              v
-            </span>
-          </span>
+          <NativeDateDropdownField
+            ariaLabel="Completion Date"
+            id={completionDateInputId}
+            onValueChange={(nextValue) => updateField("targetCompletionDate", nextValue || null)}
+            value={form.targetCompletionDate ?? ""}
+          />
         </label>
 
         <label className="project-create-field" htmlFor={stageInputId}>
           <span className="project-create-label">Stage</span>
-          <span className="project-create-pill-field project-create-stage-pill">
-            <select
-              className="project-create-stage-select"
-              id={stageInputId}
-              onChange={(event) =>
-                updateField("stage", event.target.value as ProjectStage)
-              }
-              value={form.stage}
-            >
-              {PROJECT_CREATE_STAGE_OPTIONS.map((stage) => (
-                <option key={stage} value={stage}>
-                  {formatProjectStageLabel(stage)}
-                </option>
-              ))}
-            </select>
-            <span aria-hidden className="project-create-pill-icon">
-              v
-            </span>
-          </span>
+          <SelectDropdownField
+            ariaLabel="Stage"
+            options={stageSelectOptions}
+            placeholder="Select stage..."
+            value={form.stage}
+            onValueChange={(nextValue) => updateField("stage", nextValue as ProjectStage)}
+          />
         </label>
       </div>
 
@@ -310,7 +296,7 @@ export function ProjectCreateForm({
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Saving..." : "Save"}
+          {isSubmitting ? "Saving..." : mode === "edit" ? "Save Changes" : "Save"}
         </button>
       </div>
     </form>

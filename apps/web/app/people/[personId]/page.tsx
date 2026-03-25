@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 
 import { getViewerRequestContext } from "../../../lib/auth/session";
 import { PersonDetailView } from "../../components/people/person-detail-view";
-import { getCachedPeopleRailData, getCachedPersonDetail } from "../data-cache";
+import { loadPeopleOptionsAction, updatePersonAction } from "../actions";
+import { getCachedPeople, getCachedPersonDetail } from "../data-cache";
 
 interface PersonDetailPageProps {
   params: Promise<{
@@ -15,9 +16,9 @@ export const dynamic = "force-dynamic"
 export default async function PersonDetailPage({ params }: PersonDetailPageProps) {
   const { personId } = await params;
   const viewerContext = await getViewerRequestContext();
-  const [data, railData] = await Promise.all([
+  const [data, listData] = await Promise.all([
     getCachedPersonDetail(personId, viewerContext),
-    getCachedPeopleRailData(viewerContext),
+    getCachedPeople({}, viewerContext),
   ]);
 
   if (data.configured && !data.person && !data.forbidden) {
@@ -27,8 +28,11 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
   return (
     <PersonDetailView
       data={data}
+      loadSupervisorOptionsAction={loadPeopleOptionsAction}
+      officeOptions={listData.offices}
+      onUpdatePersonAction={updatePersonAction}
       personId={personId}
-      railPeople={railData.people}
+      railPeople={listData.people}
     />
   );
 }

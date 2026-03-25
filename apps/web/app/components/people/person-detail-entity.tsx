@@ -1,21 +1,42 @@
-import type { PersonDetailData } from "@mandala/db";
+import type { PersonDetailData, UpdatePersonInput } from "@mandala/db";
 import type { ReactNode } from "react";
 
 import { EntityHeader } from "../entity-header";
+import { EntityPhoto } from "../projects/project-detail-utils";
 import { PersonDetailCloseButton } from "./person-detail-close-button";
+import { PersonCreateModal } from "./person-create-modal";
+import type {
+  PersonCreateOfficeOption,
+  PersonCreateSupervisorOption,
+} from "./person-create-types";
 import { PersonDetailGlance } from "./person-detail-glance";
 import { PersonProjectsCard } from "./person-projects-card";
 import { PersonResourcesCard } from "./person-resources-card";
 import { PersonTasksCard } from "./person-tasks-card";
-import { Avatar } from "./person-detail-utils";
 import { PersonWorklogCard } from "./person-worklog-card";
 
 interface PersonDetailEntityProps {
   closeControl?: ReactNode;
   data: PersonDetailData;
+  loadSupervisorOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: PersonCreateSupervisorOption[];
+  }>;
+  officeOptions: PersonCreateOfficeOption[];
+  onUpdatePersonAction: (
+    input: UpdatePersonInput,
+  ) => Promise<{ personId: string }>;
+  titleSuggestions: string[];
 }
 
-export function PersonDetailEntity({ closeControl, data }: PersonDetailEntityProps) {
+export function PersonDetailEntity({
+  closeControl,
+  data,
+  loadSupervisorOptionsAction,
+  officeOptions,
+  onUpdatePersonAction,
+  titleSuggestions,
+}: PersonDetailEntityProps) {
   if (!data.person) {
     return (
       <section className="pd-card">
@@ -28,14 +49,40 @@ export function PersonDetailEntity({ closeControl, data }: PersonDetailEntityPro
   return (
     <section className="pd-entity">
       <EntityHeader
-        action={closeControl ?? <PersonDetailCloseButton />}
+        action={
+          <div className="entity-header-action-group">
+            <PersonCreateModal
+              disabled={!data.canEdit}
+              disabledReason={!data.canEdit ? "Only admins and partners can edit this person." : undefined}
+              initialFormInput={{
+                annualSalary: String(data.person.annualSalary),
+                email: data.person.email ?? "",
+                fullName: data.person.fullName,
+                officeId: data.person.officeId,
+                permission: data.person.effectivePermission,
+                photoFile: null,
+                photoUrl: data.person.photoUrl ?? null,
+                supervisorPersonId: data.person.supervisorPersonId ?? "",
+                title: data.person.title ?? "",
+              }}
+              loadSupervisorOptionsAction={loadSupervisorOptionsAction}
+              mode="edit"
+              officeOptions={officeOptions}
+              onUpdatePersonAction={onUpdatePersonAction}
+              personId={data.person.id}
+              titleSuggestions={titleSuggestions}
+              trigger="edit"
+            />
+            {closeControl ?? <PersonDetailCloseButton />}
+          </div>
+        }
         className="pd-entity-header"
         media={
-          <Avatar
-            fallbackKey={data.person.id}
+          <EntityPhoto
+            entityId={data.person.id}
             label={data.person.fullName}
             photoUrl={data.person.photoUrl}
-            size="lg"
+            variant="person"
           />
         }
         title={data.person.fullName}

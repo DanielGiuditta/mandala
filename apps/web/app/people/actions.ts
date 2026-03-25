@@ -1,13 +1,16 @@
 "use server";
 
-import type { CreatePersonInput } from "@mandala/db";
+import type { CreatePersonInput, UpdatePersonInput } from "@mandala/db";
 import {
   createPerson,
   invalidatePeopleReadCaches,
+  invalidateProjectReadCaches,
+  updatePerson,
 } from "@mandala/db";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getViewerRequestContext } from "../../lib/auth/session";
+import { getProjectsTag } from "../projects/data-cache";
 import {
   getCachedPeopleOptions,
   getPeopleOptionsTag,
@@ -21,9 +24,30 @@ export async function createPersonAction(
   const person = await createPerson(input, viewerContext);
 
   invalidatePeopleReadCaches();
+  invalidateProjectReadCaches();
   revalidateTag(getPeopleTag());
   revalidateTag(getPeopleOptionsTag());
+  revalidateTag(getProjectsTag());
   revalidatePath("/people");
+  revalidatePath("/projects");
+
+  return { personId: person.id };
+}
+
+export async function updatePersonAction(
+  input: UpdatePersonInput,
+): Promise<{ personId: string }> {
+  const viewerContext = await getViewerRequestContext();
+  const person = await updatePerson(input, viewerContext);
+
+  invalidatePeopleReadCaches();
+  invalidateProjectReadCaches();
+  revalidateTag(getPeopleTag());
+  revalidateTag(getPeopleOptionsTag());
+  revalidateTag(getProjectsTag());
+  revalidatePath("/people");
+  revalidatePath(`/people/${person.id}`);
+  revalidatePath("/projects");
 
   return { personId: person.id };
 }

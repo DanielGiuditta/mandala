@@ -53,6 +53,7 @@ interface ProjectRow {
 interface UserAccountListRow {
   id: string
   person_id: string | null
+  email?: string | null
   active: boolean
 }
 
@@ -160,6 +161,7 @@ export interface PersonDetailPerson extends PersonListItem {
   allocationPercent: number
   assignedHours: number
   availabilityHoursPerWeek: number
+  effectivePermission: CreatePersonPermission
   hourlyCost: number
   remainingCapacity: number
 }
@@ -243,9 +245,14 @@ export interface CreatePersonInput {
   title?: string | null
 }
 
+export interface UpdatePersonInput extends CreatePersonInput {
+  personId: string
+}
+
 export interface PersonDetailData {
   accessMessage: string | null
   assignments: PersonDetailAssignmentItem[]
+  canEdit: boolean
   checklistItems: PersonDetailChecklistItem[]
   configMessage: string | null
   configured: boolean
@@ -322,6 +329,25 @@ function buildEffectivePermissionLabel(
   return "Employee"
 }
 
+function buildEffectivePermissionValue(
+  userAccount: UserAccountListRow | null,
+  roleAssignments: RoleAssignmentListRow[],
+): CreatePersonPermission {
+  if (!userAccount || !userAccount.active) {
+    return "noAccount"
+  }
+
+  if (roleAssignments.some((assignment) => assignment.active && assignment.role === "partner")) {
+    return "partner"
+  }
+
+  if (roleAssignments.some((assignment) => assignment.active && assignment.role === "admin")) {
+    return "admin"
+  }
+
+  return "employee"
+}
+
 function isCreatePersonPermission(value: string): value is CreatePersonPermission {
   return (CREATE_PERSON_PERMISSIONS as readonly string[]).includes(value)
 }
@@ -361,6 +387,60 @@ function normalizeAnnualSalary(value: number): number {
   }
 
   return Number(value)
+}
+
+async function inviteAuthUserByEmail(
+  email: string,
+  fullName: string,
+  serviceClient: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<string | null> {
+  const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+    data: {
+      fullName,
+    },
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data.user?.id ?? null
+}
+
+async function findAuthUserByEmail(
+  email: string,
+  serviceClient: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<{ id: string; userMetadata: Record<string, unknown> | null } | null> {
+  let page = 1
+
+  while (true) {
+    const { data, error } = await serviceClient.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    const match = data.users.find((user) => user.email?.trim().toLowerCase() === email)
+
+    if (match) {
+      return {
+        id: match.id,
+        userMetadata:
+          match.user_metadata && typeof match.user_metadata === "object"
+            ? (match.user_metadata as Record<string, unknown>)
+            : null,
+      }
+    }
+
+    if (!data.nextPage) {
+      return null
+    }
+
+    page = data.nextPage
+  }
 }
 
 function toIsoDateString(value: Date): string {
@@ -456,6 +536,7 @@ function buildPersonDetailPerson(
   >,
   hoursThisWeekByPersonId: Map<string, number>,
   permissionLabelByPersonId: Map<string, string | null>,
+  effectivePermission: CreatePersonPermission,
 ): PersonDetailPerson {
   const person = toPerson(row)
   const assignedHours = deriveAssignedHours([assignmentsByPersonId.get(row.id) ?? 0])
@@ -476,6 +557,7 @@ function buildPersonDetailPerson(
     ),
     assignedHours,
     availabilityHoursPerWeek: person.availabilityHoursPerWeek,
+    effectivePermission,
     hourlyCost: deriveHourlyCost(person.annualSalary),
     remainingCapacity: deriveRemainingCapacity(
       person.availabilityHoursPerWeek,
@@ -542,6 +624,7 @@ function emptyPersonDetailData(
   return {
     accessMessage,
     assignments: [],
+    canEdit: false,
     checklistItems: [],
     configMessage,
     configured,
@@ -779,6 +862,17 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
       ),
     ],
   ])
+  const effectivePermission = buildEffectivePermissionValue(
+    previewUserAccount
+      ? {
+          active: previewUserAccount.active,
+          email: previewUserAccount.email,
+          id: previewUserAccount.id,
+          person_id: previewUserAccount.person_id,
+        }
+      : null,
+    previewRoleAssignmentsForPerson,
+  )
   const personListItem = buildPersonDetailPerson(
     person,
     assignmentsByPersonId,
@@ -787,6 +881,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
     staffedProjectsByPersonId,
     hoursThisWeekByPersonId,
     permissionLabelByPersonId,
+    effectivePermission,
   )
   const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
   const projectsById = new Map(projectRows.map((project) => [project.id, project]))
@@ -852,6 +947,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
         assignedHoursPerWeek: Number(assignment.assigned_hours_per_week),
       }
     }),
+    canEdit: false,
     checklistItems: checklistRows.map((item) => ({
       completed: item.completed,
       completedAt: item.completed_at,
@@ -1297,36 +1393,43 @@ export async function createPerson(
       throw new Error("A user account with that email already exists.")
     }
   }
-
-  const { data: personData, error: personError } = await client
-    .from("people")
-    .insert({
-      active: true,
-      annual_salary: annualSalary,
-      availability_hours_per_week: DEFAULT_PERSON_AVAILABILITY_HOURS_PER_WEEK,
-      email,
-      full_name: fullName,
-      office_id: officeId,
-      photo_url: photoUrl,
-      supervisor_person_id: supervisorPersonId,
-      title,
-    })
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
-    .single()
-
-  if (personError) {
-    throw personError
-  }
-
-  const createdPerson = personData as PersonRow
-
-  if (!serviceClient || !email) {
-    return toPerson(createdPerson)
-  }
+  let createdPersonId: string | null = null
+  let createdAuthUserId: string | null = null
 
   try {
+    if (serviceClient && email) {
+      createdAuthUserId = await inviteAuthUserByEmail(email, fullName, serviceClient)
+    }
+
+    const { data: personData, error: personError } = await client
+      .from("people")
+      .insert({
+        active: true,
+        annual_salary: annualSalary,
+        availability_hours_per_week: DEFAULT_PERSON_AVAILABILITY_HOURS_PER_WEEK,
+        email,
+        full_name: fullName,
+        office_id: officeId,
+        photo_url: photoUrl,
+        supervisor_person_id: supervisorPersonId,
+        title,
+      })
+      .select(
+        "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+      )
+      .single()
+
+    if (personError) {
+      throw personError
+    }
+
+    const createdPerson = personData as PersonRow
+    createdPersonId = createdPerson.id
+
+    if (!serviceClient || !email) {
+      return toPerson(createdPerson)
+    }
+
     const { data: userAccountData, error: userAccountError } = await serviceClient
       .from("user_accounts")
       .insert({
@@ -1356,13 +1459,296 @@ export async function createPerson(
         throw roleAssignmentError
       }
     }
+
+    return toPerson(createdPerson)
   } catch (error) {
-    await serviceClient.from("user_accounts").delete().eq("person_id", createdPerson.id)
-    await serviceClient.from("people").delete().eq("id", createdPerson.id)
+    if (serviceClient && createdPersonId) {
+      await serviceClient.from("user_accounts").delete().eq("person_id", createdPersonId)
+      await serviceClient.from("people").delete().eq("id", createdPersonId)
+    }
+
+    if (serviceClient && createdAuthUserId) {
+      await serviceClient.auth.admin.deleteUser(createdAuthUserId)
+    }
+
     throw error
   }
+}
 
-  return toPerson(createdPerson)
+export async function updatePerson(
+  input: UpdatePersonInput,
+  context: ViewerRequestContext = {},
+): Promise<Person> {
+  const status = getDatabaseStatus()
+
+  if (!status.configured) {
+    throw new Error("People updates require a configured database connection.")
+  }
+
+  const viewerAccess = await getCurrentViewerAccess(context)
+
+  if (!viewerAccess.viewer) {
+    throw new Error(viewerAccess.accessMessage ?? "Sign in to continue.")
+  }
+
+  const personId = normalizeRequiredText(input.personId, "Person")
+  const fullName = normalizeRequiredText(input.fullName, "Name")
+  const officeId = normalizeRequiredText(input.officeId, "Office")
+  const title = normalizeNullableText(input.title)
+  const photoUrl = normalizeNullableText(input.photoUrl)
+  const email = normalizeEmail(input.email)
+  const supervisorPersonId = normalizeNullableText(input.supervisorPersonId)
+  const annualSalary = normalizeAnnualSalary(input.annualSalary)
+
+  if (!isCreatePersonPermission(input.permission)) {
+    throw new Error("Permission is invalid.")
+  }
+
+  if (input.permission !== "noAccount" && !email) {
+    throw new Error("Email is required when creating an account.")
+  }
+
+  const client = createServerSupabaseClient({ accessToken: context.accessToken })
+
+  if (!client) {
+    throw new Error("People updates require a configured database connection.")
+  }
+
+  const { data: existingPersonData, error: existingPersonError } = await client
+    .from("people")
+    .select(
+      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+    )
+    .eq("id", personId)
+    .maybeSingle()
+
+  if (existingPersonError) {
+    throw existingPersonError
+  }
+
+  if (!existingPersonData) {
+    throw new Error("Selected person is unavailable.")
+  }
+
+  const existingPerson = existingPersonData as PersonRow
+
+  if (
+    !canCreateOrUpdatePeople(viewerAccess.viewer, existingPerson.office_id) ||
+    !canCreateOrUpdatePeople(viewerAccess.viewer, officeId)
+  ) {
+    throw new Error("You do not have permission to update this person.")
+  }
+
+  const [offices, supervisors, userAccountResponse] = await Promise.all([
+    fetchOfficeRows([officeId], { client }),
+    supervisorPersonId
+      ? fetchPeopleRows([supervisorPersonId], { client })
+      : Promise.resolve([]),
+    client
+      .from("user_accounts")
+      .select("id, person_id, email, active")
+      .eq("person_id", personId)
+      .maybeSingle(),
+  ])
+
+  if (userAccountResponse.error) {
+    throw userAccountResponse.error
+  }
+
+  if (offices.length !== 1) {
+    throw new Error("Selected office is unavailable.")
+  }
+
+  if (supervisorPersonId) {
+    const supervisor = supervisors[0]
+
+    if (!supervisor) {
+      throw new Error("Selected supervisor is unavailable.")
+    }
+
+    if (!supervisor.active) {
+      throw new Error("Selected supervisor must be active.")
+    }
+  }
+
+  const currentUserAccount = (userAccountResponse.data ?? null) as UserAccountListRow | null
+  const requiresServiceRole = Boolean(currentUserAccount) || input.permission !== "noAccount"
+  const serviceClient = requiresServiceRole
+    ? createServerSupabaseClient({ useServiceRole: true })
+    : null
+
+  if (requiresServiceRole && !serviceClient) {
+    throw new Error("Account-backed people updates require SUPABASE_SERVICE_ROLE_KEY.")
+  }
+
+  if (serviceClient && email) {
+    const { data: duplicateAccount, error: duplicateAccountError } = await serviceClient
+      .from("user_accounts")
+      .select("id")
+      .ilike("email", email)
+      .maybeSingle()
+
+    if (duplicateAccountError) {
+      throw duplicateAccountError
+    }
+
+    if (duplicateAccount && (duplicateAccount as { id: string }).id !== currentUserAccount?.id) {
+      throw new Error("A user account with that email already exists.")
+    }
+  }
+
+  const { data: updatedPersonData, error: updatedPersonError } = await client
+    .from("people")
+    .update({
+      annual_salary: annualSalary,
+      email,
+      full_name: fullName,
+      office_id: officeId,
+      photo_url: photoUrl,
+      supervisor_person_id: supervisorPersonId,
+      title,
+    })
+    .eq("id", personId)
+    .select(
+      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+    )
+    .single()
+
+  if (updatedPersonError) {
+    throw updatedPersonError
+  }
+
+  if (serviceClient) {
+    const authUser = currentUserAccount?.email
+      ? await findAuthUserByEmail(currentUserAccount.email.trim().toLowerCase(), serviceClient)
+      : null
+
+    if (input.permission === "noAccount") {
+      if (currentUserAccount) {
+        const { error: deleteRolesError } = await serviceClient
+          .from("role_assignments")
+          .delete()
+          .eq("user_account_id", currentUserAccount.id)
+
+        if (deleteRolesError) {
+          throw deleteRolesError
+        }
+
+        const { error: deleteAccountError } = await serviceClient
+          .from("user_accounts")
+          .delete()
+          .eq("id", currentUserAccount.id)
+
+        if (deleteAccountError) {
+          throw deleteAccountError
+        }
+
+        if (authUser) {
+          const { error: deleteAuthUserError } = await serviceClient.auth.admin.deleteUser(authUser.id)
+
+          if (deleteAuthUserError) {
+            throw new Error(deleteAuthUserError.message)
+          }
+        }
+      }
+    } else if (email) {
+      let authUserId = authUser?.id ?? null
+
+      if (authUser) {
+        const metadataName =
+          typeof authUser.userMetadata?.fullName === "string"
+            ? authUser.userMetadata.fullName
+            : null
+        const shouldUpdateAuth =
+          currentUserAccount?.email?.trim().toLowerCase() !== email || metadataName !== fullName
+
+        if (shouldUpdateAuth) {
+          const { error: updateAuthUserError } = await serviceClient.auth.admin.updateUserById(
+            authUser.id,
+            {
+              email,
+              email_confirm: true,
+              user_metadata: {
+                fullName,
+              },
+            },
+          )
+
+          if (updateAuthUserError) {
+            throw new Error(updateAuthUserError.message)
+          }
+        }
+      } else {
+        authUserId = await inviteAuthUserByEmail(email, fullName, serviceClient)
+      }
+
+      let userAccountId = currentUserAccount?.id ?? null
+
+      if (currentUserAccount) {
+        const { error: updateUserAccountError } = await serviceClient
+          .from("user_accounts")
+          .update({
+            active: true,
+            email,
+            person_id: personId,
+          })
+          .eq("id", currentUserAccount.id)
+
+        if (updateUserAccountError) {
+          throw updateUserAccountError
+        }
+      } else {
+        const { data: userAccountData, error: insertUserAccountError } = await serviceClient
+          .from("user_accounts")
+          .insert({
+            active: true,
+            email,
+            person_id: personId,
+          })
+          .select("id")
+          .single()
+
+        if (insertUserAccountError) {
+          if (authUserId) {
+            await serviceClient.auth.admin.deleteUser(authUserId)
+          }
+
+          throw insertUserAccountError
+        }
+
+        userAccountId = (userAccountData as { id: string }).id
+      }
+
+      if (userAccountId) {
+        const { error: deleteRolesError } = await serviceClient
+          .from("role_assignments")
+          .delete()
+          .eq("user_account_id", userAccountId)
+
+        if (deleteRolesError) {
+          throw deleteRolesError
+        }
+
+        if (input.permission === "admin" || input.permission === "partner") {
+          const { error: insertRoleAssignmentError } = await serviceClient
+            .from("role_assignments")
+            .insert({
+              active: true,
+              assigned_by_user_account_id: viewerAccess.viewer.userAccountId,
+              office_id: input.permission === "admin" ? officeId : null,
+              role: input.permission,
+              user_account_id: userAccountId,
+            })
+
+          if (insertRoleAssignmentError) {
+            throw insertRoleAssignmentError
+          }
+        }
+      }
+    }
+  }
+
+  return toPerson(updatedPersonData as PersonRow)
 }
 
 export async function updatePersonPhoto(
@@ -1554,7 +1940,7 @@ export async function getPersonDetail(
       .order("created_at", { ascending: false }),
     client
       .from("user_accounts")
-      .select("id, person_id, active")
+      .select("id, person_id, email, active")
       .eq("person_id", personId)
       .maybeSingle(),
   ])
@@ -1670,6 +2056,10 @@ export async function getPersonDetail(
   const permissionLabelByPersonId = new Map<string, string | null>([
     [personId, buildEffectivePermissionLabel(userAccount, roleAssignmentsForPerson)],
   ])
+  const effectivePermission = buildEffectivePermissionValue(
+    userAccount,
+    roleAssignmentsForPerson,
+  )
 
   const personListItem = buildPersonDetailPerson(
     person,
@@ -1679,6 +2069,7 @@ export async function getPersonDetail(
     staffedProjectsByPersonId,
     hoursThisWeekByPersonId,
     permissionLabelByPersonId,
+    effectivePermission,
   )
   const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
 
@@ -1767,6 +2158,7 @@ export async function getPersonDetail(
   return {
     accessMessage: viewerAccess.accessMessage,
     assignments,
+    canEdit: canCreateOrUpdatePeople(viewerAccess.viewer, person.office_id),
     checklistItems,
     configMessage: status.message,
     configured: status.configured,

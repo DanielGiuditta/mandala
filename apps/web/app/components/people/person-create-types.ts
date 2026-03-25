@@ -3,6 +3,8 @@ import type {
   CreatePersonPermission,
 } from "@mandala/db";
 
+export type PersonCreateMode = "create" | "edit";
+
 export type PersonCreateFormInput = {
   annualSalary: string;
   email: string;

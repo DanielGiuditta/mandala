@@ -33,6 +33,7 @@ Partners can assign admin roles.
 Office-scoped internal role that may be assigned to one or more offices.
 
 Admins have the same operational permissions as partners within their scoped offices and the projects managed by those offices, except assigning admins remains partner-only in V1.
+The person edit modal is a deliberate exception: partners and scoped admins may update any of that modal's fields, including the `Permission` selector, for people they are allowed to update by office scope.
 
 ### `projectLead`
 
@@ -75,18 +76,30 @@ Clients never receive internal write permissions.
 | Edit project time entries | Yes | Yes | Yes | No | No | Partners and admins retain elevated time-entry edit scope. Project leads may edit time for projects they lead. A person's recorded supervisor may also edit that person's time entries. |
 | Add checklist items | Yes | Yes | Yes | Yes | No | Employees act only on projects they are actively assigned to or lead. |
 | Upload project documents | Yes | Yes | Yes | Yes | No | Same scope as checklist contribution. |
-| Assign admins | Yes | No | No | No | No | Partner-only in V1. |
+| Update person permission from the edit modal | Yes | Yes | No | No | No | `Person.officeId` must be in admin scope. The edit modal may set `No account`, `Employee`, `Admin`, or `Partner` for an existing visible person. |
+| Dedicated admin-assignment flows | Yes | No | No | No | No | Partner-only in V1. |
 
 ## Create-person permission mapping
 
 The create-person flow may expose a `Permission` control, but it must map to the authorization layer, not `Person.title`.
 
 - `No account` → create only the `Person` record
-- `Employee` → create a linked `UserAccount` with no elevated `RoleAssignment`
-- `Admin` → create a linked `UserAccount` plus an office-scoped `RoleAssignment(role='admin', officeId=person.officeId)`
-- `Partner` → create a linked `UserAccount` plus an instance-scoped `RoleAssignment(role='partner')`
+- `Employee` → create a linked `UserAccount` with no elevated `RoleAssignment` and send an invite email so the person can set a password
+- `Admin` → create a linked `UserAccount` plus an office-scoped `RoleAssignment(role='admin', officeId=person.officeId)` and send an invite email so the person can set a password
+- `Partner` → create a linked `UserAccount` plus an instance-scoped `RoleAssignment(role='partner')` and send an invite email so the person can set a password
 
 Do not use `Project Lead` as a create-person permission value. Project-lead capability remains derived from `Project.leadPersonId`.
+
+## Edit-person modal permission mapping
+
+The person edit modal reuses the create-person permission selector with prefilled values.
+
+- `No account` → keep only the `Person` record and remove linked `UserAccount` / elevated `RoleAssignment` rows
+- `Employee` → keep or create a linked `UserAccount` with no elevated `RoleAssignment`
+- `Admin` → keep or create a linked `UserAccount` plus one office-scoped `RoleAssignment(role='admin', officeId=person.officeId)`
+- `Partner` → keep or create a linked `UserAccount` plus one instance-scoped `RoleAssignment(role='partner')`
+
+Partners and scoped admins may update these values from the edit modal for visible people they can already update.
 
 ## Minimal supporting models
 

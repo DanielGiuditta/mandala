@@ -4,6 +4,7 @@ Primary product interface.
 
 Current implemented routes:
 - `/login`
+- `/join`
 - `/projects`
 - `/projects/[projectId]`
 - `/people`
@@ -12,6 +13,7 @@ Current implemented routes:
 
 Current scope in this repo:
 - Supabase Auth session-backed web login
+- invite-based first-time account onboarding
 - server-rendered technical scaffold only
 - projects list and project detail
 - people list with office/capacity context

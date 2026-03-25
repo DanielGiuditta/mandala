@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { ProjectAssignmentItem, ProjectTimeSummary } from "@mandala/db";
 
+import { SelectDropdownField } from "../ui/dropdown";
 import {
   Avatar,
   formatCostMetric,
@@ -96,19 +97,28 @@ export function ProjectWorklogCard({
                       });
                     }}
                   >
-                    <input defaultValue={entry.date} name="date" required type="date" />
+                    <span className="app-native-input-wrap">
+                      <input className="app-date-input" defaultValue={entry.date} name="date" required type="date" />
+                      <span aria-hidden className="app-native-input-chevron">
+                        ˅
+                      </span>
+                    </span>
                     <input defaultValue={entry.hours} min={0} name="hours" required step={0.1} type="number" />
                     <input defaultValue={entry.notes ?? ""} name="notes" placeholder="Notes" type="text" />
-                    <select defaultValue={entry.assignmentId ?? ""} name="assignmentId">
-                      <option value="">No assignment</option>
-                      {assignmentOptions.map((assignment) => (
-                        <option key={assignment.id} value={assignment.id}>
-                          {assignment.personName}
-                          {assignment.personTitle ? ` (${assignment.personTitle})` : ""}
-                          {` · ${formatHoursMetric(assignment.assignedHoursPerWeek)} hrs/week`}
-                        </option>
-                      ))}
-                    </select>
+                    <SelectDropdownField
+                      ariaLabel="Assignment"
+                      defaultValue={entry.assignmentId ?? ""}
+                      name="assignmentId"
+                      options={[
+                        { label: "No assignment", value: "" },
+                        ...assignmentOptions.map((assignment) => ({
+                          label: assignment.personName,
+                          description: `${assignment.personTitle ? `${assignment.personTitle} · ` : ""}${formatHoursMetric(assignment.assignedHoursPerWeek)} hrs/week`,
+                          value: assignment.id,
+                        })),
+                      ]}
+                      placeholder="No assignment"
+                    />
                     <div className="pd-inline-form-actions">
                       <button className="pd-primary-button" disabled={isPending} type="submit">
                         Save

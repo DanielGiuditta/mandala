@@ -2,6 +2,7 @@ import type {
   CreateProjectInput,
   ProjectDetailData,
   ProjectRailItem,
+  UpdateProjectInput,
 } from "@mandala/db";
 import type { ReactNode } from "react";
 
@@ -23,6 +24,9 @@ interface ProjectDetailShellProps {
     people: Array<{ fullName: string; id: string }>;
   }>;
   officeOptions: ProjectCreateOfficeOption[];
+  onUpdateProjectAction: (
+    input: UpdateProjectInput,
+  ) => Promise<{ projectId: string }>;
   projectId: string;
   railProjects: ProjectRailItem[];
 }
@@ -33,6 +37,7 @@ export function ProjectDetailShell({
   data,
   loadPeopleOptionsAction,
   officeOptions,
+  onUpdateProjectAction,
   projectId,
   railProjects,
 }: ProjectDetailShellProps) {
@@ -88,6 +93,8 @@ export function ProjectDetailShell({
           closeControl={closeControl}
           data={data}
           loadPeopleOptionsAction={loadPeopleOptionsAction}
+          officeOptions={officeOptions}
+          onUpdateProjectAction={onUpdateProjectAction}
           projectId={projectId}
         />
       </div>

@@ -1,6 +1,8 @@
 import type { CreateProjectInput } from "@mandala/db";
 import type { ProjectStage } from "@mandala/domain";
 
+export type ProjectCreateMode = "create" | "edit";
+
 export type CreateProjectFormInput = {
   name: string;
   clientName?: string | null;

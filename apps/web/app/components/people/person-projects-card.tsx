@@ -44,6 +44,7 @@ export function PersonProjectsCard({ person, timeSummary }: PersonProjectsCardPr
                     fallbackKey={project.projectId}
                     label={project.projectName}
                     photoUrl={project.projectPhotoUrl}
+                    variant="project"
                   />
                   <span>{project.projectName}</span>
                 </span>

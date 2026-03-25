@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { ProjectStaffPerson } from "@mandala/db";
 
+import { SelectDropdownField } from "../ui/dropdown";
 import { Avatar } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
 
@@ -123,22 +124,26 @@ export function ProjectStaffCard({
             });
           }}
         >
-          <select
-            aria-label="Person"
+          <SelectDropdownField
+            ariaLabel="Person"
             disabled={peopleOptionsStatus !== "ready"}
             name="personId"
-            required
-          >
-            <option value="">Select person</option>
-            {peopleOptions.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.fullName}
-              </option>
-            ))}
-          </select>
+            options={peopleOptions.map((person) => ({ label: person.fullName, value: person.id }))}
+            placeholder="Select person"
+          />
           <input min={0.1} name="assignedHoursPerWeek" placeholder="Hours/week" required step={0.1} type="number" />
-          <input name="startDate" type="date" />
-          <input name="endDate" type="date" />
+          <span className="app-native-input-wrap">
+            <input className="app-date-input" name="startDate" type="date" />
+            <span aria-hidden className="app-native-input-chevron">
+              ˅
+            </span>
+          </span>
+          <span className="app-native-input-wrap">
+            <input className="app-date-input" name="endDate" type="date" />
+            <span aria-hidden className="app-native-input-chevron">
+              ˅
+            </span>
+          </span>
           <input name="notes" placeholder="Notes (optional)" type="text" />
           <button
             className="pd-primary-button"

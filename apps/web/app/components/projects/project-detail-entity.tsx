@@ -1,4 +1,4 @@
-import type { ProjectDetailData } from "@mandala/db";
+import type { ProjectDetailData, UpdateProjectInput } from "@mandala/db";
 import type { ReactNode } from "react";
 import type { ProjectDetailActionResult } from "../../projects/[projectId]/project-detail-actions";
 import {
@@ -11,12 +11,14 @@ import {
 
 import { EntityHeader } from "../entity-header";
 import { ProjectDetailCloseButton } from "./project-detail-close-button";
+import { ProjectCreateModal } from "./project-create-modal";
 import { ProjectDetailGlance } from "./project-detail-glance";
-import { ProjectPhoto } from "./project-detail-utils";
+import { EntityPhoto } from "./project-detail-utils";
 import { ProjectResourcesCard } from "./project-resources-card";
 import { ProjectStaffCard } from "./project-staff-card";
 import { ProjectTasksCard } from "./project-tasks-card";
 import { ProjectWorklogCard } from "./project-worklog-card";
+import type { ProjectCreateOfficeOption } from "./project-create-types";
 
 interface ProjectDetailEntityProps {
   closeControl?: ReactNode;
@@ -25,6 +27,10 @@ interface ProjectDetailEntityProps {
     forbidden: boolean;
     people: Array<{ fullName: string; id: string }>;
   }>;
+  officeOptions: ProjectCreateOfficeOption[];
+  onUpdateProjectAction: (
+    input: UpdateProjectInput,
+  ) => Promise<{ projectId: string }>;
   projectId: string;
 }
 
@@ -83,6 +89,8 @@ export function ProjectDetailEntity({
   closeControl,
   data,
   loadPeopleOptionsAction,
+  officeOptions,
+  onUpdateProjectAction,
   projectId,
 }: ProjectDetailEntityProps) {
   const taskActions: {
@@ -120,13 +128,45 @@ export function ProjectDetailEntity({
   return (
     <section className="pd-entity">
       <EntityHeader
-        action={closeControl ?? <ProjectDetailCloseButton />}
+        action={
+          <div className="entity-header-action-group">
+            <ProjectCreateModal
+              disabled={!data.canEdit}
+              disabledReason={!data.canEdit ? "Only admins and partners can edit this project." : undefined}
+              initialFormInput={{
+                clientName: data.project.clientName ?? "",
+                description: data.project.description ?? "",
+                leadPersonId: data.project.leadPersonId ?? "",
+                name: data.project.name,
+                officeId: data.project.managingOfficeId,
+                photoFile: null,
+                photoUrl: data.project.photoUrl ?? null,
+                stage: data.project.stage,
+                startDate: data.project.startDate ?? null,
+                targetCompletionDate: data.project.targetCompletionDate ?? null,
+              }}
+              loadLeadOptionsAction={loadPeopleOptionsAction}
+              mode="edit"
+              officeOptions={officeOptions}
+              onUpdateProjectAction={onUpdateProjectAction}
+              preservedOriginatingOfficeId={
+                data.project.originatingOfficeId !== data.project.managingOfficeId
+                  ? data.project.originatingOfficeId
+                  : undefined
+              }
+              projectId={data.project.id}
+              trigger="edit"
+            />
+            {closeControl ?? <ProjectDetailCloseButton />}
+          </div>
+        }
         className="pd-entity-header"
         media={
-          <ProjectPhoto
-            name={data.project.name}
+          <EntityPhoto
+            entityId={data.project.id}
+            label={data.project.name}
             photoUrl={data.project.photoUrl}
-            projectId={data.project.id}
+            variant="project"
           />
         }
         title={data.project.name}

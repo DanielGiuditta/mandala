@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { ProjectChecklistItem } from "@mandala/db";
 
+import { SelectDropdownField } from "../ui/dropdown";
 import { Avatar } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
 
@@ -133,18 +134,16 @@ export function ProjectTasksCard({
           }}
         >
           <input aria-label="Task title" name="title" placeholder="Task title" required type="text" />
-          <select
-            aria-label="Task assignee"
+          <SelectDropdownField
+            ariaLabel="Task assignee"
             disabled={peopleOptionsStatus === "loading"}
             name="assignedPersonId"
-          >
-            <option value="">Unassigned</option>
-            {peopleOptions.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.fullName}
-              </option>
-            ))}
-          </select>
+            options={[
+              { label: "Unassigned", value: "" },
+              ...peopleOptions.map((person) => ({ label: person.fullName, value: person.id })),
+            ]}
+            placeholder="Unassigned"
+          />
           <button className="pd-primary-button" disabled={isPending} type="submit">
             Add task
           </button>
@@ -189,18 +188,17 @@ export function ProjectTasksCard({
                     }}
                   >
                       <input defaultValue={item.title} name="title" required type="text" />
-                    <select
+                    <SelectDropdownField
+                      ariaLabel="Task assignee"
                       defaultValue={item.assignedPersonId ?? ""}
                       disabled={peopleOptionsStatus === "loading"}
                       name="assignedPersonId"
-                    >
-                      <option value="">Unassigned</option>
-                      {peopleOptions.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {person.fullName}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { label: "Unassigned", value: "" },
+                        ...peopleOptions.map((person) => ({ label: person.fullName, value: person.id })),
+                      ]}
+                      placeholder="Unassigned"
+                    />
                     <label className="pd-check-label">
                       <input defaultChecked={item.completed} name="completed" type="checkbox" />
                       Completed

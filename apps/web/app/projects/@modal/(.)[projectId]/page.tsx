@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation";
 
 import { ProjectDetailOverlay } from "../../../components/projects/project-detail-overlay";
-import { createProjectAction, loadPeopleOptionsAction } from "../../actions";
+import {
+  createProjectAction,
+  loadPeopleOptionsAction,
+  updateProjectAction,
+} from "../../actions";
 import { getViewerRequestContext } from "../../../../lib/auth/session";
 import {
   getCachedProjectDetail,
@@ -36,6 +40,7 @@ export default async function ProjectDetailModalPage({
       data={data}
       loadPeopleOptionsAction={loadPeopleOptionsAction}
       officeOptions={railData.offices}
+      onUpdateProjectAction={updateProjectAction}
       projectId={projectId}
       railProjects={railData.projects}
     />

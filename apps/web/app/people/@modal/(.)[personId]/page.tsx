@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 
 import { PersonDetailOverlay } from "../../../components/people/person-detail-overlay";
 import { getViewerRequestContext } from "../../../../lib/auth/session";
-import { getCachedPeopleRailData, getCachedPersonDetail } from "../../data-cache";
+import { loadPeopleOptionsAction, updatePersonAction } from "../../actions";
+import { getCachedPeople, getCachedPersonDetail } from "../../data-cache";
 
 interface PersonDetailModalPageProps {
   params: Promise<{
@@ -17,14 +18,23 @@ export default async function PersonDetailModalPage({
 }: PersonDetailModalPageProps) {
   const { personId } = await params;
   const viewerContext = await getViewerRequestContext();
-  const [data, railData] = await Promise.all([
+  const [data, listData] = await Promise.all([
     getCachedPersonDetail(personId, viewerContext),
-    getCachedPeopleRailData(viewerContext),
+    getCachedPeople({}, viewerContext),
   ]);
 
   if (data.configured && !data.person && !data.forbidden) {
     notFound();
   }
 
-  return <PersonDetailOverlay data={data} personId={personId} railPeople={railData.people} />;
+  return (
+    <PersonDetailOverlay
+      data={data}
+      loadSupervisorOptionsAction={loadPeopleOptionsAction}
+      officeOptions={listData.offices}
+      onUpdatePersonAction={updatePersonAction}
+      personId={personId}
+      railPeople={listData.people}
+    />
+  );
 }

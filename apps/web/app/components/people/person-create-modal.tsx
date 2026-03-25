@@ -3,11 +3,15 @@
 import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import type { CreatePersonInput } from "@mandala/db";
+import type { CreatePersonInput, UpdatePersonInput } from "@mandala/db";
 
+import { CloseButtonIcon } from "../close-button-icon";
+import { EntityEditButton } from "../entity-edit-button";
 import { PeopleAddButton } from "./people-add-button";
 import { PersonCreateForm } from "./person-create-form";
 import type {
+  PersonCreateFormInput,
+  PersonCreateMode,
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
 } from "./person-create-types";
@@ -15,24 +19,36 @@ import type {
 interface PersonCreateModalProps {
   disabled?: boolean;
   disabledReason?: string;
+  initialFormInput?: PersonCreateFormInput;
   loadSupervisorOptionsAction: () => Promise<{
     forbidden: boolean;
     people: PersonCreateSupervisorOption[];
   }>;
+  mode?: PersonCreateMode;
   officeOptions: PersonCreateOfficeOption[];
-  onCreatePersonAction: (
+  onCreatePersonAction?: (
     input: CreatePersonInput,
   ) => Promise<{ personId: string }>;
+  onUpdatePersonAction?: (
+    input: UpdatePersonInput,
+  ) => Promise<{ personId: string }>;
+  personId?: string;
   titleSuggestions: string[];
+  trigger?: "add" | "edit";
 }
 
 export function PersonCreateModal({
   disabled = false,
   disabledReason,
+  initialFormInput,
   loadSupervisorOptionsAction,
+  mode = "create",
   officeOptions,
   onCreatePersonAction,
+  onUpdatePersonAction,
+  personId,
   titleSuggestions,
+  trigger = "add",
 }: PersonCreateModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [supervisorOptions, setSupervisorOptions] = useState<
@@ -45,6 +61,7 @@ export function PersonCreateModal({
   >("idle");
   const router = useRouter();
   const titleId = useId();
+  const isEditMode = mode === "edit";
 
   useEffect(() => {
     if (!isOpen) {
@@ -96,11 +113,19 @@ export function PersonCreateModal({
 
   return (
     <>
-      <PeopleAddButton
-        disabled={disabled}
-        onClick={() => setIsOpen(true)}
-        title={disabledReason}
-      />
+      {trigger === "edit" ? (
+        <EntityEditButton
+          disabled={disabled}
+          onClick={() => setIsOpen(true)}
+          title={disabledReason}
+        />
+      ) : (
+        <PeopleAddButton
+          disabled={disabled}
+          onClick={() => setIsOpen(true)}
+          title={disabledReason}
+        />
+      )}
 
       {isOpen ? (
         <div
@@ -118,14 +143,14 @@ export function PersonCreateModal({
             role="dialog"
           >
             <header className="project-create-modal-header">
-              <h3 id={titleId}>Add Person</h3>
+              <h3 id={titleId}>{isEditMode ? "Edit Person" : "Add Person"}</h3>
               <button
-                aria-label="Close add person modal"
-                className="project-create-close-button"
+                aria-label={isEditMode ? "Close edit person modal" : "Close add person modal"}
+                className="app-close-button"
                 onClick={() => setIsOpen(false)}
                 type="button"
               >
-                x
+                <CloseButtonIcon />
               </button>
             </header>
 
@@ -134,10 +159,28 @@ export function PersonCreateModal({
                 supervisorOptionsUnavailable ||
                 supervisorOptionsStatus === "error"
               }
+              initialFormInput={initialFormInput}
+              mode={mode}
               officeOptions={officeOptions}
               onCancel={() => setIsOpen(false)}
               onSave={async ({ payload }) => {
-                await onCreatePersonAction(payload);
+                if (isEditMode) {
+                  if (!personId || !onUpdatePersonAction) {
+                    throw new Error("Person edit is unavailable on this route.");
+                  }
+
+                  await onUpdatePersonAction({
+                    personId,
+                    ...payload,
+                  });
+                } else {
+                  if (!onCreatePersonAction) {
+                    throw new Error("Person create is unavailable on this route.");
+                  }
+
+                  await onCreatePersonAction(payload);
+                }
+
                 setIsOpen(false);
                 router.refresh();
               }}

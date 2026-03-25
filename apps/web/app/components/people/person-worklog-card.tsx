@@ -41,7 +41,7 @@ export function PersonWorklogCard({ person, timeSummary }: PersonWorklogCardProp
               <article className="pd-list-item" key={entry.id}>
                 <div className="pd-list-item-main pd-list-item-main-column">
                   <span className="pd-person-chip">
-                    <Avatar fallbackKey={entry.projectId} label={entry.projectName} />
+                    <Avatar fallbackKey={entry.projectId} label={entry.projectName} variant="project" />
                     <span>{entry.projectName}</span>
                   </span>
                   <p className="pd-meta-text">

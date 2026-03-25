@@ -266,6 +266,7 @@ export interface ProjectTimeSummary {
 
 export interface ProjectDetailData {
   accessMessage: string | null;
+  canEdit: boolean;
   checklistItems: ProjectChecklistItem[];
   configured: boolean;
   configMessage: string | null;
@@ -317,6 +318,10 @@ export interface CreateProjectInput {
   stage: ProjectStage;
   startDate?: string | null;
   targetCompletionDate?: string | null;
+}
+
+export interface UpdateProjectInput extends CreateProjectInput {
+  projectId: string;
 }
 
 export interface CreateProjectAssignmentInput {
@@ -692,6 +697,7 @@ function emptyProjectDetailData(
 ): ProjectDetailData {
   return {
     accessMessage,
+    canEdit: false,
     checklistItems: [],
     configured,
     configMessage,
@@ -1057,6 +1063,7 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
 
   return {
     accessMessage: null,
+    canEdit: false,
     checklistItems,
     configured: false,
     configMessage: PREVIEW_CONFIG_MESSAGE,
@@ -1424,6 +1431,101 @@ export async function createProject(
       start_date: input.startDate ?? null,
       target_completion_date: input.targetCompletionDate ?? null,
     })
+    .select(PROJECT_ROW_SELECT)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return toProject(data as ProjectRow);
+}
+
+export async function updateProject(
+  input: UpdateProjectInput,
+  context: ViewerRequestContext = {},
+): Promise<Project> {
+  const { client, projectRow, viewer } = await resolveProjectMutationContext(
+    input.projectId,
+    context,
+  );
+
+  const name = normalizeRequiredText(input.name, "Project name");
+  const originatingOfficeId = normalizeRequiredText(
+    input.originatingOfficeId,
+    "Originating office",
+  );
+  const managingOfficeId = normalizeRequiredText(
+    input.managingOfficeId,
+    "Managing office",
+  );
+
+  if (!isProjectStage(input.stage)) {
+    throw new Error("Stage is invalid.");
+  }
+
+  if (
+    !canCreateOrUpdateProjects(viewer, projectRow.managing_office_id) ||
+    !canCreateOrUpdateProjects(viewer, managingOfficeId)
+  ) {
+    throw new Error("You do not have permission to update this project.");
+  }
+
+  if (input.startDate && !isIsoDate(input.startDate)) {
+    throw new Error("Start date is invalid.");
+  }
+
+  if (input.targetCompletionDate && !isIsoDate(input.targetCompletionDate)) {
+    throw new Error("Completion date is invalid.");
+  }
+
+  if (
+    input.startDate &&
+    input.targetCompletionDate &&
+    input.targetCompletionDate < input.startDate
+  ) {
+    throw new Error("Completion date cannot be earlier than the start date.");
+  }
+
+  const officeIds = [...new Set([originatingOfficeId, managingOfficeId])];
+  const [offices, leadPeople] = await Promise.all([
+    fetchOfficeRows(officeIds, { client }),
+    input.leadPersonId
+      ? fetchPeopleRows([input.leadPersonId], { client })
+      : Promise.resolve([]),
+  ]);
+
+  if (offices.length !== officeIds.length) {
+    throw new Error("Selected office is unavailable.");
+  }
+
+  if (input.leadPersonId) {
+    const leadPerson = leadPeople[0];
+
+    if (!leadPerson) {
+      throw new Error("Selected lead is unavailable.");
+    }
+
+    if (!leadPerson.active) {
+      throw new Error("Selected lead must be active.");
+    }
+  }
+
+  const { data, error } = await client
+    .from("projects")
+    .update({
+      client_name: normalizeNullableText(input.clientName),
+      description: normalizeNullableText(input.description),
+      lead_person_id: normalizeNullableText(input.leadPersonId),
+      managing_office_id: managingOfficeId,
+      name,
+      originating_office_id: originatingOfficeId,
+      photo_url: normalizeNullableText(input.photoUrl),
+      stage: input.stage,
+      start_date: input.startDate ?? null,
+      target_completion_date: input.targetCompletionDate ?? null,
+    })
+    .eq("id", projectRow.id)
     .select(PROJECT_ROW_SELECT)
     .single();
 
@@ -1826,6 +1928,12 @@ export async function getProjectDetail(
       accessMessage: restrictedToSummary
         ? "Client access is currently limited to the project summary."
         : viewerAccess.accessMessage,
+      canEdit: previewData.project
+        ? canCreateOrUpdateProjects(
+            viewerAccess.viewer,
+            previewData.project.managingOfficeId,
+          )
+        : false,
       checklistItems: restrictedToSummary ? [] : previewData.checklistItems,
       documents: restrictedToSummary ? [] : previewData.documents,
       restrictedToSummary,
@@ -1976,6 +2084,7 @@ export async function getProjectDetail(
     const summaryOnlyResult = {
       accessMessage:
         "Client access is currently limited to the project summary.",
+      canEdit: false,
       checklistItems: [],
       configured: status.configured,
       configMessage: status.message,
@@ -2088,6 +2197,7 @@ export async function getProjectDetail(
 
   const result = {
     accessMessage: viewerAccess.accessMessage,
+    canEdit: canCreateOrUpdateProjects(viewerAccess.viewer, row.managing_office_id),
     checklistItems,
     configured: status.configured,
     configMessage: status.message,

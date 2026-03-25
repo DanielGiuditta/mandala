@@ -1,8 +1,6 @@
 import { formatAnnualSalaryCompact } from "./people-list-formatters";
-import {
-  getFallbackAvatarColor,
-  getFallbackAvatarInitial,
-} from "../projects/project-avatar-utils";
+
+export { Avatar } from "../projects/project-detail-utils";
 
 export function formatDate(value?: string | null): string {
   if (!value) {
@@ -41,33 +39,4 @@ export function formatTimeSource(source?: string | null): string {
   }
 
   return "Unknown source";
-}
-
-export function Avatar({
-  label,
-  photoUrl,
-  size = "sm",
-  fallbackKey,
-}: {
-  fallbackKey: string;
-  label: string;
-  photoUrl?: string | null;
-  size?: "sm" | "md" | "lg";
-}) {
-  const sizeClass =
-    size === "lg" ? "pd-avatar pd-avatar-lg" : size === "md" ? "pd-avatar pd-avatar-md" : "pd-avatar";
-
-  if (photoUrl) {
-    return <img alt="" aria-hidden className={sizeClass} loading="lazy" src={photoUrl} />;
-  }
-
-  return (
-    <span
-      aria-hidden
-      className={`${sizeClass} pd-avatar-fallback`}
-      style={{ backgroundColor: getFallbackAvatarColor(label, fallbackKey) }}
-    >
-      {getFallbackAvatarInitial(label, "?")}
-    </span>
-  );
 }

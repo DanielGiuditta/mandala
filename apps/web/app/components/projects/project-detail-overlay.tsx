@@ -2,6 +2,7 @@ import type {
   CreateProjectInput,
   ProjectDetailData,
   ProjectRailItem,
+  UpdateProjectInput,
 } from "@mandala/db";
 
 import { EntityModal } from "../entity-modal";
@@ -19,6 +20,9 @@ interface ProjectDetailOverlayProps {
     people: Array<{ fullName: string; id: string }>;
   }>;
   officeOptions: ProjectCreateOfficeOption[];
+  onUpdateProjectAction: (
+    input: UpdateProjectInput,
+  ) => Promise<{ projectId: string }>;
   projectId: string;
   railProjects: ProjectRailItem[];
 }
@@ -28,6 +32,7 @@ export function ProjectDetailOverlay({
   data,
   loadPeopleOptionsAction,
   officeOptions,
+  onUpdateProjectAction,
   projectId,
   railProjects,
 }: ProjectDetailOverlayProps) {
@@ -42,6 +47,7 @@ export function ProjectDetailOverlay({
         data={data}
         loadPeopleOptionsAction={loadPeopleOptionsAction}
         officeOptions={officeOptions}
+        onUpdateProjectAction={onUpdateProjectAction}
         projectId={projectId}
         railProjects={railProjects}
       />

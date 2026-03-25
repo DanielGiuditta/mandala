@@ -5,8 +5,8 @@ import type {
   CreateProjectPayload,
 } from "./project-create-types";
 import {
-  getFallbackAvatarColor,
   getFallbackAvatarInitial,
+  getProjectFallbackAvatarStyle,
 } from "./project-avatar-utils";
 
 export const PROJECT_CREATE_STAGE_OPTIONS: readonly ProjectStage[] = [
@@ -56,8 +56,8 @@ export function getProjectFallbackInitial(name: string): string {
   return getFallbackAvatarInitial(name, "P");
 }
 
-export function getProjectFallbackColor(name: string): string {
-  return getFallbackAvatarColor(name, "project");
+export function getProjectFallbackStyle(name: string) {
+  return getProjectFallbackAvatarStyle(name, "project");
 }
 
 export function readFileAsDataUrl(file: File): Promise<string> {

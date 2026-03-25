@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -12,6 +12,7 @@ interface EntityReturnButtonProps {
   ariaLabel?: string;
   className?: string;
   fallbackHref: string;
+  icon?: ReactNode;
   iconSrc?: string;
   label?: string;
   preferBack?: boolean;
@@ -22,6 +23,7 @@ export function EntityReturnButton({
   ariaLabel,
   className,
   fallbackHref,
+  icon,
   iconSrc,
   label,
   preferBack = false,
@@ -50,11 +52,12 @@ export function EntityReturnButton({
       onClick={handleClick}
       type="button"
     >
-      {iconSrc ? (
+      {icon ? icon : null}
+      {!icon && iconSrc ? (
         <img
           alt=""
           aria-hidden
-          className="entity-header-close-icon"
+          className="app-close-button-icon"
           src={iconSrc}
         />
       ) : null}

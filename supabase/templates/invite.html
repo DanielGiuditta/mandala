@@ -1,0 +1,11 @@
+<h2>Finish joining Mandala</h2>
+
+<p>You have been invited to join Mandala with <strong>{{ .Email }}</strong>.</p>
+
+<p>Open the link below, continue the invite flow, and set your password.</p>
+
+<p>
+  <a href="{{ .SiteURL }}/join?token_hash={{ .TokenHash }}&type=invite">Accept the invite</a>
+</p>
+
+<p>If you did not expect this invite, you can ignore this email.</p>

@@ -2,10 +2,12 @@
 
 import { useId, useMemo, useState } from "react";
 
+import { SelectDropdownField } from "../ui/dropdown";
 import { readFileAsDataUrl } from "../projects/project-create-utils";
 import { PersonPhotoInput } from "./person-photo-input";
 import type {
   PersonCreateFormInput,
+  PersonCreateMode,
   PersonCreateOfficeOption,
   PersonCreatePayload,
   PersonCreateSupervisorOption,
@@ -18,6 +20,8 @@ import {
 
 interface PersonCreateFormProps {
   hasSupervisorOptionGap: boolean;
+  initialFormInput?: PersonCreateFormInput;
+  mode?: PersonCreateMode;
   officeOptions: PersonCreateOfficeOption[];
   onCancel: () => void;
   onSave: (submission: {
@@ -28,8 +32,31 @@ interface PersonCreateFormProps {
   titleSuggestions: string[];
 }
 
+function getDefaultFormInput(
+  officeOptions: PersonCreateOfficeOption[],
+  initialFormInput?: PersonCreateFormInput,
+): PersonCreateFormInput {
+  if (initialFormInput) {
+    return initialFormInput;
+  }
+
+  return {
+    annualSalary: "",
+    email: "",
+    fullName: "",
+    officeId: officeOptions.length === 1 ? officeOptions[0].id : "",
+    permission: "employee",
+    photoFile: null,
+    photoUrl: null,
+    supervisorPersonId: "",
+    title: "",
+  };
+}
+
 export function PersonCreateForm({
   hasSupervisorOptionGap,
+  initialFormInput,
+  mode = "create",
   officeOptions,
   onCancel,
   onSave,
@@ -45,19 +72,35 @@ export function PersonCreateForm({
   const officeInputId = useId();
   const photoInputId = useId();
   const roleSuggestionsId = useId();
-  const [form, setForm] = useState<PersonCreateFormInput>({
-    annualSalary: "",
-    email: "",
-    fullName: "",
-    officeId: officeOptions.length === 1 ? officeOptions[0].id : "",
-    permission: "employee",
-    photoFile: null,
-    photoUrl: null,
-    supervisorPersonId: "",
-    title: "",
-  });
+  const [form, setForm] = useState<PersonCreateFormInput>(() =>
+    getDefaultFormInput(officeOptions, initialFormInput),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const permissionOptions = useMemo(
+    () =>
+      PERSON_CREATE_PERMISSION_OPTIONS.map((permission) => ({
+        description:
+          permission.value === "partner"
+            ? "Full power over the entire system"
+            : permission.value === "admin"
+              ? "Admin power over scoped offices"
+              : permission.value === "employee"
+                ? "Can add tasks and resources on assigned projects"
+                : "Person record only, without app login",
+        label: permission.label,
+        value: permission.value,
+      })),
+    [],
+  );
+  const supervisorSelectOptions = useMemo(
+    () => supervisorOptions.map((supervisor) => ({ label: supervisor.fullName, value: supervisor.id })),
+    [supervisorOptions],
+  );
+  const officeSelectOptions = useMemo(
+    () => officeOptions.map((office) => ({ label: office.name, value: office.id })),
+    [officeOptions],
+  );
 
   const requiredFieldMessage = useMemo(() => {
     const errors: string[] = [];
@@ -155,6 +198,7 @@ export function PersonCreateForm({
             onPhotoChange={(file) => updateField("photoFile", file)}
             personName={form.fullName}
             photoFile={form.photoFile}
+            photoUrl={form.photoUrl}
           />
         </div>
       </div>
@@ -189,57 +233,34 @@ export function PersonCreateForm({
 
       <label className="project-create-field" htmlFor={supervisorInputId}>
         <span className="project-create-label">Supervisor</span>
-        <span className="project-create-select-wrap">
-          <select
-            className="project-create-select-input"
-            id={supervisorInputId}
-            onChange={(event) =>
-              updateField("supervisorPersonId", event.target.value)
-            }
-            value={form.supervisorPersonId}
-          >
-            <option value="">Select supervisor...</option>
-            {supervisorOptions.map((supervisor) => (
-              <option key={supervisor.id} value={supervisor.id}>
-                {supervisor.fullName}
-              </option>
-            ))}
-          </select>
-          <span aria-hidden className="project-create-select-chevron">
-            v
-          </span>
-        </span>
+        <SelectDropdownField
+          ariaLabel="Supervisor"
+          options={supervisorSelectOptions}
+          placeholder="Select supervisor..."
+          value={form.supervisorPersonId}
+          onValueChange={(nextValue) => updateField("supervisorPersonId", nextValue)}
+        />
       </label>
 
       <div className="project-create-dates-stage-row">
         <label className="project-create-field" htmlFor={permissionInputId}>
           <span className="project-create-label">Permission</span>
-          <span className="project-create-pill-field project-create-stage-pill">
-            <select
-              className="project-create-stage-select"
-              id={permissionInputId}
-              onChange={(event) =>
-                updateField("permission", event.target.value as PersonCreateFormInput["permission"])
-              }
-              value={form.permission}
-            >
-              {PERSON_CREATE_PERMISSION_OPTIONS.map((permission) => (
-                <option key={permission.value} value={permission.value}>
-                  {permission.label}
-                </option>
-              ))}
-            </select>
-            <span aria-hidden className="project-create-pill-icon">
-              v
-            </span>
-          </span>
+          <SelectDropdownField
+            ariaLabel="Permission"
+            options={permissionOptions}
+            placeholder="Select permission..."
+            value={form.permission}
+            onValueChange={(nextValue) =>
+              updateField("permission", nextValue as PersonCreateFormInput["permission"])
+            }
+          />
         </label>
 
         <label className="project-create-field" htmlFor={roleInputId}>
           <span className="project-create-label">Role</span>
-          <span className="project-create-select-wrap">
+          <span className="app-native-input-wrap">
             <input
-              className="project-create-select-input"
+              className="app-native-text-input"
               id={roleInputId}
               list={roleSuggestionsId}
               onChange={(event) => updateField("title", event.target.value)}
@@ -247,8 +268,8 @@ export function PersonCreateForm({
               type="text"
               value={form.title}
             />
-            <span aria-hidden className="project-create-select-chevron">
-              v
+            <span aria-hidden className="app-native-input-chevron">
+              ˅
             </span>
           </span>
           {titleSuggestions.length > 0 ? (
@@ -262,25 +283,13 @@ export function PersonCreateForm({
 
         <label className="project-create-field" htmlFor={officeInputId}>
           <span className="project-create-label">Office</span>
-          <span className="project-create-pill-field project-create-stage-pill">
-            <select
-              className="project-create-stage-select"
-              id={officeInputId}
-              onChange={(event) => updateField("officeId", event.target.value)}
-              required
-              value={form.officeId}
-            >
-              <option value="">Select office...</option>
-              {officeOptions.map((office) => (
-                <option key={office.id} value={office.id}>
-                  {office.name}
-                </option>
-              ))}
-            </select>
-            <span aria-hidden className="project-create-pill-icon">
-              v
-            </span>
-          </span>
+          <SelectDropdownField
+            ariaLabel="Office"
+            options={officeSelectOptions}
+            placeholder="Select office..."
+            value={form.officeId}
+            onValueChange={(nextValue) => updateField("officeId", nextValue)}
+          />
         </label>
       </div>
 
@@ -298,7 +307,8 @@ export function PersonCreateForm({
 
       {form.permission !== "noAccount" ? (
         <p className="project-create-message">
-          {formatCreatePersonPermissionLabel(form.permission)} creates a login-linked app account record. Supabase auth invite/onboarding is still separate.
+          {formatCreatePersonPermissionLabel(form.permission)} sends an invite email so the person
+          can set a password and join with this record.
         </p>
       ) : null}
 
@@ -319,7 +329,7 @@ export function PersonCreateForm({
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Saving..." : "Save"}
+          {isSubmitting ? "Saving..." : mode === "edit" ? "Save Changes" : "Save"}
         </button>
       </div>
     </form>

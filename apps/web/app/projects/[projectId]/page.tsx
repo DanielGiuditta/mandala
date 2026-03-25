@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation";
 
 import { ProjectDetailShell } from "../../components/projects/project-detail-shell";
-import { createProjectAction, loadPeopleOptionsAction } from "../actions";
+import {
+  createProjectAction,
+  loadPeopleOptionsAction,
+  updateProjectAction,
+} from "../actions";
 import { getViewerRequestContext } from "../../../lib/auth/session";
 import {
   getCachedProjectDetail,
@@ -34,6 +38,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
       data={data}
       loadPeopleOptionsAction={loadPeopleOptionsAction}
       officeOptions={railData.offices}
+      onUpdateProjectAction={updateProjectAction}
       projectId={projectId}
       railProjects={railData.projects}
     />

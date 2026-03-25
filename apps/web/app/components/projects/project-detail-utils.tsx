@@ -1,5 +1,9 @@
+import {
+  getFallbackAvatarInitial,
+  getPersonFallbackAvatarStyle,
+  getProjectFallbackAvatarStyle,
+} from "./project-avatar-utils";
 import { formatInrCompact } from "../currency-formatters";
-import { getFallbackAvatarColor, getFallbackAvatarInitial } from "./project-avatar-utils";
 
 export function formatDate(value?: string | null): string {
   if (!value) {
@@ -89,14 +93,20 @@ export function Avatar({
   photoUrl,
   size = "sm",
   fallbackKey,
+  variant = "person",
 }: {
   fallbackKey: string;
   label: string;
   photoUrl?: string | null;
   size?: "sm" | "md" | "lg";
+  variant?: "person" | "project";
 }) {
   const sizeClass =
     size === "lg" ? "pd-avatar pd-avatar-lg" : size === "md" ? "pd-avatar pd-avatar-md" : "pd-avatar";
+  const fallbackStyle =
+    variant === "project"
+      ? getProjectFallbackAvatarStyle(label, fallbackKey)
+      : getPersonFallbackAvatarStyle(label, fallbackKey);
 
   if (photoUrl) {
     return <img alt="" aria-hidden className={sizeClass} loading="lazy" src={photoUrl} />;
@@ -106,25 +116,39 @@ export function Avatar({
     <span
       aria-hidden
       className={`${sizeClass} pd-avatar-fallback`}
-      style={{ backgroundColor: getFallbackAvatarColor(label, fallbackKey) }}
+      style={fallbackStyle}
     >
       {getFallbackAvatarInitial(label, "?")}
     </span>
   );
 }
 
-export function ProjectPhoto({
-  name,
-  projectId,
+export function EntityPhoto({
+  entityId,
+  label,
   photoUrl,
   size = "hero",
+  variant = "project",
 }: {
-  name: string;
+  entityId: string;
+  label: string;
   photoUrl?: string | null;
-  projectId: string;
   size?: "hero" | "thumb";
+  variant?: "person" | "project";
 }) {
-  const className = size === "thumb" ? "pd-project-thumb" : "pd-project-photo";
+  const sizeClass =
+    size === "thumb"
+      ? "pd-entity-photo pd-entity-photo-thumb"
+      : "pd-entity-photo pd-entity-photo-hero";
+  const shapeClass =
+    variant === "person"
+      ? "pd-entity-photo-circle"
+      : "pd-entity-photo-rounded";
+  const fallbackStyle =
+    variant === "project"
+      ? getProjectFallbackAvatarStyle(label, entityId)
+      : getPersonFallbackAvatarStyle(label, entityId);
+  const className = `${sizeClass} ${shapeClass}`;
 
   if (photoUrl) {
     return <img alt="" aria-hidden className={className} loading="lazy" src={photoUrl} />;
@@ -133,10 +157,10 @@ export function ProjectPhoto({
   return (
     <span
       aria-hidden
-      className={`${className} pd-project-photo-fallback`}
-      style={{ backgroundColor: getFallbackAvatarColor(name, projectId) }}
+      className={`${className} pd-entity-photo-fallback`}
+      style={fallbackStyle}
     >
-      {getFallbackAvatarInitial(name, "P")}
+      {getFallbackAvatarInitial(label, variant === "person" ? "?" : "P")}
     </span>
   );
 }

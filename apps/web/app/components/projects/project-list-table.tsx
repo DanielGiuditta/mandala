@@ -13,8 +13,9 @@ import {
   stageIcon,
 } from "./projects-formatters";
 import {
-  getFallbackAvatarColor,
   getFallbackAvatarInitial,
+  getPersonFallbackAvatarStyle,
+  getProjectFallbackAvatarStyle,
 } from "./project-avatar-utils";
 import { EntityReturnLink } from "../entity-return-link";
 
@@ -237,12 +238,7 @@ export function ProjectListTable({
                 <span
                   aria-hidden
                   className="projects-project-thumb-fallback"
-                  style={{
-                    backgroundColor: getFallbackAvatarColor(
-                      project.name,
-                      project.id,
-                    ),
-                  }}
+                  style={getProjectFallbackAvatarStyle(project.name, project.id)}
                 >
                   {getFallbackAvatarInitial(project.name, "P")}
                 </span>
@@ -271,12 +267,7 @@ export function ProjectListTable({
                 <span
                   aria-hidden
                   className="projects-project-thumb-fallback"
-                  style={{
-                    backgroundColor: getFallbackAvatarColor(
-                      project.name,
-                      project.id,
-                    ),
-                  }}
+                  style={getProjectFallbackAvatarStyle(project.name, project.id)}
                 >
                   {getFallbackAvatarInitial(project.name, "P")}
                 </span>
@@ -309,12 +300,10 @@ export function ProjectListTable({
                   <span
                     aria-hidden
                     className="projects-lead-avatar-fallback"
-                    style={{
-                      backgroundColor: getFallbackAvatarColor(
-                        formatLeadName(project),
-                        project.leadPersonId ?? project.id,
-                      ),
-                    }}
+                    style={getPersonFallbackAvatarStyle(
+                      formatLeadName(project),
+                      project.leadPersonId ?? project.id,
+                    )}
                   >
                     {getFallbackAvatarInitial(formatLeadName(project), "L")}
                   </span>

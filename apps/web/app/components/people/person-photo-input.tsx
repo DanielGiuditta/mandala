@@ -12,6 +12,7 @@ interface PersonPhotoInputProps {
   onPhotoChange: (file: File | null) => void;
   personName: string;
   photoFile: File | null;
+  photoUrl?: string | null;
 }
 
 export function PersonPhotoInput({
@@ -19,6 +20,7 @@ export function PersonPhotoInput({
   onPhotoChange,
   personName,
   photoFile,
+  photoUrl = null,
 }: PersonPhotoInputProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrl = useMemo(() => {
@@ -53,11 +55,11 @@ export function PersonPhotoInput({
         onClick={() => fileInputRef.current?.click()}
         type="button"
       >
-        {previewUrl ? (
+        {previewUrl || photoUrl ? (
           <img
             alt="Selected person photo preview"
             className="project-create-photo-preview-image"
-            src={previewUrl}
+            src={previewUrl ?? photoUrl ?? undefined}
           />
         ) : (
           <span

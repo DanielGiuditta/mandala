@@ -40,6 +40,7 @@ export function PersonDetailGlance({ person }: PersonDetailGlanceProps) {
               fallbackKey={person.supervisorPersonId ?? person.id}
               label={person.supervisorName ?? "No supervisor"}
               photoUrl={person.supervisorPhotoUrl}
+              variant="person"
             />
             <strong>{person.supervisorName ?? "No supervisor assigned"}</strong>
           </span>
