@@ -7,6 +7,40 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { getViewerRequestContext } from "../../../lib/auth/session"
 
+function formatTrackerError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (!error || typeof error !== "object") {
+    return "Unable to load time tracker."
+  }
+
+  const candidate = error as {
+    code?: unknown
+    details?: unknown
+    hint?: unknown
+    message?: unknown
+    name?: unknown
+  }
+
+  const parts = [
+    typeof candidate.message === "string" ? candidate.message : null,
+    typeof candidate.code === "string" ? `code=${candidate.code}` : null,
+    typeof candidate.details === "string" && candidate.details
+      ? `details=${candidate.details}`
+      : null,
+    typeof candidate.hint === "string" && candidate.hint
+      ? `hint=${candidate.hint}`
+      : null,
+    typeof candidate.name === "string" && candidate.name
+      ? `name=${candidate.name}`
+      : null,
+  ].filter((part): part is string => Boolean(part))
+
+  return parts.length > 0 ? parts.join(" | ") : JSON.stringify(error)
+}
+
 export async function GET(request: NextRequest) {
   try {
     const localDate = request.nextUrl.searchParams.get("localDate") ?? ""
@@ -19,10 +53,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        accessMessage:
-          error instanceof Error
-            ? error.message
-            : "Unable to load time tracker.",
+        accessMessage: formatTrackerError(error),
         configured: true,
         configMessage: null,
         forbidden: false,
@@ -51,10 +82,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         entry: null,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to save tracked time.",
+        error: formatTrackerError(error),
         ok: false,
         todayHours: null,
       },
