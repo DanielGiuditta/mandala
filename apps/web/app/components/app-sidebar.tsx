@@ -78,6 +78,31 @@ function getLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+function getTrackerRunningHoursForToday(
+  runningState: RunningTrackerState | null,
+  selectedProjectId: string,
+  nowTimestamp: number,
+): number {
+  if (!runningState || runningState.projectId !== selectedProjectId) {
+    return 0
+  }
+
+  const startedAt = new Date(runningState.startedAt)
+  if (Number.isNaN(startedAt.getTime())) {
+    return 0
+  }
+
+  const now = new Date(nowTimestamp)
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const effectiveStart = startedAt > dayStart ? startedAt : dayStart
+
+  if (effectiveStart.getTime() >= nowTimestamp) {
+    return 0
+  }
+
+  return (nowTimestamp - effectiveStart.getTime()) / (1000 * 60 * 60)
+}
+
 function formatTodayHours(hours: number): string {
   const totalMinutes = Math.max(0, Math.round(hours * 60))
   const wholeHours = Math.floor(totalMinutes / 60)
@@ -131,6 +156,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const [trackerProjects, setTrackerProjects] = useState<SelfTimeTrackerData["projects"]>([])
   const [trackerSelectedProjectId, setTrackerSelectedProjectId] = useState("")
   const [trackerRunningState, setTrackerRunningState] = useState<RunningTrackerState | null>(null)
+  const [trackerNowTimestamp, setTrackerNowTimestamp] = useState(() => Date.now())
   const [trackerError, setTrackerError] = useState<string | null>(null)
   const profileName = shell.displayName ?? "kolam user"
   const profileInitial = profileName.charAt(0).toUpperCase()
@@ -157,6 +183,13 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const trackerSelectedProject = trackerProjects.find(
     (project) => project.id === trackerSelectedProjectId,
   )
+  const trackerDisplayHours =
+    (trackerSelectedProject?.todayHours ?? 0) +
+    getTrackerRunningHoursForToday(
+      trackerRunningState,
+      trackerSelectedProjectId,
+      trackerNowTimestamp,
+    )
   const canStartTracker =
     trackerVisible &&
     !trackerLoading &&
@@ -288,6 +321,19 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     }
   }, [isSidebarOpen, shell.isAuthenticated, sessionEmail])
 
+  useEffect(() => {
+    if (!isSidebarOpen || !trackerVisible || !trackerRunningState) {
+      return
+    }
+
+    setTrackerNowTimestamp(Date.now())
+    const intervalId = window.setInterval(() => {
+      setTrackerNowTimestamp(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [isSidebarOpen, trackerRunningState, trackerVisible])
+
   async function handleTrackerStop() {
     if (!sessionEmail || !trackerRunningState || trackerSaving || trackerLoading) {
       return
@@ -349,6 +395,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     localStorage.setItem(storageKeys.running, JSON.stringify(runningState))
     localStorage.setItem(storageKeys.selectedProjectId, trackerSelectedProjectId)
     setTrackerRunningState(runningState)
+    setTrackerNowTimestamp(Date.now())
     setTrackerError(null)
   }
 
@@ -474,7 +521,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
 
             <p className="app-time-tracker-today">
               {trackerSelectedProject
-                ? `${formatTodayHours(trackerSelectedProject.todayHours)} today`
+                ? `${formatTodayHours(trackerDisplayHours)} today`
                 : "0m today"}
             </p>
             {trackerAccessMessage ? (
