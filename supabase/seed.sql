@@ -39,6 +39,7 @@ insert into public.people (
   full_name,
   title,
   office_id,
+  supervisor_person_id,
   annual_salary,
   availability_hours_per_week,
   email,
@@ -50,6 +51,7 @@ values
     'Anjali Menon',
     'Partner',
     '00000000-0000-0000-0000-000000000001',
+    null,
     185000.00,
     40.00,
     'anjali.menon@kolam.local',
@@ -60,6 +62,7 @@ values
     'Vikram Rao',
     'Partner',
     '00000000-0000-0000-0000-000000000002',
+    null,
     182000.00,
     40.00,
     'vikram.rao@kolam.local',
@@ -70,6 +73,7 @@ values
     'Meera Joseph',
     'Partner',
     '00000000-0000-0000-0000-000000000003',
+    null,
     178000.00,
     40.00,
     'meera.joseph@kolam.local',
@@ -80,6 +84,7 @@ values
     'Arjun Thomas',
     'Project Architect',
     '00000000-0000-0000-0000-000000000001',
+    null,
     116000.00,
     40.00,
     'arjun.thomas@kolam.local',
@@ -90,6 +95,7 @@ values
     'Nisha Varghese',
     'Designer',
     '00000000-0000-0000-0000-000000000002',
+    null,
     92000.00,
     40.00,
     'nisha.varghese@kolam.local',
@@ -100,6 +106,7 @@ values
     'Devika Paul',
     'Project Coordinator',
     '00000000-0000-0000-0000-000000000003',
+    null,
     78000.00,
     35.00,
     'devika.paul@kolam.local',
@@ -110,10 +117,27 @@ set
   full_name = excluded.full_name,
   title = excluded.title,
   office_id = excluded.office_id,
+  supervisor_person_id = excluded.supervisor_person_id,
   annual_salary = excluded.annual_salary,
   availability_hours_per_week = excluded.availability_hours_per_week,
   email = excluded.email,
   active = excluded.active;
+
+update public.people
+set supervisor_person_id = case id
+  when '10000000-0000-0000-0000-000000000004' then '10000000-0000-0000-0000-000000000001'
+  when '10000000-0000-0000-0000-000000000005' then '10000000-0000-0000-0000-000000000002'
+  when '10000000-0000-0000-0000-000000000006' then '10000000-0000-0000-0000-000000000003'
+  else null
+end
+where id in (
+  '10000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000003',
+  '10000000-0000-0000-0000-000000000004',
+  '10000000-0000-0000-0000-000000000005',
+  '10000000-0000-0000-0000-000000000006'
+);
 
 update public.offices
 set partner_person_id = case id

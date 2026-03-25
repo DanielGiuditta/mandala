@@ -22,11 +22,19 @@ If absent, the UI should render a deterministic fallback avatar.
 ### `officeId`
 The person's home office.
 
+### `supervisorPersonId`
+Optional reporting relationship to another `Person`.
+
+This is used for people-management and time-review workflows.
+It is not an authorization role assignment.
+
 ### `annualSalary`
 Annual salary used to derive hourly labor cost.
 
 ### `availabilityHoursPerWeek`
 Weekly working capacity used to calculate assignment allocation and remaining capacity.
+
+In the tracking-first V1 create-person flow, this may be defaulted server-side to `40` when the UI does not expose a planning-capacity input yet.
 
 ## Project
 

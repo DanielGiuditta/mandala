@@ -4,6 +4,7 @@ export interface Person {
   title?: string | null
   photoUrl?: string | null
   officeId: string
+  supervisorPersonId?: string | null
   annualSalary: number
   availabilityHoursPerWeek: number
   email?: string | null

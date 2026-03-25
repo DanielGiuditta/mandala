@@ -1600,10 +1600,6 @@ export async function updateProjectTimeEntry(
     context,
   );
 
-  if (!canEditProjectTime(viewer, toProjectPermissionSubject(projectRow))) {
-    throw new Error("You do not have permission to edit project worklog entries.");
-  }
-
   const timeEntryId = normalizeRequiredText(input.timeEntryId, "Time entry");
   const { data: timeEntryRow, error: timeEntryError } = await client
     .from("time_entries")
@@ -1623,6 +1619,22 @@ export async function updateProjectTimeEntry(
 
   if (existingTimeEntry.project_id !== projectRow.id) {
     throw new Error("Time entry does not belong to the selected project.");
+  }
+
+  const trackedPerson =
+    (await fetchPeopleRows([existingTimeEntry.person_id], { client }))[0] ?? null;
+  const canEditAsProjectManager = canEditProjectTime(
+    viewer,
+    toProjectPermissionSubject(projectRow),
+  );
+  const canEditAsSupervisor = Boolean(
+    viewer.personId &&
+      trackedPerson?.supervisor_person_id &&
+      trackedPerson.supervisor_person_id === viewer.personId,
+  );
+
+  if (!canEditAsProjectManager && !canEditAsSupervisor) {
+    throw new Error("You do not have permission to edit project worklog entries.");
   }
 
   const updates: {

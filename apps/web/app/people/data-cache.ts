@@ -4,6 +4,7 @@ import {
   type PeopleListData,
   type PeopleListFilters,
   type PersonDetailData,
+  type PersonListItem,
   type ViewerRequestContext,
 } from "@mandala/db";
 import { unstable_cache } from "next/cache";
@@ -48,6 +49,30 @@ export async function getCachedPersonDetail(
     {
       revalidate: PEOPLE_REVALIDATE_SECONDS,
       tags: [PEOPLE_TAG, `person:${personId}`],
+    },
+  )();
+}
+
+export async function getCachedPeopleRailData(
+  context: ViewerRequestContext,
+): Promise<{
+  configured: boolean;
+  forbidden: boolean;
+  people: PersonListItem[];
+}> {
+  return unstable_cache(
+    async () => {
+      const data = await listPeople({}, context);
+      return {
+        configured: data.configured,
+        forbidden: data.forbidden,
+        people: data.people,
+      };
+    },
+    ["people-rail", getViewerCacheKey(context)],
+    {
+      revalidate: PEOPLE_REVALIDATE_SECONDS,
+      tags: [PEOPLE_TAG],
     },
   )();
 }

@@ -81,6 +81,7 @@ interface ViewerAccessContextResponse {
     title: string | null
     photoUrl: string | null
     officeId: string
+    supervisorPersonId?: string | null
     annualSalary: number | string
     availabilityHoursPerWeek: number | string
     email: string | null
@@ -376,6 +377,7 @@ function buildViewerAccessFromDbResponse(
         title: response.person.title,
         photo_url: response.person.photoUrl,
         office_id: response.person.officeId,
+        supervisor_person_id: response.person.supervisorPersonId ?? null,
         annual_salary: response.person.annualSalary,
         availability_hours_per_week: response.person.availabilityHoursPerWeek,
         email: response.person.email,

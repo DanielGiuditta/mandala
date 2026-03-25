@@ -8,7 +8,7 @@ interface PeopleLayoutProps {
 export default function PeopleLayout({ children, modal }: PeopleLayoutProps) {
   return (
     <div className="entity-route-shell">
-      {children}
+      <div className="entity-route-content">{children}</div>
       {modal}
     </div>
   );

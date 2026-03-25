@@ -13,6 +13,7 @@ export interface PersonRow {
   title: string | null
   photo_url: string | null
   office_id: string
+  supervisor_person_id: string | null
   annual_salary: number | string
   availability_hours_per_week: number | string
   email: string | null
@@ -74,7 +75,7 @@ export async function fetchPeopleRows(
   let query = client
     .from("people")
     .select(
-      "id, full_name, title, photo_url, office_id, annual_salary, availability_hours_per_week, email, active",
+      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
     )
     .order("full_name")
 

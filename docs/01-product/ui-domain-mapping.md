@@ -17,10 +17,14 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - "Stage" / "Project Stage" → `stage`
 - "Project Photo" / "Cover Image" / "Photo" → `photoUrl`
 - "Person Photo" / "Profile Photo" / "Avatar" → `photoUrl`
+- "Supervisor" / "Manager" → `Person.supervisorPersonId`
+- "Permission" / "Access" (People create/list) → linked `UserAccount` plus optional `RoleAssignment`, not `Person.title`
+- "Hours this week" (People list/detail) → current-week rollup of tracked `TimeEntry.hours`
+- "Sourced to" (People list/detail) → active projects with tracked `TimeEntry` history for that person, not planned `Assignment` rows
 
 ## Action mappings
 
-- "Add Team Member" → create `Person`
+- "Add Team Member" → create `Person` and optionally linked `UserAccount` / `RoleAssignment` based on the selected permission
 - "Assign Admin" → create `RoleAssignment`
 - "Create Project" → create `Project`
 - "Set Project Lead" → update `Project.leadPersonId`

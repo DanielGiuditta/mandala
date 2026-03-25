@@ -32,6 +32,7 @@ export const previewPeople = [
     id: "10000000-0000-0000-0000-000000000001",
     office_id: "00000000-0000-0000-0000-000000000001",
     photo_url: null,
+    supervisor_person_id: null,
     title: "Partner",
   },
   {
@@ -43,6 +44,7 @@ export const previewPeople = [
     id: "10000000-0000-0000-0000-000000000002",
     office_id: "00000000-0000-0000-0000-000000000002",
     photo_url: null,
+    supervisor_person_id: null,
     title: "Partner",
   },
   {
@@ -54,6 +56,7 @@ export const previewPeople = [
     id: "10000000-0000-0000-0000-000000000003",
     office_id: "00000000-0000-0000-0000-000000000003",
     photo_url: null,
+    supervisor_person_id: null,
     title: "Partner",
   },
   {
@@ -65,6 +68,7 @@ export const previewPeople = [
     id: "10000000-0000-0000-0000-000000000004",
     office_id: "00000000-0000-0000-0000-000000000001",
     photo_url: null,
+    supervisor_person_id: "10000000-0000-0000-0000-000000000001",
     title: "Project Architect",
   },
   {
@@ -76,6 +80,7 @@ export const previewPeople = [
     id: "10000000-0000-0000-0000-000000000005",
     office_id: "00000000-0000-0000-0000-000000000002",
     photo_url: null,
+    supervisor_person_id: "10000000-0000-0000-0000-000000000002",
     title: "Designer",
   },
   {
@@ -87,6 +92,7 @@ export const previewPeople = [
     id: "10000000-0000-0000-0000-000000000006",
     office_id: "00000000-0000-0000-0000-000000000003",
     photo_url: null,
+    supervisor_person_id: "10000000-0000-0000-0000-000000000003",
     title: "Project Coordinator",
   },
 ]

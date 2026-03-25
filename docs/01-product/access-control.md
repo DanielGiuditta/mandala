@@ -9,6 +9,8 @@ This document defines the effective user tiers for V1 and the minimum data neede
 ## Core rules
 
 - `Person.title` is a job title, not a permission role.
+- `Person.supervisorPersonId` is a reporting relationship, not a permission role assignment.
+- A person's recorded supervisor may review and correct that person's tracked project time in V1.
 - `Office.partnerPersonId` identifies the partner responsible for an office. It does not by itself grant instance-wide partner permissions.
 - `Project.leadPersonId` remains the source of truth for who leads a project. Project-lead permissions derive from that relationship once the lead person is linked to a user account.
 - Office-scoped admin permissions resolve against `Person.officeId` for person records.
@@ -42,6 +44,12 @@ Internal user linked to a `Person` record without broader elevated scope.
 
 Employees can contribute checklist items and project documents on projects where they are actively assigned or are the lead.
 
+### `noAccount`
+
+Person record without a linked application login yet.
+
+This is a people-directory state, not an effective signed-in user tier.
+
 ### `client`
 
 External or restricted read-only user with explicit access to one or more projects.
@@ -59,10 +67,21 @@ Clients never receive internal write permissions.
 | Set project lead | Yes | Yes | No | No | No | Same scope as project updates. |
 | Assign people to projects | Yes | Yes | Yes | No | No | Admin scope uses `Project.managingOfficeId`. Project leads act only on projects they lead. |
 | Change project stage | Yes | Yes | Yes | No | No | Same scope as assignment management. |
-| Edit project time entries | Yes | Yes | Yes | No | No | Same scope as assignment management. |
+| Edit project time entries | Yes | Yes | Yes | No | No | Same scope as assignment management. A person's recorded supervisor may also edit that person's time entries. |
 | Add checklist items | Yes | Yes | Yes | Yes | No | Employees act only on projects they are actively assigned to or lead. |
 | Upload project documents | Yes | Yes | Yes | Yes | No | Same scope as checklist contribution. |
 | Assign admins | Yes | No | No | No | No | Partner-only in V1. |
+
+## Create-person permission mapping
+
+The create-person flow may expose a `Permission` control, but it must map to the authorization layer, not `Person.title`.
+
+- `No account` → create only the `Person` record
+- `Employee` → create a linked `UserAccount` with no elevated `RoleAssignment`
+- `Admin` → create a linked `UserAccount` plus an office-scoped `RoleAssignment(role='admin', officeId=person.officeId)`
+- `Partner` → create a linked `UserAccount` plus an instance-scoped `RoleAssignment(role='partner')`
+
+Do not use `Project Lead` as a create-person permission value. Project-lead capability remains derived from `Project.leadPersonId`.
 
 ## Minimal supporting models
 

@@ -1,9 +1,8 @@
-import { notFound } from "next/navigation"
+import { notFound } from "next/navigation";
 
-import { getViewerRequestContext } from "../../../lib/auth/session"
-import { EntityReturnButton } from "../../components/entity-return-button"
-import { PersonDetailView } from "../../components/people/person-detail-view"
-import { getCachedPersonDetail } from "../data-cache"
+import { getViewerRequestContext } from "../../../lib/auth/session";
+import { PersonDetailView } from "../../components/people/person-detail-view";
+import { getCachedPeopleRailData, getCachedPersonDetail } from "../data-cache";
 
 interface PersonDetailPageProps {
   params: Promise<{
@@ -14,25 +13,22 @@ interface PersonDetailPageProps {
 export const dynamic = "force-dynamic"
 
 export default async function PersonDetailPage({ params }: PersonDetailPageProps) {
-  const { personId } = await params
-  const viewerContext = await getViewerRequestContext()
-  const data = await getCachedPersonDetail(personId, viewerContext)
+  const { personId } = await params;
+  const viewerContext = await getViewerRequestContext();
+  const [data, railData] = await Promise.all([
+    getCachedPersonDetail(personId, viewerContext),
+    getCachedPeopleRailData(viewerContext),
+  ]);
 
   if (data.configured && !data.person && !data.forbidden) {
-    notFound()
+    notFound();
   }
 
   return (
     <PersonDetailView
       data={data}
-      returnControl={
-        <EntityReturnButton
-          className="secondary"
-          fallbackHref="/people"
-          label="Back to people"
-          scope="people"
-        />
-      }
+      personId={personId}
+      railPeople={railData.people}
     />
-  )
+  );
 }

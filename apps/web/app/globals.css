@@ -1403,6 +1403,396 @@ th {
   white-space: nowrap;
 }
 
+.people-domain {
+  align-content: start;
+  background: var(--figma-color-background-base);
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-x: auto;
+  padding: 0 0 136px;
+}
+
+.people-domain-header {
+  padding: 16px 24px;
+}
+
+.people-add-button {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--figma-color-text-primary);
+  cursor: default;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  opacity: 0.6;
+  user-select: none;
+  width: 32px;
+}
+
+.people-add-icon {
+  display: block;
+  height: 16px;
+  width: 16px;
+}
+
+.people-filter-form {
+  display: block;
+  padding: 0 16px;
+}
+
+.people-filter-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.people-filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.people-search-input {
+  background: var(--figma-color-background-wash-light);
+  border: none;
+  border-radius: 24px;
+  color: var(--figma-color-text-primary);
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  min-height: 42px;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.people-search-input::placeholder {
+  color: #9d9d9d;
+}
+
+.people-search-input:focus-visible {
+  outline: 1px solid var(--figma-color-border-default);
+  outline-offset: 0;
+}
+
+.people-list {
+  display: grid;
+  gap: 8px;
+  min-width: 800px;
+  overflow-x: auto;
+  padding: 0 16px 12px;
+  width: 100%;
+}
+
+.people-list-columns,
+.people-list-row {
+  align-items: center;
+  column-gap: 16px;
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 1.4fr)
+    minmax(240px, 1.7fr)
+    minmax(110px, 0.9fr)
+    minmax(150px, 1.1fr)
+    minmax(118px, 0.9fr)
+    minmax(120px, 0.9fr)
+    minmax(120px, 1fr)
+    minmax(108px, 0.9fr);
+  padding: 8px;
+  width: 100%;
+}
+
+.people-list-columns {
+  color: var(--figma-color-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  padding: 0 8px;
+}
+
+.people-column-cell {
+  min-width: 0;
+}
+
+.people-column-button {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-start;
+  max-width: 100%;
+  padding: 4px 8px;
+  width: 100%;
+}
+
+.people-column-button:hover {
+  background: var(--figma-color-background-hover);
+}
+
+.people-column-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-sort-icon {
+  display: block;
+  height: 14px;
+  opacity: 0;
+  transform: rotate(0deg);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  width: 14px;
+}
+
+.people-column-button:hover .people-sort-icon,
+.people-column-button:focus-visible .people-sort-icon {
+  opacity: 0.95;
+}
+
+.people-sort-icon-asc,
+.people-sort-icon-desc {
+  opacity: 0.95;
+}
+
+.people-sort-icon-asc {
+  transform: rotate(180deg);
+}
+
+.people-sort-icon-desc {
+  transform: rotate(0deg);
+}
+
+.people-list-row {
+  border-radius: 8px;
+  color: var(--figma-color-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  min-height: 40px;
+}
+
+.people-list-row-light {
+  background: #fbfcfe;
+}
+
+.people-list-row-base {
+  background: #ffffff;
+}
+
+.people-cell {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-height: 24px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.people-cell-name {
+  gap: 8px;
+}
+
+.people-cell-metric {
+  justify-content: flex-start;
+}
+
+.people-cell-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-name-link {
+  color: inherit;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+}
+
+.people-name-link:hover {
+  text-decoration: underline;
+}
+
+.people-avatar-image {
+  border-radius: 999px;
+  display: block;
+  flex: 0 0 24px;
+  height: 24px;
+  object-fit: cover;
+  width: 24px;
+}
+
+.people-avatar-fallback {
+  align-items: center;
+  border-radius: 999px;
+  color: #3e2f22;
+  display: inline-flex;
+  flex: 0 0 24px;
+  font-size: 10px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.people-status-pill {
+  align-items: center;
+  background: #f3f4f6;
+  border-radius: 16px;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 8px;
+}
+
+.people-status-dot {
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 8px;
+  height: 8px;
+  width: 8px;
+}
+
+.people-reference-pill {
+  align-items: center;
+  background: #f3f4f6;
+  border-radius: 16px;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 8px;
+}
+
+.people-reference-avatar {
+  border-radius: 999px;
+  display: block;
+  flex: 0 0 20px;
+  height: 20px;
+  object-fit: cover;
+  width: 20px;
+}
+
+.people-reference-fallback {
+  align-items: center;
+  border-radius: 999px;
+  color: #3e2f22;
+  display: inline-flex;
+  flex: 0 0 20px;
+  font-size: 9px;
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.people-reference-empty {
+  color: var(--figma-color-text-tertiary);
+  font-weight: 500;
+}
+
+.people-project-chips {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.people-project-chip {
+  align-items: center;
+  background: #f3f4f6;
+  border-radius: 16px;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 8px 2px 4px;
+}
+
+.people-project-chip-avatar {
+  border-radius: 999px;
+  display: block;
+  flex: 0 0 20px;
+  height: 20px;
+  object-fit: cover;
+  width: 20px;
+}
+
+.people-project-chip-fallback {
+  align-items: center;
+  border-radius: 999px;
+  color: #3e2f22;
+  display: inline-flex;
+  flex: 0 0 20px;
+  font-size: 9px;
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.people-project-overflow {
+  color: var(--figma-color-text-primary);
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.people-status-dot-active {
+  background: #1fa22e;
+}
+
+.people-status-dot-inactive {
+  background: #9ca3af;
+}
+
+.people-list-empty {
+  border: 1px dashed var(--figma-color-border-default);
+  border-radius: 8px;
+  color: var(--figma-subtle-fg);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 12px;
+}
+
+.people-notice-dock {
+  background: linear-gradient(
+    to top,
+    var(--figma-color-background-base) 70%,
+    transparent
+  );
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+  left: 272px;
+  padding: 8px 16px 12px;
+  position: fixed;
+  right: 16px;
+  z-index: 20;
+}
+
+.app-sidebar-closed + .app-domain .people-notice-dock {
+  left: 68px;
+}
+
 .detail-grid {
   display: grid;
   gap: 16px;
@@ -1911,6 +2301,10 @@ th {
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+.pd-glance-grid-person {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .pd-glance-pill {
   background: var(--figma-color-background-base);
   border: 1px solid var(--figma-color-border-default);
@@ -2332,6 +2726,23 @@ th {
 
   .projects-filter-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .people-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .people-list-columns,
+  .people-list-row {
+    grid-template-columns:
+      minmax(170px, 1.35fr)
+      minmax(210px, 1.6fr)
+      minmax(90px, 0.9fr)
+      minmax(132px, 1.05fr)
+      minmax(100px, 0.9fr)
+      minmax(110px, 0.9fr)
+      minmax(110px, 0.95fr)
+      minmax(100px, 0.9fr);
   }
 
   .project-title-row,

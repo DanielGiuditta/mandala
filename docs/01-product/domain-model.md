@@ -66,6 +66,7 @@ Represents a person who can work on projects.
 - `title`
 - `photoUrl`
 - `officeId`
+- `supervisorPersonId`
 - `annualSalary`
 - `availabilityHoursPerWeek`
 - `email`
@@ -91,10 +92,14 @@ Represents a person who can work on projects.
 - utilization uses actual logged project time, not planned assignment hours
 - `availableHoursInPeriod` must use the same time window as `loggedHoursInPeriod`
 - `title` is a job title, not an authorization role
+- `supervisorPersonId` is an optional reporting relationship used for people management and time-review workflows
+- the tracking-first V1 create-person flow may default `availabilityHoursPerWeek` to `40` when the UI hides planning-capacity fields
 
 ### Relationships
 
 - Person → Office
+- Person → Supervisor
+- Person → DirectReports
 - Person → Assignments
 - Person → ChecklistItems
 - Person → TimeEntries
