@@ -175,6 +175,7 @@ Assignments are stored in hours per week, not percent.
 - overlap is allowed
 - a person can have multiple active assignments
 - role comes from the person's `title`, not the assignment
+- tracked time does not automatically create or update planned weekly assignment hours
 
 ## TimeEntry
 
@@ -207,6 +208,7 @@ The web app may also expose a lightweight self-only sidebar tracker for any sign
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
 - the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
+- once a person has tracked time on a project, project and people staffed views should include that person for the project even when `assignmentId` is null
 - dedicated web time-entry flows are out of scope for V1, but supervisors and project leads may still correct tracked time
 
 ## ResourceDocument

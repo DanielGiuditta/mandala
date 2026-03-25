@@ -56,6 +56,8 @@ Assignments represent planned staffing on a project.
 
 Assignments are stored as `assignedHoursPerWeek`.
 
+Tracked time does not silently create planned weekly assignment hours.
+
 The system should also derive an allocation percentage relative to the person's weekly availability.
 
 People may have overlapping assignments across projects.
@@ -69,6 +71,8 @@ At machine login or session start, the person selects the current project from a
 The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
 
 That tracker may let the person pick any active project, start or stop a timer, and write a single manual time entry when the timer stops. The signed-in email resolves to the person's backing record for storage.
+
+Once a person has recorded time on a project, the web app should treat that person as staffed to the project for project and people visibility across the system, even if no planned assignment exists yet.
 
 Time tracking is intended for simple operational tracking and rough project cost visibility.
 

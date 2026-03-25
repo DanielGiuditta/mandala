@@ -221,6 +221,16 @@ export interface ProjectAssignmentItem extends Assignment {
   personTitle: string | null;
 }
 
+export interface ProjectStaffPerson {
+  hasAssignment: boolean;
+  hasTrackedTime: boolean;
+  personId: string;
+  personName: string;
+  personOfficeName: string | null;
+  personPhotoUrl: string | null;
+  personTitle: string | null;
+}
+
 export interface ProjectChecklistItem extends ChecklistItem {
   assignedPersonName: string | null;
   assignedPersonPhotoUrl: string | null;
@@ -263,6 +273,7 @@ export interface ProjectDetailData {
   forbidden: boolean;
   project: ProjectListItem | null;
   restrictedToSummary: boolean;
+  staffedPeople: ProjectStaffPerson[];
   staffing: ProjectAssignmentItem[];
   timeSummary: ProjectTimeSummary;
   viewerLabel: string | null;
@@ -688,10 +699,59 @@ function emptyProjectDetailData(
     forbidden,
     project: null,
     restrictedToSummary: false,
+    staffedPeople: [],
     staffing: [],
     timeSummary: emptyTimeSummary(),
     viewerLabel,
   };
+}
+
+function buildProjectStaffedPeople(
+  assignmentRows: Pick<AssignmentRow, "person_id">[],
+  timeEntryRows: Pick<TimeEntryRow, "person_id">[],
+  peopleById: Map<string, PersonRow>,
+  officesById: Map<string, OfficeRow>,
+): ProjectStaffPerson[] {
+  const staffedPeopleById = new Map<string, ProjectStaffPerson>();
+
+  function ensureStaffedPerson(personId: string): ProjectStaffPerson {
+    const existing = staffedPeopleById.get(personId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const person = peopleById.get(personId);
+    const staffedPerson: ProjectStaffPerson = {
+      hasAssignment: false,
+      hasTrackedTime: false,
+      personId,
+      personName: person?.full_name ?? "Unknown person",
+      personOfficeName: person
+        ? (officesById.get(person.office_id)?.name ?? null)
+        : null,
+      personPhotoUrl: person?.photo_url ?? null,
+      personTitle: person?.title ?? null,
+    };
+
+    staffedPeopleById.set(personId, staffedPerson);
+    return staffedPerson;
+  }
+
+  for (const assignment of assignmentRows) {
+    ensureStaffedPerson(assignment.person_id).hasAssignment = true;
+  }
+
+  for (const timeEntry of timeEntryRows) {
+    ensureStaffedPerson(timeEntry.person_id).hasTrackedTime = true;
+  }
+
+  return [...staffedPeopleById.values()].sort(
+    (left, right) =>
+      Number(right.hasAssignment) - Number(left.hasAssignment) ||
+      Number(right.hasTrackedTime) - Number(left.hasTrackedTime) ||
+      left.personName.localeCompare(right.personName),
+  );
 }
 
 function buildProjectMetrics(
@@ -906,6 +966,12 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
     null,
     false,
   );
+  const staffedPeople = buildProjectStaffedPeople(
+    assignmentRows,
+    timeEntryRows,
+    peopleById,
+    officesById,
+  );
   const staffing = assignmentRows.map((assignmentRow) => {
     const assignment = toAssignment(assignmentRow);
     const person = peopleById.get(assignment.personId);
@@ -998,6 +1064,7 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
     forbidden: false,
     project,
     restrictedToSummary: false,
+    staffedPeople,
     staffing,
     timeSummary: {
       byPerson: Array.from(byPerson.values()).sort((left, right) =>
@@ -1762,6 +1829,7 @@ export async function getProjectDetail(
       checklistItems: restrictedToSummary ? [] : previewData.checklistItems,
       documents: restrictedToSummary ? [] : previewData.documents,
       restrictedToSummary,
+      staffedPeople: restrictedToSummary ? [] : previewData.staffedPeople,
       staffing: restrictedToSummary ? [] : previewData.staffing,
       timeSummary: restrictedToSummary
         ? emptyTimeSummary()
@@ -1915,6 +1983,7 @@ export async function getProjectDetail(
       forbidden: false,
       project,
       restrictedToSummary: true,
+      staffedPeople: [],
       staffing: [],
       timeSummary: emptyTimeSummary(),
       viewerLabel,
@@ -1939,6 +2008,12 @@ export async function getProjectDetail(
       personTitle: person?.title ?? null,
     };
   });
+  const staffedPeople = buildProjectStaffedPeople(
+    assignmentRows,
+    timeEntryRows,
+    peopleById,
+    officesById,
+  );
 
   const checklistItems = checklistRows.map((checklistRow) => {
     const checklistItem = toChecklistItem(checklistRow);
@@ -2020,6 +2095,7 @@ export async function getProjectDetail(
     forbidden: false,
     project,
     restrictedToSummary: false,
+    staffedPeople,
     staffing,
     timeSummary: {
       byPerson: Array.from(byPerson.values()).sort((left, right) =>

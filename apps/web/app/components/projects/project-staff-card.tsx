@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
-import type { ProjectAssignmentItem } from "@mandala/db";
+import type { ProjectStaffPerson } from "@mandala/db";
 
 import { Avatar } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
@@ -22,14 +22,14 @@ interface ProjectStaffCardProps {
     people: Array<{ fullName: string; id: string }>;
   }>;
   projectId: string;
-  staffing: ProjectAssignmentItem[];
+  staffedPeople: ProjectStaffPerson[];
 }
 
 export function ProjectStaffCard({
   addStaffAction,
   loadPeopleOptionsAction,
   projectId,
-  staffing,
+  staffedPeople,
 }: ProjectStaffCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -39,12 +39,15 @@ export function ProjectStaffCard({
   const [peopleOptionsStatus, setPeopleOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
   >("idle");
-  const sortedStaffing = useMemo(
+  const sortedStaffedPeople = useMemo(
     () =>
-      [...staffing].sort(
-        (left, right) => Number(right.active) - Number(left.active) || left.personName.localeCompare(right.personName),
+      [...staffedPeople].sort(
+        (left, right) =>
+          Number(right.hasAssignment) - Number(left.hasAssignment) ||
+          Number(right.hasTrackedTime) - Number(left.hasTrackedTime) ||
+          left.personName.localeCompare(right.personName),
       ),
-    [staffing],
+    [staffedPeople],
   );
 
   async function ensurePeopleOptions() {
@@ -149,17 +152,17 @@ export function ProjectStaffCard({
 
       {formError ? <p className="pd-form-error">{formError}</p> : null}
 
-      {sortedStaffing.length === 0 ? <p className="pd-empty">No staffing assignments yet.</p> : null}
+      {sortedStaffedPeople.length === 0 ? <p className="pd-empty">No staffed people yet.</p> : null}
       <div className="pd-pill-wrap">
-        {sortedStaffing.map((assignment) => (
-          <article className="pd-staff-pill" key={assignment.id}>
+        {sortedStaffedPeople.map((staffedPerson) => (
+          <article className="pd-staff-pill" key={staffedPerson.personId}>
             <Avatar
-              fallbackKey={assignment.personId}
-              label={assignment.personName}
-              photoUrl={assignment.personPhotoUrl}
+              fallbackKey={staffedPerson.personId}
+              label={staffedPerson.personName}
+              photoUrl={staffedPerson.personPhotoUrl}
             />
-            <strong>{assignment.personTitle ?? "Staff"}:</strong>
-            <span>{assignment.personName}</span>
+            <strong>{staffedPerson.personTitle ?? "Staff"}:</strong>
+            <span>{staffedPerson.personName}</span>
           </article>
         ))}
       </div>

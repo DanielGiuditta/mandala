@@ -64,6 +64,8 @@ The V1 stage set is fixed; permissions control who may change a project's stage.
 ### `assignedHoursPerWeek`
 Planned weekly staffing hours for a person on a project.
 
+Tracked time on its own does not backfill this field.
+
 ### `startDate`
 Start date of the assignment window.
 
@@ -82,6 +84,8 @@ Where the time entry originated, such as native Windows checker sync or a manual
 Optional link to the related assignment when available.
 
 It may remain null for valid tracked time when the person is not staffed to the selected project.
+
+Even when this field is null, tracked time may still make the person appear as staffed to the project in derived UI views.
 
 ## ResourceDocument
 

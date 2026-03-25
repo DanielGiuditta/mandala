@@ -1,11 +1,16 @@
 import {
   getSelfTimeTrackerData,
+  invalidatePeopleReadCaches,
+  invalidateProjectReadCaches,
   recordSelfTimeTrackerEntry,
   type RecordSelfTimeTrackerEntryInput,
 } from "@mandala/db"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 import { getViewerRequestContext } from "../../../lib/auth/session"
+import { getPeopleTag } from "../../people/data-cache"
+import { getProjectTag, getProjectsTag } from "../../projects/data-cache"
 
 function formatTrackerError(error: unknown): string {
   if (error instanceof Error) {
@@ -69,6 +74,16 @@ export async function POST(request: NextRequest) {
     const viewerContext = await getViewerRequestContext()
     const input = (await request.json()) as RecordSelfTimeTrackerEntryInput
     const result = await recordSelfTimeTrackerEntry(input, viewerContext)
+
+    invalidateProjectReadCaches()
+    invalidatePeopleReadCaches()
+    revalidateTag(getProjectsTag())
+    revalidateTag(getProjectTag(result.entry.projectId))
+    revalidateTag(getPeopleTag())
+    revalidatePath("/projects")
+    revalidatePath(`/projects/${result.entry.projectId}`)
+    revalidatePath("/people")
+    revalidatePath(`/people/${result.entry.personId}`)
 
     return NextResponse.json({
       entry: result.entry,

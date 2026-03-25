@@ -166,7 +166,7 @@ export function ProjectDetailEntity({
                 addStaffAction={staffActions.addStaffAction}
                 loadPeopleOptionsAction={loadPeopleOptionsAction}
                 projectId={projectId}
-                staffing={data.staffing}
+                staffedPeople={data.staffedPeople}
               />
               <ProjectResourcesCard
                 addResourceAction={resourceActions.addResourceAction}
