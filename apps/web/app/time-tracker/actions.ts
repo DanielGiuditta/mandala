@@ -28,8 +28,23 @@ export interface SelfTimeTrackerActionResult {
 export async function loadSelfTimeTrackerAction(
   input: GetSelfTimeTrackerDataInput,
 ): Promise<SelfTimeTrackerData> {
-  const viewerContext = await getViewerRequestContext();
-  return getSelfTimeTrackerData(input, viewerContext);
+  try {
+    const viewerContext = await getViewerRequestContext();
+    return getSelfTimeTrackerData(input, viewerContext);
+  } catch (error) {
+    console.error("loadSelfTimeTrackerAction failed", error);
+
+    return {
+      accessMessage:
+        error instanceof Error
+          ? error.message
+          : "Unable to load time tracker.",
+      configured: true,
+      configMessage: null,
+      forbidden: false,
+      projects: [],
+    };
+  }
 }
 
 export async function recordSelfTimeTrackerEntryAction(
