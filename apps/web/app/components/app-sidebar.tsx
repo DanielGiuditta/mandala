@@ -79,8 +79,19 @@ function getLocalDateString(date: Date): string {
 }
 
 function formatTodayHours(hours: number): string {
-  const rounded = Math.round(hours * 100) / 100
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.?0+$/, "")
+  const totalMinutes = Math.max(0, Math.round(hours * 60))
+  const wholeHours = Math.floor(totalMinutes / 60)
+  const remainingMinutes = totalMinutes % 60
+
+  if (wholeHours === 0) {
+    return `${remainingMinutes}m`
+  }
+
+  if (remainingMinutes === 0) {
+    return `${wholeHours}h`
+  }
+
+  return `${wholeHours}h ${remainingMinutes}m`
 }
 
 function isRunningTrackerState(value: unknown): value is RunningTrackerState {
@@ -462,7 +473,9 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
             )}
 
             <p className="app-time-tracker-today">
-              {trackerSelectedProject ? `${formatTodayHours(trackerSelectedProject.todayHours)} h today` : "0 h today"}
+              {trackerSelectedProject
+                ? `${formatTodayHours(trackerSelectedProject.todayHours)} today`
+                : "0m today"}
             </p>
             {trackerAccessMessage ? (
               <p className="pd-form-error app-time-tracker-error">{trackerAccessMessage}</p>
