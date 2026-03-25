@@ -114,6 +114,7 @@ export interface CurrentViewerAccess {
 
 export interface ViewerRequestContext {
   accessToken?: string | null
+  appOrigin?: string | null
   sessionEmail?: string | null
 }
 

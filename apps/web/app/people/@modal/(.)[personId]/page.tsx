@@ -2,7 +2,11 @@ import { notFound } from "next/navigation";
 
 import { PersonDetailOverlay } from "../../../components/people/person-detail-overlay";
 import { getViewerRequestContext } from "../../../../lib/auth/session";
-import { loadPeopleOptionsAction, updatePersonAction } from "../../actions";
+import {
+  loadPeopleOptionsAction,
+  resendPersonAccountEmailAction,
+  updatePersonAction,
+} from "../../actions";
 import { getCachedPeople, getCachedPersonDetail } from "../../data-cache";
 
 interface PersonDetailModalPageProps {
@@ -32,6 +36,7 @@ export default async function PersonDetailModalPage({
       data={data}
       loadSupervisorOptionsAction={loadPeopleOptionsAction}
       officeOptions={listData.offices}
+      onResendPersonAccountEmailAction={resendPersonAccountEmailAction}
       onUpdatePersonAction={updatePersonAction}
       personId={personId}
       railPeople={listData.people}

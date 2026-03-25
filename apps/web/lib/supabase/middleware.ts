@@ -11,7 +11,6 @@ function copyCookies(from: NextResponse, to: NextResponse): void {
 
 function isProtectedPath(pathname: string): boolean {
   return (
-    pathname === "/" ||
     pathname.startsWith("/projects") ||
     pathname.startsWith("/people") ||
     pathname.startsWith("/library")

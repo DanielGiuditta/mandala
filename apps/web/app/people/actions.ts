@@ -1,10 +1,15 @@
 "use server";
 
-import type { CreatePersonInput, UpdatePersonInput } from "@mandala/db";
+import type {
+  CreatePersonInput,
+  ResendPersonAccountEmailInput,
+  UpdatePersonInput,
+} from "@mandala/db";
 import {
   createPerson,
   invalidatePeopleReadCaches,
   invalidateProjectReadCaches,
+  resendPersonAccountEmail,
   updatePerson,
 } from "@mandala/db";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -50,6 +55,20 @@ export async function updatePersonAction(
   revalidatePath("/projects");
 
   return { personId: person.id };
+}
+
+export async function resendPersonAccountEmailAction(
+  input: ResendPersonAccountEmailInput,
+): Promise<{ message: string }> {
+  const viewerContext = await getViewerRequestContext();
+  const result = await resendPersonAccountEmail(input, viewerContext);
+
+  return {
+    message:
+      result.delivery === "invite"
+        ? `Invite email sent to ${result.email}.`
+        : `Password email sent to ${result.email}.`,
+  };
 }
 
 export async function loadPeopleOptionsAction(): Promise<{

@@ -436,6 +436,300 @@ export function SelectDropdownField({
   )
 }
 
+interface SuggestionDropdownFieldProps {
+  align?: Align
+  ariaLabel?: string
+  className?: string
+  defaultOpen?: boolean
+  defaultValue?: string
+  disabled?: boolean
+  id?: string
+  menuClassName?: string
+  menuMaxHeight?: number
+  name?: string
+  onOpenChange?: (nextOpen: boolean) => void
+  onValueChange?: (nextValue: string) => void
+  open?: boolean
+  options: SelectDropdownOption[]
+  placeholder: string
+  value?: string
+}
+
+// Public API: combobox-style dropdown field for freeform text with shared dropdown suggestions.
+export function SuggestionDropdownField({
+  align = "start",
+  ariaLabel,
+  className,
+  defaultOpen = false,
+  defaultValue = "",
+  disabled = false,
+  id,
+  menuClassName,
+  menuMaxHeight = 240,
+  name,
+  onOpenChange,
+  onValueChange,
+  open,
+  options,
+  placeholder,
+  value,
+}: SuggestionDropdownFieldProps) {
+  const [inputValue, setInputValue] = useControllableState({
+    controlledValue: value,
+    defaultValue,
+    onChange: onValueChange,
+  })
+  const [isOpen, setIsOpen] = useControllableState({
+    controlledValue: open,
+    defaultValue: defaultOpen,
+    onChange: onOpenChange,
+  })
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const listboxId = useId()
+
+  const filteredOptions = useMemo(() => {
+    const query = inputValue.trim().toLowerCase()
+    if (!query) {
+      return options
+    }
+
+    return options.filter((option) => {
+      const label = option.label.toLowerCase()
+      const candidateValue = option.value.toLowerCase()
+      return label.includes(query) || candidateValue.includes(query)
+    })
+  }, [inputValue, options])
+
+  const enabledIndices = useMemo(
+    () =>
+      filteredOptions
+        .map((option, index) => (option.disabled ? -1 : index))
+        .filter((index) => index >= 0),
+    [filteredOptions],
+  )
+
+  useEffect(() => {
+    if (!isOpen || disabled) {
+      return
+    }
+
+    function handleOutsidePointer(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false)
+        inputRef.current?.focus()
+      }
+    }
+
+    window.addEventListener("mousedown", handleOutsidePointer)
+    window.addEventListener("keydown", handleEscape)
+    return () => {
+      window.removeEventListener("mousedown", handleOutsidePointer)
+      window.removeEventListener("keydown", handleEscape)
+    }
+  }, [disabled, isOpen, setIsOpen])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveIndex(-1)
+      return
+    }
+
+    setActiveIndex((current) => {
+      if (enabledIndices.includes(current)) {
+        return current
+      }
+      return enabledIndices[0] ?? -1
+    })
+  }, [enabledIndices, isOpen])
+
+  function optionId(index: number) {
+    return `${listboxId}-option-${index}`
+  }
+
+  function commitValue(nextValue: string) {
+    setInputValue(nextValue)
+    setIsOpen(false)
+    inputRef.current?.focus()
+  }
+
+  function moveActive(direction: "next" | "previous") {
+    if (!enabledIndices.length) {
+      setIsOpen(true)
+      setActiveIndex(-1)
+      return
+    }
+
+    setIsOpen(true)
+    setActiveIndex((current) => {
+      const currentPos = enabledIndices.indexOf(current)
+      if (direction === "next") {
+        const nextPos = currentPos < 0 ? 0 : Math.min(enabledIndices.length - 1, currentPos + 1)
+        return enabledIndices[nextPos] ?? -1
+      }
+
+      const nextPos = currentPos < 0 ? enabledIndices.length - 1 : Math.max(0, currentPos - 1)
+      return enabledIndices[nextPos] ?? -1
+    })
+  }
+
+  function handleInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (disabled) {
+      return
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      moveActive("next")
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      moveActive("previous")
+    } else if (event.key === "Home") {
+      if (!enabledIndices.length) {
+        return
+      }
+      event.preventDefault()
+      setIsOpen(true)
+      setActiveIndex(enabledIndices[0] ?? -1)
+    } else if (event.key === "End") {
+      if (!enabledIndices.length) {
+        return
+      }
+      event.preventDefault()
+      setIsOpen(true)
+      setActiveIndex(enabledIndices[enabledIndices.length - 1] ?? -1)
+    } else if (event.key === "Enter") {
+      if (!isOpen || activeIndex < 0) {
+        return
+      }
+
+      const option = filteredOptions[activeIndex]
+      if (!option || option.disabled) {
+        return
+      }
+
+      event.preventDefault()
+      commitValue(option.value)
+    } else if (event.key === "Escape") {
+      if (!isOpen) {
+        return
+      }
+      event.preventDefault()
+      setIsOpen(false)
+    } else if (event.key === "Tab") {
+      setIsOpen(false)
+    }
+  }
+
+  return (
+    <div className={cx("dropdown-root", className)} ref={rootRef}>
+      {name ? <input name={name} type="hidden" value={inputValue} /> : null}
+      <div
+        className={cx("dropdown-trigger dropdown-combobox-shell", disabled ? "dropdown-trigger-disabled" : "")}
+      >
+        <input
+          aria-activedescendant={isOpen && activeIndex >= 0 ? optionId(activeIndex) : undefined}
+          aria-autocomplete="list"
+          aria-controls={listboxId}
+          aria-expanded={isOpen}
+          aria-label={ariaLabel}
+          aria-haspopup="listbox"
+          className="dropdown-combobox-input"
+          disabled={disabled}
+          id={id}
+          onChange={(event) => {
+            setInputValue(event.target.value)
+            setIsOpen(true)
+          }}
+          onFocus={() => {
+            if (!disabled) {
+              setIsOpen(true)
+            }
+          }}
+          onKeyDown={handleInputKeyDown}
+          placeholder={placeholder}
+          ref={inputRef}
+          role="combobox"
+          type="text"
+          value={inputValue}
+        />
+        <button
+          aria-label={isOpen ? "Close suggestions" : "Open suggestions"}
+          className="dropdown-combobox-toggle"
+          disabled={disabled}
+          onClick={() => {
+            if (disabled) {
+              return
+            }
+
+            setIsOpen(!isOpen)
+            inputRef.current?.focus()
+          }}
+          onMouseDown={(event) => event.preventDefault()}
+          tabIndex={-1}
+          type="button"
+        >
+          <span className={cx("dropdown-trigger-chevron", isOpen ? "dropdown-trigger-chevron-open" : "")}>
+            <ChevronIcon />
+          </span>
+        </button>
+      </div>
+
+      {isOpen && filteredOptions.length > 0 ? (
+        <DropdownSurface align={align} className={menuClassName} matchTriggerWidth>
+          <div
+            className="dropdown-list"
+            id={listboxId}
+            role="listbox"
+            style={{ maxHeight: `${menuMaxHeight}px` }}
+          >
+            {filteredOptions.map((option, index) => {
+              const isActive = index === activeIndex
+              const isSelected = option.value === inputValue
+
+              return (
+                <DropdownRow
+                  aria-selected={isSelected}
+                  className={cx(
+                    isActive ? "dropdown-row-active" : "",
+                    option.disabled ? "dropdown-row-disabled" : "",
+                  )}
+                  disabled={option.disabled}
+                  id={optionId(index)}
+                  key={`${option.value}-${index}`}
+                  onClick={() => {
+                    if (!option.disabled) {
+                      commitValue(option.value)
+                    }
+                  }}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  role="option"
+                  tabIndex={-1}
+                >
+                  {option.leadingVisual ? (
+                    <DropdownLeadingVisual shape={option.leadingVisualShape}>
+                      {option.leadingVisual}
+                    </DropdownLeadingVisual>
+                  ) : null}
+                  <DropdownLabelStack description={option.description} label={option.label} />
+                  <DropdownSelectedIndicator visible={isSelected} />
+                </DropdownRow>
+              )
+            })}
+          </div>
+        </DropdownSurface>
+      ) : null}
+    </div>
+  )
+}
+
 interface NativeDateDropdownFieldProps {
   ariaLabel?: string
   className?: string
@@ -729,6 +1023,7 @@ interface DropdownActionMenuProps {
   defaultOpen?: boolean
   disabled?: boolean
   menuClassName?: string
+  menuMinWidth?: number
   onOpenChange?: (nextOpen: boolean) => void
   open?: boolean
   trigger: ReactNode
@@ -745,6 +1040,7 @@ export function DropdownActionMenu({
   disabled = false,
   items,
   menuClassName,
+  menuMinWidth = 314,
   onOpenChange,
   open,
   trigger,
@@ -889,7 +1185,12 @@ export function DropdownActionMenu({
         </span>
       </button>
       {isOpen ? (
-        <DropdownSurface align={align} className={menuClassName} matchTriggerWidth={false} minWidth={314}>
+        <DropdownSurface
+          align={align}
+          className={menuClassName}
+          matchTriggerWidth={false}
+          minWidth={menuMinWidth}
+        >
           <div className="dropdown-list" id={menuId} onKeyDown={handleMenuKeyDown} role="menu">
             {items.map((item, index) => {
               const isActive = index === activeIndex

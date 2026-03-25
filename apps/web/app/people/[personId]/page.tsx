@@ -2,7 +2,11 @@ import { notFound } from "next/navigation";
 
 import { getViewerRequestContext } from "../../../lib/auth/session";
 import { PersonDetailView } from "../../components/people/person-detail-view";
-import { loadPeopleOptionsAction, updatePersonAction } from "../actions";
+import {
+  loadPeopleOptionsAction,
+  resendPersonAccountEmailAction,
+  updatePersonAction,
+} from "../actions";
 import { getCachedPeople, getCachedPersonDetail } from "../data-cache";
 
 interface PersonDetailPageProps {
@@ -30,6 +34,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       data={data}
       loadSupervisorOptionsAction={loadPeopleOptionsAction}
       officeOptions={listData.offices}
+      onResendPersonAccountEmailAction={resendPersonAccountEmailAction}
       onUpdatePersonAction={updatePersonAction}
       personId={personId}
       railPeople={listData.people}

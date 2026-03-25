@@ -249,6 +249,15 @@ export interface UpdatePersonInput extends CreatePersonInput {
   personId: string
 }
 
+export interface ResendPersonAccountEmailInput {
+  personId: string
+}
+
+export interface ResendPersonAccountEmailResult {
+  delivery: "invite" | "passwordReset"
+  email: string
+}
+
 export interface PersonDetailData {
   accessMessage: string | null
   assignments: PersonDetailAssignmentItem[]
@@ -392,12 +401,14 @@ function normalizeAnnualSalary(value: number): number {
 async function inviteAuthUserByEmail(
   email: string,
   fullName: string,
+  redirectTo: string | null,
   serviceClient: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
 ): Promise<string | null> {
   const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
     data: {
       fullName,
     },
+    redirectTo: redirectTo ?? undefined,
   })
 
   if (error) {
@@ -405,6 +416,20 @@ async function inviteAuthUserByEmail(
   }
 
   return data.user?.id ?? null
+}
+
+async function sendPasswordRecoveryEmail(
+  email: string,
+  redirectTo: string | null,
+  client: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<void> {
+  const { error } = await client.auth.resetPasswordForEmail(email, {
+    redirectTo: redirectTo ?? undefined,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
 }
 
 async function findAuthUserByEmail(
@@ -1395,10 +1420,16 @@ export async function createPerson(
   }
   let createdPersonId: string | null = null
   let createdAuthUserId: string | null = null
+  const inviteRedirectTo = context.appOrigin ? `${context.appOrigin}/join` : null
 
   try {
     if (serviceClient && email) {
-      createdAuthUserId = await inviteAuthUserByEmail(email, fullName, serviceClient)
+      createdAuthUserId = await inviteAuthUserByEmail(
+        email,
+        fullName,
+        inviteRedirectTo,
+        serviceClient,
+      )
     }
 
     const { data: personData, error: personError } = await client
@@ -1679,7 +1710,12 @@ export async function updatePerson(
           }
         }
       } else {
-        authUserId = await inviteAuthUserByEmail(email, fullName, serviceClient)
+        authUserId = await inviteAuthUserByEmail(
+          email,
+          fullName,
+          context.appOrigin ? `${context.appOrigin}/join` : null,
+          serviceClient,
+        )
       }
 
       let userAccountId = currentUserAccount?.id ?? null
@@ -1749,6 +1785,117 @@ export async function updatePerson(
   }
 
   return toPerson(updatedPersonData as PersonRow)
+}
+
+export async function resendPersonAccountEmail(
+  input: ResendPersonAccountEmailInput,
+  context: ViewerRequestContext = {},
+): Promise<ResendPersonAccountEmailResult> {
+  const status = getDatabaseStatus()
+
+  if (!status.configured) {
+    throw new Error("Resending account emails requires a configured database connection.")
+  }
+
+  const viewerAccess = await getCurrentViewerAccess(context)
+
+  if (!viewerAccess.viewer) {
+    throw new Error(viewerAccess.accessMessage ?? "Sign in to continue.")
+  }
+
+  const personId = normalizeRequiredText(input.personId, "Person")
+  const client = createServerSupabaseClient({ accessToken: context.accessToken })
+  const serviceClient = createServerSupabaseClient({ useServiceRole: true })
+  const recoveryClient = createServerSupabaseClient()
+
+  if (!client || !serviceClient || !recoveryClient) {
+    throw new Error("Resending account emails requires live Supabase auth to be configured.")
+  }
+
+  const [{ data: personData, error: personError }, { data: userAccountData, error: userAccountError }] =
+    await Promise.all([
+      client
+        .from("people")
+        .select(
+          "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+        )
+        .eq("id", personId)
+        .maybeSingle(),
+      client
+        .from("user_accounts")
+        .select("id, person_id, email, active")
+        .eq("person_id", personId)
+        .maybeSingle(),
+    ])
+
+  if (personError) {
+    throw personError
+  }
+
+  if (userAccountError) {
+    throw userAccountError
+  }
+
+  if (!personData) {
+    throw new Error("Selected person is unavailable.")
+  }
+
+  const person = personData as PersonRow
+
+  if (!canCreateOrUpdatePeople(viewerAccess.viewer, person.office_id)) {
+    throw new Error("You do not have permission to update this person.")
+  }
+
+  const userAccount = (userAccountData ?? null) as UserAccountListRow | null
+
+  if (!userAccount || !userAccount.active) {
+    throw new Error("This person does not currently have an account-backed login.")
+  }
+
+  const email = normalizeEmail(userAccount.email)
+
+  if (!email) {
+    throw new Error("This account does not have a valid email address.")
+  }
+
+  const redirectTo = context.appOrigin ? `${context.appOrigin}/join` : null
+  const authUser = await findAuthUserByEmail(email, serviceClient)
+
+  if (authUser) {
+    const metadataName =
+      typeof authUser.userMetadata?.fullName === "string"
+        ? authUser.userMetadata.fullName
+        : null
+
+    if (metadataName !== person.full_name) {
+      const { error: updateAuthUserError } = await serviceClient.auth.admin.updateUserById(
+        authUser.id,
+        {
+          user_metadata: {
+            fullName: person.full_name,
+          },
+        },
+      )
+
+      if (updateAuthUserError) {
+        throw new Error(updateAuthUserError.message)
+      }
+    }
+
+    await sendPasswordRecoveryEmail(email, redirectTo, recoveryClient)
+
+    return {
+      delivery: "passwordReset",
+      email,
+    }
+  }
+
+  await inviteAuthUserByEmail(email, person.full_name, redirectTo, serviceClient)
+
+  return {
+    delivery: "invite",
+    email,
+  }
 }
 
 export async function updatePersonPhoto(

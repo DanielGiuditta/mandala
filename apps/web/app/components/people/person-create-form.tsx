@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 
-import { SelectDropdownField } from "../ui/dropdown";
+import { SelectDropdownField, SuggestionDropdownField } from "../ui/dropdown";
 import { readFileAsDataUrl } from "../projects/project-create-utils";
 import { PersonPhotoInput } from "./person-photo-input";
 import type {
@@ -24,6 +24,7 @@ interface PersonCreateFormProps {
   mode?: PersonCreateMode;
   officeOptions: PersonCreateOfficeOption[];
   onCancel: () => void;
+  onResendAccountEmail?: () => Promise<{ message?: string } | void> | void;
   onSave: (submission: {
     formInput: PersonCreateFormInput;
     payload: PersonCreatePayload;
@@ -59,6 +60,7 @@ export function PersonCreateForm({
   mode = "create",
   officeOptions,
   onCancel,
+  onResendAccountEmail,
   onSave,
   supervisorOptions,
   titleSuggestions,
@@ -71,12 +73,17 @@ export function PersonCreateForm({
   const roleInputId = useId();
   const officeInputId = useId();
   const photoInputId = useId();
-  const roleSuggestionsId = useId();
   const [form, setForm] = useState<PersonCreateFormInput>(() =>
     getDefaultFormInput(officeOptions, initialFormInput),
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResendingAccountEmail, setIsResendingAccountEmail] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [resendMessageTone, setResendMessageTone] = useState<"default" | "error">(
+    "default",
+  );
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const isEditMode = mode === "edit";
   const permissionOptions = useMemo(
     () =>
       PERSON_CREATE_PERMISSION_OPTIONS.map((permission) => ({
@@ -100,6 +107,10 @@ export function PersonCreateForm({
   const officeSelectOptions = useMemo(
     () => officeOptions.map((office) => ({ label: office.name, value: office.id })),
     [officeOptions],
+  );
+  const titleSuggestionOptions = useMemo(
+    () => titleSuggestions.map((title) => ({ label: title, value: title })),
+    [titleSuggestions],
   );
 
   const requiredFieldMessage = useMemo(() => {
@@ -126,15 +137,57 @@ export function PersonCreateForm({
 
     return errors.length > 0 ? errors.join(" ") : null;
   }, [form.annualSalary, form.email, form.fullName, form.officeId, form.permission]);
+  const canResendAccountEmail = Boolean(
+    isEditMode && onResendAccountEmail && form.permission !== "noAccount" && form.email.trim(),
+  );
+  const hasUnsavedAccountInviteChanges = Boolean(
+    canResendAccountEmail &&
+      initialFormInput &&
+      (form.email.trim().toLowerCase() !== initialFormInput.email.trim().toLowerCase() ||
+        form.fullName.trim() !== initialFormInput.fullName.trim() ||
+        form.permission !== initialFormInput.permission),
+  );
 
   function updateField<K extends keyof PersonCreateFormInput>(
     key: K,
     value: PersonCreateFormInput[K],
   ) {
+    setResendMessage(null);
     setForm((current) => ({
       ...current,
       [key]: value,
     }));
+  }
+
+  async function handleResendAccountEmail() {
+    setResendMessage(null);
+
+    if (!onResendAccountEmail || !canResendAccountEmail) {
+      return;
+    }
+
+    if (hasUnsavedAccountInviteChanges) {
+      setResendMessageTone("error");
+      setResendMessage("Save name, email, or permission changes before resending the email.");
+      return;
+    }
+
+    try {
+      setIsResendingAccountEmail(true);
+      const result = await onResendAccountEmail();
+
+      setResendMessageTone("default");
+      setResendMessage(result?.message ?? "Email sent.");
+    } catch (error) {
+      setResendMessageTone("error");
+      setResendMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to resend the account email. Please try again.",
+      );
+    } finally {
+      setIsResendingAccountEmail(false);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -205,15 +258,35 @@ export function PersonCreateForm({
 
       <label className="project-create-field" htmlFor={emailInputId}>
         <span className="project-create-label">Email</span>
-        <input
-          className="project-create-text-input"
-          id={emailInputId}
-          onChange={(event) => updateField("email", event.target.value)}
-          placeholder="Add a comment..."
-          type="email"
-          value={form.email}
-        />
+        <div className="project-create-inline-input-row">
+          <input
+            className="project-create-text-input"
+            id={emailInputId}
+            onChange={(event) => updateField("email", event.target.value)}
+            placeholder="Add a comment..."
+            type="email"
+            value={form.email}
+          />
+          {isEditMode && onResendAccountEmail ? (
+            <button
+              className="project-create-inline-button"
+              disabled={!canResendAccountEmail || hasUnsavedAccountInviteChanges || isSubmitting || isResendingAccountEmail}
+              onClick={() => void handleResendAccountEmail()}
+              type="button"
+            >
+              {isResendingAccountEmail ? "Sending..." : "Resend email"}
+            </button>
+          ) : null}
+        </div>
       </label>
+
+      {resendMessage ? (
+        <p
+          className={`project-create-message${resendMessageTone === "error" ? " project-create-message-error" : ""}`}
+        >
+          {resendMessage}
+        </p>
+      ) : null}
 
       <label className="project-create-field" htmlFor={salaryInputId}>
         <span className="project-create-label">Salary per year</span>
@@ -258,27 +331,14 @@ export function PersonCreateForm({
 
         <label className="project-create-field" htmlFor={roleInputId}>
           <span className="project-create-label">Role</span>
-          <span className="app-native-input-wrap">
-            <input
-              className="app-native-text-input"
-              id={roleInputId}
-              list={roleSuggestionsId}
-              onChange={(event) => updateField("title", event.target.value)}
-              placeholder="Architect"
-              type="text"
-              value={form.title}
-            />
-            <span aria-hidden className="app-native-input-chevron">
-              ˅
-            </span>
-          </span>
-          {titleSuggestions.length > 0 ? (
-            <datalist id={roleSuggestionsId}>
-              {titleSuggestions.map((title) => (
-                <option key={title} value={title} />
-              ))}
-            </datalist>
-          ) : null}
+          <SuggestionDropdownField
+            ariaLabel="Role"
+            id={roleInputId}
+            options={titleSuggestionOptions}
+            placeholder="Architect"
+            value={form.title}
+            onValueChange={(nextValue) => updateField("title", nextValue)}
+          />
         </label>
 
         <label className="project-create-field" htmlFor={officeInputId}>
@@ -309,6 +369,9 @@ export function PersonCreateForm({
         <p className="project-create-message">
           {formatCreatePersonPermissionLabel(form.permission)} sends an invite email so the person
           can set a password and join with this record.
+          {isEditMode && onResendAccountEmail
+            ? " Use Resend email to send another setup email to the saved account address."
+            : null}
         </p>
       ) : null}
 

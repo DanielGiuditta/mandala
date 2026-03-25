@@ -23,6 +23,9 @@ interface PersonDetailEntityProps {
     people: PersonCreateSupervisorOption[];
   }>;
   officeOptions: PersonCreateOfficeOption[];
+  onResendPersonAccountEmailAction: (
+    input: { personId: string },
+  ) => Promise<{ message: string }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
@@ -34,6 +37,7 @@ export function PersonDetailEntity({
   data,
   loadSupervisorOptionsAction,
   officeOptions,
+  onResendPersonAccountEmailAction,
   onUpdatePersonAction,
   titleSuggestions,
 }: PersonDetailEntityProps) {
@@ -68,6 +72,7 @@ export function PersonDetailEntity({
               loadSupervisorOptionsAction={loadSupervisorOptionsAction}
               mode="edit"
               officeOptions={officeOptions}
+              onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
               onUpdatePersonAction={onUpdatePersonAction}
               personId={data.person.id}
               titleSuggestions={titleSuggestions}

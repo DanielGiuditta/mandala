@@ -16,6 +16,9 @@ interface PersonDetailShellProps {
     people: PersonCreateSupervisorOption[];
   }>;
   officeOptions: PersonCreateOfficeOption[];
+  onResendPersonAccountEmailAction: (
+    input: { personId: string },
+  ) => Promise<{ message: string }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
@@ -28,6 +31,7 @@ export function PersonDetailShell({
   data,
   loadSupervisorOptionsAction,
   officeOptions,
+  onResendPersonAccountEmailAction,
   onUpdatePersonAction,
   personId,
   railPeople,
@@ -85,6 +89,7 @@ export function PersonDetailShell({
           data={data}
           loadSupervisorOptionsAction={loadSupervisorOptionsAction}
           officeOptions={officeOptions}
+          onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
           onUpdatePersonAction={onUpdatePersonAction}
           titleSuggestions={titleSuggestions}
         />

@@ -29,6 +29,9 @@ interface PersonCreateModalProps {
   onCreatePersonAction?: (
     input: CreatePersonInput,
   ) => Promise<{ personId: string }>;
+  onResendPersonAccountEmailAction?: (
+    input: { personId: string },
+  ) => Promise<{ message: string }>;
   onUpdatePersonAction?: (
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
@@ -45,6 +48,7 @@ export function PersonCreateModal({
   mode = "create",
   officeOptions,
   onCreatePersonAction,
+  onResendPersonAccountEmailAction,
   onUpdatePersonAction,
   personId,
   titleSuggestions,
@@ -163,6 +167,11 @@ export function PersonCreateModal({
               mode={mode}
               officeOptions={officeOptions}
               onCancel={() => setIsOpen(false)}
+              onResendAccountEmail={
+                isEditMode && personId && onResendPersonAccountEmailAction
+                  ? async () => onResendPersonAccountEmailAction({ personId })
+                  : undefined
+              }
               onSave={async ({ payload }) => {
                 if (isEditMode) {
                   if (!personId || !onUpdatePersonAction) {

@@ -10,6 +10,10 @@ interface JoinRedirectOptions {
   error?: string
 }
 
+function isJoinTokenType(value: string): value is "invite" | "recovery" {
+  return value === "invite" || value === "recovery"
+}
+
 function buildJoinRedirect({ error }: JoinRedirectOptions = {}): string {
   const searchParams = new URLSearchParams()
 
@@ -21,14 +25,14 @@ function buildJoinRedirect({ error }: JoinRedirectOptions = {}): string {
   return query ? `/join?${query}` : "/join"
 }
 
-export async function claimInviteAction(formData: FormData): Promise<void> {
+export async function claimJoinEmailAction(formData: FormData): Promise<void> {
   const tokenHash = String(formData.get("tokenHash") ?? "").trim()
   const type = String(formData.get("type") ?? "").trim()
 
-  if (!tokenHash || type !== "invite") {
+  if (!tokenHash || !isJoinTokenType(type)) {
     redirect(
       buildJoinRedirect({
-        error: "The invite link is incomplete or invalid.",
+        error: "The email link is incomplete or invalid.",
       }),
     )
   }
@@ -45,7 +49,7 @@ export async function claimInviteAction(formData: FormData): Promise<void> {
 
   const { error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
-    type: "invite",
+    type,
   })
 
   if (error) {

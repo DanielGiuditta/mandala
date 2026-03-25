@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 
 import { getSafeNextPath } from "../../lib/auth/paths"
 import { getAppSessionState } from "../../lib/auth/session"
+import { AuthHashHandoff } from "../components/auth-hash-handoff"
 
 import { signInAction } from "./actions"
 
@@ -64,6 +65,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </p>
           </div>
         </div>
+
+        <AuthHashHandoff />
 
         {params.error ? <div className="notice">{params.error}</div> : null}
 

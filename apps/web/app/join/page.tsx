@@ -1,8 +1,9 @@
 import Link from "next/link"
 
 import { getAppSessionState } from "../../lib/auth/session"
+import { AuthHashHandoff } from "../components/auth-hash-handoff"
 
-import { claimInviteAction, setPasswordAction } from "./actions"
+import { claimJoinEmailAction, setPasswordAction } from "./actions"
 
 interface JoinPageProps {
   searchParams: Promise<{
@@ -17,12 +18,16 @@ export const dynamic = "force-dynamic"
 export default async function JoinPage({ searchParams }: JoinPageProps) {
   const params = await searchParams
   const session = await getAppSessionState()
-  const hasInviteToken = Boolean(params.token_hash && params.type === "invite")
+  const hasJoinToken = Boolean(
+    params.token_hash && (params.type === "invite" || params.type === "recovery"),
+  )
 
   if (!session.configured) {
     return (
       <main className="auth-page stack">
         <section className="card auth-card stack">
+          <AuthHashHandoff />
+
           <div className="page-title">
             <div>
               <h2>Join unavailable</h2>
@@ -49,11 +54,14 @@ export default async function JoinPage({ searchParams }: JoinPageProps) {
     return (
       <main className="auth-page stack">
         <section className="card auth-card stack">
+          <AuthHashHandoff />
+
           <div className="page-title">
             <div>
               <h2>Set password</h2>
               <p className="muted">
-                Finish joining with the invited email below, then continue into the workspace.
+                Finish setting your password with the emailed link below, then continue into the
+                workspace.
               </p>
             </div>
           </div>
@@ -100,11 +108,13 @@ export default async function JoinPage({ searchParams }: JoinPageProps) {
   return (
     <main className="auth-page stack">
       <section className="card auth-card stack">
+        <AuthHashHandoff />
+
         <div className="page-title">
           <div>
             <h2>Join Mandala</h2>
             <p className="muted">
-              Open your invite email, then continue here to activate your account and set a
+              Open the account email you were sent, then continue here to verify it and set a
               password.
             </p>
           </div>
@@ -112,13 +122,13 @@ export default async function JoinPage({ searchParams }: JoinPageProps) {
 
         {params.error ? <div className="notice">{params.error}</div> : null}
 
-        {hasInviteToken ? (
-          <form action={claimInviteAction} className="auth-form stack">
+        {hasJoinToken ? (
+          <form action={claimJoinEmailAction} className="auth-form stack">
             <input name="tokenHash" type="hidden" value={params.token_hash ?? ""} />
             <input name="type" type="hidden" value={params.type ?? ""} />
 
             <div className="notice">
-              Continue to verify your invite and start setting your password.
+              Continue to verify your email and start setting your password.
             </div>
 
             <div className="button-row">
@@ -131,8 +141,8 @@ export default async function JoinPage({ searchParams }: JoinPageProps) {
         ) : (
           <>
             <div className="notice">
-              Use the invite link from your email to begin. If the link expired, ask a partner or
-              admin for help finishing your account setup.
+              Use the email link you were sent to begin. If it expired, ask a partner or admin to
+              resend it.
             </div>
 
             <div className="button-row">

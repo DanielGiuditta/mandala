@@ -1,9 +1,8 @@
 "use client"
 
 import type { SelfTimeTrackerData } from "@mandala/db"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import { signOutAction } from "../login/actions"
 import { SidebarNav } from "../sidebar-nav"
@@ -65,16 +64,21 @@ function CollapseIcon({ expanded }: { expanded: boolean }) {
   )
 }
 
-function formatTierLabel(value: string | null): string {
-  if (!value) {
-    return "No role"
-  }
-
-  if (value === "projectLead") {
-    return "Project lead"
-  }
-
-  return value.charAt(0).toUpperCase() + value.slice(1)
+function ProfileChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <span className={`app-profile-chevron ${expanded ? "app-profile-chevron-open" : ""}`}>
+      <svg
+        aria-hidden
+        className="dropdown-trigger-chevron-icon"
+        viewBox="0 0 20 20"
+      >
+        <path
+          d="M5.7 7.7a1 1 0 0 1 1.4 0L10 10.58l2.9-2.88a1 1 0 0 1 1.4 1.42l-3.6 3.58a1 1 0 0 1-1.4 0L5.7 9.12a1 1 0 0 1 0-1.42Z"
+          fill="currentColor"
+        />
+      </svg>
+    </span>
+  )
 }
 
 function getLocalDateString(date: Date): string {
@@ -182,7 +186,10 @@ function readTimeTrackerStorage(sessionEmail: string): {
 
 export function AppSidebar({ shell }: { shell: AppShellState }) {
   const router = useRouter()
+  const profilePanelId = useId()
+  const signOutFormRef = useRef<HTMLFormElement | null>(null)
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
+  const [isProfileExpanded, setIsProfileExpanded] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
   const [trackerVisible, setTrackerVisible] = useState(false)
   const [trackerLoading, setTrackerLoading] = useState(false)
@@ -197,12 +204,34 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const profileInitial = getFallbackAvatarInitial(profileName, "K")
   const profileAvatarStyle = getPersonFallbackAvatarStyle(profileName, "app-shell")
   const sessionEmail = shell.sessionEmail
-  const shellItems = [
-    shell.configured ? "Live data" : "Preview data",
-    shell.officeName ? `Office: ${shell.officeName}` : null,
-    `Tier: ${formatTierLabel(shell.primaryTier)}`,
-  ].filter((item): item is string => Boolean(item))
-
+  const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
+  const isSidebarOpen = !isForcedCollapsed && !isManuallyCollapsed
+  const profileAvatar = shell.photoUrl ? (
+    <img
+      alt=""
+      aria-hidden
+      className={`app-profile-avatar ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
+      src={shell.photoUrl}
+    />
+  ) : (
+    <div
+      aria-hidden="true"
+      className={`app-profile-avatar app-profile-avatar-fallback ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
+      style={profileAvatarStyle}
+    >
+      {profileInitial}
+    </div>
+  )
+  const profileContent = (
+    <div className={`app-profile-trigger-content ${isSidebarOpen ? "" : "app-profile-trigger-content-closed"}`}>
+      {profileAvatar}
+      {isSidebarOpen ? (
+        <div className="app-profile-trigger-copy">
+          <p className="app-profile-name">{profileName}</p>
+        </div>
+      ) : null}
+    </div>
+  )
   useEffect(() => {
     function syncViewportWidth() {
       setViewportWidth(window.innerWidth)
@@ -214,8 +243,12 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     return () => window.removeEventListener("resize", syncViewportWidth)
   }, [])
 
-  const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
-  const isSidebarOpen = !isForcedCollapsed && !isManuallyCollapsed
+  useEffect(() => {
+    if (!isSidebarOpen) {
+      setIsProfileExpanded(false)
+    }
+  }, [isSidebarOpen])
+
   const trackerSelectedProject = trackerProjects.find(
     (project) => project.id === trackerSelectedProjectId,
   )
@@ -486,32 +519,6 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           <CollapseIcon expanded={false} />
         </button>
 
-        {isSidebarOpen ? (
-          <section className="app-pinned">
-            <p>Session</p>
-            <ul className="app-pinned-list">
-              {shellItems.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {isSidebarOpen ? (
-          <div className="app-sidebar-auth">
-            {shell.isAuthenticated ? (
-              <form action={signOutAction}>
-                <button className="ghost-button" type="submit">
-                  Sign out
-                </button>
-              </form>
-            ) : shell.configured ? (
-              <Link className="ghost-button" href="/login">
-                Sign in
-              </Link>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
       <div className={`app-sidebar-bottom ${isSidebarOpen ? "" : "app-sidebar-bottom-closed"}`}>
@@ -559,29 +566,37 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           </section>
         ) : null}
 
-        <div className={`app-sidebar-profile ${isSidebarOpen ? "" : "app-sidebar-profile-closed"}`}>
-          {shell.photoUrl ? (
-            <img
-              alt=""
-              aria-hidden
-              className={`app-profile-avatar ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
-              src={shell.photoUrl}
-            />
-          ) : (
-            <div
-              aria-hidden="true"
-              className={`app-profile-avatar app-profile-avatar-fallback ${isSidebarOpen ? "app-profile-avatar-open" : "app-profile-avatar-closed"}`}
-              style={profileAvatarStyle}
+        <form action={signOutAction} hidden ref={signOutFormRef} />
+        {isSidebarOpen ? (
+          <section
+            aria-label="Profile menu"
+            className={`app-profile-panel ${isProfileExpanded ? "app-profile-panel-open" : ""}`}
+          >
+            {isProfileExpanded ? (
+              <div className="app-profile-panel-body" id={profilePanelId}>
+                <button
+                  className="ghost-button app-profile-panel-action"
+                  onClick={() => signOutFormRef.current?.requestSubmit()}
+                  type="button"
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+            <button
+              aria-controls={profilePanelId}
+              aria-expanded={isProfileExpanded}
+              className="app-profile-trigger"
+              onClick={() => setIsProfileExpanded((current) => !current)}
+              type="button"
             >
-              {profileInitial}
-            </div>
-          )}
-          {isSidebarOpen ? (
-            <div>
-              <p className="app-profile-name">{profileName}</p>
-            </div>
-          ) : null}
-        </div>
+              {profileContent}
+              <ProfileChevron expanded={isProfileExpanded} />
+            </button>
+          </section>
+        ) : (
+          <div className="app-sidebar-profile app-sidebar-profile-closed">{profileAvatar}</div>
+        )}
       </div>
     </aside>
   )

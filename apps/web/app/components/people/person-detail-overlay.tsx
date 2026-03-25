@@ -15,6 +15,9 @@ interface PersonDetailOverlayProps {
     people: PersonCreateSupervisorOption[];
   }>;
   officeOptions: PersonCreateOfficeOption[];
+  onResendPersonAccountEmailAction: (
+    input: { personId: string },
+  ) => Promise<{ message: string }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
@@ -26,6 +29,7 @@ export function PersonDetailOverlay({
   data,
   loadSupervisorOptionsAction,
   officeOptions,
+  onResendPersonAccountEmailAction,
   onUpdatePersonAction,
   personId,
   railPeople,
@@ -40,6 +44,7 @@ export function PersonDetailOverlay({
         data={data}
         loadSupervisorOptionsAction={loadSupervisorOptionsAction}
         officeOptions={officeOptions}
+        onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
         onUpdatePersonAction={onUpdatePersonAction}
         personId={personId}
         railPeople={railPeople}
