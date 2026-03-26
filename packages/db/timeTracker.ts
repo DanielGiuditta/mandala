@@ -7,10 +7,17 @@ import {
   type ViewerRequestContext,
 } from "./auth";
 import {
+  PREVIEW_CONFIG_MESSAGE,
+  previewAssignments,
+  previewProjects,
+  previewTimeEntries,
+} from "./previewData";
+import {
   createServerSupabaseClient,
   createServiceRoleSupabaseClient,
   getDatabaseStatus,
 } from "./supabaseServer";
+import { createPerfTrace } from "./perf";
 
 interface TrackerProjectRow {
   active: boolean;
@@ -138,6 +145,15 @@ function parseTimestamp(value: string, fieldName: string): Date {
 
 function roundHours(durationMs: number): number {
   return Math.round((durationMs / 3_600_000) * 100) / 100;
+}
+
+function createPreviewTimeEntryId(): string {
+  const maxSuffix = previewTimeEntries.reduce((currentMax, entry) => {
+    const suffix = Number(entry.id.split("-").at(-1));
+    return Number.isFinite(suffix) ? Math.max(currentMax, suffix) : currentMax;
+  }, 0);
+
+  return `40000000-0000-0000-0000-${String(maxSuffix + 1).padStart(12, "0")}`;
 }
 
 function toTimeEntry(row: TrackerTimeEntryRow): TimeEntry {
@@ -354,27 +370,160 @@ async function resolveAssignmentId(
   return matchingAssignments.length === 1 ? matchingAssignments[0].id : null;
 }
 
+function listPreviewTrackableProjectRows(
+  viewer: NonNullable<Awaited<ReturnType<typeof getCurrentViewerAccess>>["viewer"]>,
+): TrackerProjectRow[] {
+  if (!viewer.active) {
+    return [];
+  }
+
+  return previewProjects
+    .filter((project) => project.active)
+    .filter((project) =>
+      canTrackOwnTimeForProject(viewer, toProjectPermissionSubject(project)),
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function getPreviewTodayHoursByProjectId(
+  personId: string,
+  localDate: string,
+  projectIds: string[],
+): Map<string, number> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  const projectIdSet = new Set(projectIds);
+
+  return previewTimeEntries.reduce((hoursByProjectId, row) => {
+    if (
+      row.person_id !== personId ||
+      row.date !== localDate ||
+      !projectIdSet.has(row.project_id)
+    ) {
+      return hoursByProjectId;
+    }
+
+    hoursByProjectId.set(
+      row.project_id,
+      (hoursByProjectId.get(row.project_id) ?? 0) + Number(row.hours),
+    );
+    return hoursByProjectId;
+  }, new Map<string, number>());
+}
+
+function resolvePreviewTrackableProject(
+  viewer: NonNullable<Awaited<ReturnType<typeof getCurrentViewerAccess>>["viewer"]>,
+  projectId: string,
+): TrackerProjectRow {
+  const project = listPreviewTrackableProjectRows(viewer).find(
+    (candidate) => candidate.id === projectId,
+  );
+
+  if (!project) {
+    throw new Error("Selected project is unavailable.");
+  }
+
+  return project;
+}
+
+function resolvePreviewAssignmentId(
+  personId: string,
+  projectId: string,
+  entryDate: string,
+): string | null {
+  const matchingAssignments = previewAssignments.filter(
+    (assignment) =>
+      assignment.active &&
+      assignment.person_id === personId &&
+      assignment.project_id === projectId &&
+      assignmentMatchesDate(assignment, entryDate),
+  );
+
+  return matchingAssignments.length === 1 ? matchingAssignments[0].id : null;
+}
+
 export async function getSelfTimeTrackerData(
   input: GetSelfTimeTrackerDataInput,
   context: ViewerRequestContext = {},
 ): Promise<SelfTimeTrackerData> {
+  const trace = createPerfTrace("getSelfTimeTrackerData", {
+    hasLocalDate: Boolean(input.localDate),
+  });
+
   if (!isIsoDate(input.localDate)) {
     throw new Error("Tracker date is invalid.");
   }
 
   const status = getDatabaseStatus();
-  const viewerAccess = await getCurrentViewerAccess(context);
+  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  );
 
   if (!status.configured) {
-    return emptyTrackerData(
-      false,
-      status.message,
-      viewerAccess.accessMessage,
-      true,
+    if (!viewerAccess.viewer) {
+      trace.finish({
+        hasViewer: false,
+        projectCount: 0,
+        result: "preview-forbidden",
+      });
+      return emptyTrackerData(
+        false,
+        PREVIEW_CONFIG_MESSAGE,
+        viewerAccess.accessMessage ?? "Sign in to track time.",
+        true,
+      );
+    }
+
+    const personId = await trace.measure("resolveTrackerPersonId", () =>
+      resolveTrackerPersonId(context, viewerAccess.viewer),
     );
+    const trackerViewer = personId
+      ? { ...viewerAccess.viewer, personId }
+      : viewerAccess.viewer;
+    const projects = await trace.measure("listPreviewTrackableProjectRows", () =>
+      Promise.resolve(listPreviewTrackableProjectRows(trackerViewer)),
+    );
+    const todayHoursByProjectId = personId
+      ? await trace.measure("getPreviewTodayHoursByProjectId", () =>
+          Promise.resolve(
+            getPreviewTodayHoursByProjectId(
+              personId,
+              input.localDate,
+              projects.map((project) => project.id),
+            ),
+          ),
+        )
+      : new Map<string, number>();
+
+    trace.finish({
+      hasPersonId: Boolean(personId),
+      hasViewer: true,
+      projectCount: projects.length,
+      result: "preview",
+    });
+
+    return {
+      accessMessage: personId ? null : "Finish account setup to record time.",
+      configured: false,
+      configMessage: PREVIEW_CONFIG_MESSAGE,
+      forbidden: false,
+      projects: projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        photoUrl: project.photo_url ?? null,
+        todayHours: todayHoursByProjectId.get(project.id) ?? 0,
+      })),
+    };
   }
 
   if (!viewerAccess.viewer) {
+    trace.finish({
+      hasViewer: false,
+      projectCount: 0,
+      result: "forbidden",
+    });
     return emptyTrackerData(
       true,
       status.message,
@@ -386,6 +535,11 @@ export async function getSelfTimeTrackerData(
   const client = createTrackerDatabaseClient(context);
 
   if (!client) {
+    trace.finish({
+      hasViewer: true,
+      projectCount: 0,
+      result: "missing-client",
+    });
     return emptyTrackerData(
       true,
       status.message,
@@ -394,19 +548,32 @@ export async function getSelfTimeTrackerData(
     );
   }
 
-  const personId = await resolveTrackerPersonId(context, viewerAccess.viewer);
+  const personId = await trace.measure("resolveTrackerPersonId", () =>
+    resolveTrackerPersonId(context, viewerAccess.viewer),
+  );
   const trackerViewer = personId
     ? { ...viewerAccess.viewer, personId }
     : viewerAccess.viewer;
-  const projects = await listTrackableProjectRows(client, trackerViewer);
+  const projects = await trace.measure("listTrackableProjectRows", () =>
+    listTrackableProjectRows(client, trackerViewer),
+  );
   const todayHoursByProjectId = personId
-    ? await getTodayHoursByProjectId(
-        client,
-        personId,
-        input.localDate,
-        projects.map((project) => project.id),
+    ? await trace.measure("getTodayHoursByProjectId", () =>
+        getTodayHoursByProjectId(
+          client,
+          personId,
+          input.localDate,
+          projects.map((project) => project.id),
+        ),
       )
     : new Map<string, number>();
+
+  trace.finish({
+    hasPersonId: Boolean(personId),
+    hasViewer: true,
+    projectCount: projects.length,
+    result: "live",
+  });
 
   return {
     accessMessage: personId
@@ -447,6 +614,44 @@ export async function recordSelfTimeTrackerEntry(
 
   if (hours <= 0) {
     throw new Error("Tracked duration is too short to save.");
+  }
+
+  const status = getDatabaseStatus();
+
+  if (!status.configured) {
+    const viewerAccess = await getCurrentViewerAccess(context);
+    const personId = await resolveTrackerPersonId(context, viewerAccess.viewer);
+
+    if (!viewerAccess.viewer || !personId) {
+      throw new Error(
+        viewerAccess.accessMessage ?? "Finish account setup to track time.",
+      );
+    }
+
+    resolvePreviewTrackableProject(
+      { ...viewerAccess.viewer, personId },
+      projectId,
+    );
+
+    const assignmentId = resolvePreviewAssignmentId(personId, projectId, entryDate);
+    const row = {
+      assignment_id: assignmentId,
+      date: entryDate,
+      hours,
+      id: createPreviewTimeEntryId(),
+      notes: null,
+      person_id: personId,
+      project_id: projectId,
+      source: "manual",
+    };
+
+    previewTimeEntries.push(row);
+
+    return {
+      entry: toTimeEntry(row),
+      todayHours:
+        getPreviewTodayHoursByProjectId(personId, entryDate, [projectId]).get(projectId) ?? 0,
+    };
   }
 
   const { client, personId, viewer } = await resolveTrackerContext(context);

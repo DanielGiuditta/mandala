@@ -2,13 +2,22 @@
 
 import { useMemo, useState } from "react";
 
-import type { PersonListItem } from "@mandala/db";
+import type { PersonListItem, UpdatePersonInput } from "@mandala/db";
 
 import { PeopleListRow } from "./people-list-row";
+import type { PersonCreateOfficeOption, PersonCreateSupervisorOption } from "./person-create-types";
 
 interface PeopleListTableProps {
   configured: boolean;
   forbidden: boolean;
+  loadSupervisorOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: PersonCreateSupervisorOption[];
+  }>;
+  officeOptions: PersonCreateOfficeOption[];
+  onUpdatePersonAction: (
+    input: UpdatePersonInput,
+  ) => Promise<{ personId: string }>;
   people: PersonListItem[];
 }
 
@@ -37,11 +46,18 @@ const PEOPLE_COLUMNS: Array<{ key: SortKey; label: string }> = [
 export function PeopleListTable({
   configured,
   forbidden,
+  loadSupervisorOptionsAction,
+  officeOptions,
+  onUpdatePersonAction,
   people,
 }: PeopleListTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [hasUserSorted, setHasUserSorted] = useState(false);
+  const [supervisorOptions, setSupervisorOptions] = useState<PersonCreateSupervisorOption[]>([]);
+  const [supervisorOptionsStatus, setSupervisorOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable" | "error"
+  >("idle");
 
   function toggleSort(nextKey: SortKey) {
     setHasUserSorted(true);
@@ -143,6 +159,34 @@ export function PeopleListTable({
     return items;
   }, [people, sortDirection, sortKey]);
 
+  async function ensureSupervisorOptions() {
+    if (supervisorOptionsStatus === "ready" || supervisorOptionsStatus === "loading") {
+      return;
+    }
+
+    setSupervisorOptionsStatus("loading");
+
+    try {
+      const result = await loadSupervisorOptionsAction();
+
+      if (result.forbidden) {
+        setSupervisorOptions([]);
+        setSupervisorOptionsStatus("unavailable");
+        throw new Error("Supervisor options are unavailable for the current viewer.");
+      }
+
+      setSupervisorOptions(result.people);
+      setSupervisorOptionsStatus("ready");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("unavailable")) {
+        throw error;
+      }
+
+      setSupervisorOptionsStatus("error");
+      throw new Error("Unable to load supervisor options.");
+    }
+  }
+
   return (
     <div className="people-list">
       {!forbidden ? (
@@ -167,7 +211,15 @@ export function PeopleListTable({
         </div>
       ) : (
         sortedPeople.map((person, index) => (
-          <PeopleListRow key={person.id} person={person} rowIndex={index} />
+          <PeopleListRow
+            ensureSupervisorOptions={ensureSupervisorOptions}
+            key={person.id}
+            officeOptions={officeOptions}
+            onUpdatePersonAction={onUpdatePersonAction}
+            person={person}
+            rowIndex={index}
+            supervisorOptions={supervisorOptions}
+          />
         ))
       )}
     </div>

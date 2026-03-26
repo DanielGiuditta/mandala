@@ -91,5 +91,5 @@ export function AuthHashHandoff({
     return null
   }
 
-  return <div className="notice">{errorMessage ?? "Finishing sign-in..."}</div>
+  return <div className="ui-notice">{errorMessage ?? "Finishing sign-in..."}</div>
 }

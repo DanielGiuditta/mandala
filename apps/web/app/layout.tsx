@@ -35,6 +35,7 @@ export default async function RootLayout({
             photoUrl: viewerAccess.summary?.photoUrl ?? null,
             primaryTier: viewerAccess.summary?.primaryTier ?? null,
             sessionEmail: session.sessionEmail,
+            viewerEmail: viewerAccess.summary?.email ?? null,
           }}
         >
           {children}

@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { ProjectChecklistItem } from "@mandala/db";
 
+import { EditableEntityPill } from "../editable-entity-pill";
 import { SelectDropdownField } from "../ui/dropdown";
 import { Avatar } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
@@ -15,6 +16,7 @@ interface ProjectTasksCardProps {
     projectId: string;
     title: string;
   }) => Promise<{ error: string | null; ok: boolean }>;
+  canEditChecklistItems: boolean;
   checklistItems: ProjectChecklistItem[];
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
@@ -32,6 +34,7 @@ interface ProjectTasksCardProps {
 
 export function ProjectTasksCard({
   addTaskAction,
+  canEditChecklistItems,
   checklistItems,
   loadPeopleOptionsAction,
   projectId,
@@ -96,21 +99,25 @@ export function ProjectTasksCard({
     <section className="pd-card">
       <ProjectCardHeader
         addAriaLabel="Add task"
-        onAddClick={() => {
-          setShowAdd((value) => {
-            const nextValue = !value;
+        onAddClick={
+          canEditChecklistItems
+            ? () => {
+                setShowAdd((value) => {
+                  const nextValue = !value;
 
-            if (nextValue) {
-              void ensurePeopleOptions();
-            }
+                  if (nextValue) {
+                    void ensurePeopleOptions();
+                  }
 
-            return nextValue;
-          });
-        }}
+                  return nextValue;
+                });
+              }
+            : undefined
+        }
         title="Tasks"
       />
 
-      {showAdd ? (
+      {showAdd && canEditChecklistItems ? (
         <form
           className="pd-inline-form"
           onSubmit={(event) => {
@@ -215,20 +222,27 @@ export function ProjectTasksCard({
                 ) : (
                   <>
                     <div className="pd-list-item-main">
-                      <button
-                        aria-label={item.completed ? "Mark task incomplete" : "Mark task complete"}
-                        className={`pd-check ${item.completed ? "pd-check-complete" : ""}`}
-                        onClick={() =>
-                          runAction(() =>
-                            updateTaskAction({
-                              checklistItemId: item.id,
-                              completed: !item.completed,
-                              projectId,
-                            }),
-                          )
-                        }
-                        type="button"
-                      />
+                      {canEditChecklistItems ? (
+                        <button
+                          aria-label={item.completed ? "Mark task incomplete" : "Mark task complete"}
+                          className={`pd-check ${item.completed ? "pd-check-complete" : ""}`}
+                          onClick={() =>
+                            runAction(() =>
+                              updateTaskAction({
+                                checklistItemId: item.id,
+                                completed: !item.completed,
+                                projectId,
+                              }),
+                            )
+                          }
+                          type="button"
+                        />
+                      ) : (
+                        <span
+                          aria-hidden
+                          className={`pd-check pd-check-static ${item.completed ? "pd-check-complete" : ""}`}
+                        />
+                      )}
                       <div>
                         <h4 className={item.completed ? "pd-list-item-title-complete" : ""}>{item.title}</h4>
                         <p className="pd-meta-text">
@@ -237,7 +251,42 @@ export function ProjectTasksCard({
                       </div>
                     </div>
                     <div className="pd-list-item-aside">
-                      {item.assignedPersonName ? (
+                      {canEditChecklistItems ? (
+                        <EditableEntityPill
+                          ariaLabel={`Change assignee for ${item.title}`}
+                          onCommit={async (nextValue) => {
+                            const result = await updateTaskAction({
+                              assignedPersonId: nextValue || null,
+                              checklistItemId: item.id,
+                              projectId,
+                            });
+
+                            if (!result.ok) {
+                              throw new Error(result.error ?? "Unable to update task.");
+                            }
+                          }}
+                          onOpenRequested={ensurePeopleOptions}
+                          options={[
+                            { label: "Unassigned", value: "" },
+                            ...peopleOptions.map((person) => ({
+                              label: person.fullName,
+                              value: person.id,
+                            })),
+                          ]}
+                          value={item.assignedPersonId ?? ""}
+                          renderTrigger={({ toggleButton }) => (
+                            <span className="pd-person-chip">
+                              <Avatar
+                                fallbackKey={item.assignedPersonId ?? item.id}
+                                label={item.assignedPersonName ?? "Unassigned"}
+                                photoUrl={item.assignedPersonPhotoUrl}
+                              />
+                              <span>{item.assignedPersonName ?? "Unassigned"}</span>
+                              {toggleButton}
+                            </span>
+                          )}
+                        />
+                      ) : item.assignedPersonName ? (
                         <span className="pd-person-chip">
                           <Avatar
                             fallbackKey={item.assignedPersonId ?? item.id}
@@ -247,16 +296,18 @@ export function ProjectTasksCard({
                           <span>{item.assignedPersonName}</span>
                         </span>
                       ) : null}
-                      <button
-                        className="pd-text-button"
-                        onClick={() => {
-                          void ensurePeopleOptions();
-                          setEditingItemId(item.id);
-                        }}
-                        type="button"
-                      >
-                        Edit
-                      </button>
+                      {canEditChecklistItems ? (
+                        <button
+                          className="pd-text-button"
+                          onClick={() => {
+                            void ensurePeopleOptions();
+                            setEditingItemId(item.id);
+                          }}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                     </div>
                   </>
                 )}

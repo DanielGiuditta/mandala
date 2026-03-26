@@ -163,7 +163,13 @@ export function ProjectDetailEntity({
         title={data.project.name}
       />
       <div className="pd-entity-content">
-        <ProjectDetailGlance project={data.project} timeSummary={data.timeSummary} />
+        <ProjectDetailGlance
+          loadPeopleOptionsAction={loadPeopleOptionsAction}
+          officeOptions={officeOptions}
+          onUpdateProjectAction={onUpdateProjectAction}
+          project={data.project}
+          timeSummary={data.timeSummary}
+        />
 
         {data.restrictedToSummary ? (
           <section className="pd-card">
@@ -180,6 +186,7 @@ export function ProjectDetailEntity({
             <div className="pd-col-main">
               <ProjectTasksCard
                 addTaskAction={taskActions.addTaskAction}
+                canEditChecklistItems={data.canEditChecklistItems}
                 checklistItems={data.checklistItems}
                 loadPeopleOptionsAction={loadPeopleOptionsAction}
                 projectId={projectId}
@@ -195,6 +202,7 @@ export function ProjectDetailEntity({
             <div className="pd-col-side">
               <ProjectStaffCard
                 addStaffAction={quickAddStaffAction}
+                canAssignPeople={data.canAssignPeople}
                 loadPeopleOptionsAction={loadPeopleOptionsAction}
                 projectId={projectId}
                 staffedPeople={data.staffedPeople}

@@ -1,4 +1,8 @@
-import type { CreateProjectInput, ProjectListData } from "@mandala/db";
+import type {
+  CreateProjectInput,
+  ProjectListData,
+  UpdateProjectInput,
+} from "@mandala/db";
 
 import { EntityHeader } from "./entity-header";
 import { ProjectListFilters } from "./projects/project-list-filters";
@@ -14,12 +18,16 @@ interface ProjectsDomainListProps {
     forbidden: boolean;
     people: Array<{ fullName: string; id: string }>;
   }>;
+  onUpdateProjectAction: (
+    input: UpdateProjectInput,
+  ) => Promise<{ projectId: string }>;
 }
 
 export function ProjectsDomainList({
   createProjectAction,
   data,
   loadPeopleOptionsAction,
+  onUpdateProjectAction,
 }: ProjectsDomainListProps) {
   return (
     <section className="projects-domain">
@@ -39,6 +47,8 @@ export function ProjectsDomainList({
       <ProjectListTable
         configured={data.configured}
         forbidden={data.forbidden}
+        loadPeopleOptionsAction={loadPeopleOptionsAction}
+        onUpdateProjectAction={onUpdateProjectAction}
         projects={data.projects}
       />
 

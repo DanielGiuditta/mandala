@@ -11,7 +11,13 @@ import {
   hasPartnerRole,
 } from "@mandala/domain"
 
-import { getCurrentViewerAccess, getViewerLabel, type ViewerRequestContext } from "./auth"
+import {
+  getCurrentViewerAccess,
+  getViewerLabel,
+  invalidateViewerAccessCache,
+  type CurrentViewerAccess,
+  type ViewerRequestContext,
+} from "./auth"
 import { fetchOfficeRows, fetchPeopleRows, type OfficeRow, type PersonRow } from "./lookups"
 import {
   PREVIEW_CONFIG_MESSAGE,
@@ -25,6 +31,7 @@ import {
   previewUserAccounts,
 } from "./previewData"
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
+import { createPerfTrace } from "./perf"
 
 const PEOPLE_READ_CACHE_TTL_MS = 15_000
 const DEFAULT_PERSON_AVAILABILITY_HOURS_PER_WEEK = 40
@@ -138,11 +145,15 @@ export interface PeopleListFilters {
 export interface PersonListItem {
   active: boolean
   annualSalary: number
+  canEdit: boolean
+  canEditPermission: boolean
   email?: string | null
+  effectivePermission: CreatePersonPermission
   effectivePermissionLabel: string | null
   fullName: string
   hoursThisWeek: number
   id: string
+  isCurrentViewer: boolean
   officeId: string
   officeName: string
   photoUrl?: string | null
@@ -161,7 +172,6 @@ export interface PersonDetailPerson extends PersonListItem {
   allocationPercent: number
   assignedHours: number
   availabilityHoursPerWeek: number
-  effectivePermission: CreatePersonPermission
   hourlyCost: number
   remainingCapacity: number
 }
@@ -520,6 +530,10 @@ function buildPersonListItem(
   >,
   hoursThisWeekByPersonId: Map<string, number>,
   permissionLabelByPersonId: Map<string, string | null>,
+  permissionValueByPersonId: Map<string, CreatePersonPermission>,
+  canEdit: boolean,
+  canEditPermission: boolean,
+  isCurrentViewer: boolean,
 ): PersonListItem {
   const person = toPerson(row)
   const { supervisorName, supervisorPhotoUrl } = getSupervisorSummary(
@@ -530,11 +544,15 @@ function buildPersonListItem(
   return {
     active: person.active,
     annualSalary: person.annualSalary,
+    canEdit,
+    canEditPermission,
     email: person.email,
+    effectivePermission: permissionValueByPersonId.get(person.id) ?? "noAccount",
     effectivePermissionLabel: permissionLabelByPersonId.get(person.id) ?? null,
     fullName: person.fullName,
     hoursThisWeek: hoursThisWeekByPersonId.get(person.id) ?? 0,
     id: person.id,
+    isCurrentViewer,
     officeId: person.officeId,
     officeName: officesById.get(person.officeId)?.name ?? "Unknown office",
     photoUrl: person.photoUrl,
@@ -562,6 +580,9 @@ function buildPersonDetailPerson(
   hoursThisWeekByPersonId: Map<string, number>,
   permissionLabelByPersonId: Map<string, string | null>,
   effectivePermission: CreatePersonPermission,
+  canEdit: boolean,
+  canEditPermission: boolean,
+  isCurrentViewer: boolean,
 ): PersonDetailPerson {
   const person = toPerson(row)
   const assignedHours = deriveAssignedHours([assignmentsByPersonId.get(row.id) ?? 0])
@@ -572,6 +593,10 @@ function buildPersonDetailPerson(
     staffedProjectsByPersonId,
     hoursThisWeekByPersonId,
     permissionLabelByPersonId,
+    new Map([[row.id, effectivePermission]]),
+    canEdit,
+    canEditPermission,
+    isCurrentViewer,
   )
 
   return {
@@ -600,6 +625,20 @@ function emptyPersonTimeSummary(): PersonDetailData["timeSummary"] {
     totalLaborCost: 0,
     byProject: [],
   }
+}
+
+function canEditPersonPermission(
+  viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+  row: Pick<PersonRow, "id" | "office_id">,
+): boolean {
+  return canCreateOrUpdatePeople(viewer, row.office_id)
+}
+
+function isCurrentViewerPerson(
+  viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+  personId: string,
+): boolean {
+  return viewer.personId === personId
 }
 
 function emptyPeopleListData(
@@ -660,7 +699,10 @@ function emptyPersonDetailData(
   }
 }
 
-function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
+function listPreviewPeople(
+  filters: PeopleListFilters,
+  viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+): PeopleListData {
   const filteredPeople = previewPeople.filter((row) => matchesFilters(row, filters))
   const officesById = new Map(previewOffices.map((office) => [office.id, office]))
   const peopleById = new Map(previewPeople.map((person) => [person.id, person]))
@@ -742,6 +784,28 @@ function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
       ] as const
     }),
   )
+  const permissionValueByPersonId = new Map(
+    previewPeople.map((person) => {
+      const userAccount = userAccountsByPersonId.get(person.id) ?? null
+      const roleAssignments = userAccount
+        ? roleAssignmentsByUserAccountId.get(userAccount.id) ?? []
+        : []
+
+      return [
+        person.id,
+        buildEffectivePermissionValue(
+          userAccount
+            ? {
+                active: userAccount.active,
+                id: userAccount.id,
+                person_id: userAccount.person_id,
+              }
+            : null,
+          roleAssignments,
+        ),
+      ] as const
+    }),
+  )
 
   return {
     accessMessage: null,
@@ -758,6 +822,10 @@ function listPreviewPeople(filters: PeopleListFilters): PeopleListData {
         staffedProjectsByPersonId,
         hoursThisWeekByPersonId,
         permissionLabelByPersonId,
+        permissionValueByPersonId,
+        canCreateOrUpdatePeople(viewer, row.office_id),
+        canEditPersonPermission(viewer, row),
+        isCurrentViewerPerson(viewer, row.id),
       ),
     ),
     viewerLabel: null,
@@ -822,6 +890,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
     return totals
   }, new Map<string, number>())
   const peopleById = new Map(previewPeople.map((candidate) => [candidate.id, candidate]))
+  const projectsById = new Map(projectRows.map((project) => [project.id, project]))
   const staffedProjectsByPersonId = timeEntryRows.reduce(
     (map, entry) => {
       const project = projectsById.get(entry.project_id)
@@ -907,9 +976,11 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
     hoursThisWeekByPersonId,
     permissionLabelByPersonId,
     effectivePermission,
+    false,
+    false,
+    false,
   )
   const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
-  const projectsById = new Map(projectRows.map((project) => [project.id, project]))
   const byProject = new Map<string, PersonDetailProjectTimeItem>()
   let totalHours = 0
   let totalLaborCost = 0
@@ -1015,7 +1086,13 @@ export async function listPeople(
   filters: PeopleListFilters = {},
   context: ViewerRequestContext = {},
 ): Promise<PeopleListData> {
-  const viewerAccess = await getCurrentViewerAccess(context)
+  const trace = createPerfTrace("listPeople", {
+    hasOfficeFilter: Boolean(filters.officeId),
+    hasQuery: Boolean(filters.query?.trim()),
+  })
+  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  )
   const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
@@ -1023,6 +1100,11 @@ export async function listPeople(
     : null
 
   if (!viewerAccess.viewer) {
+    trace.finish({
+      hasViewer: false,
+      personCount: 0,
+      result: "forbidden",
+    })
     return emptyPeopleListData(
       filters,
       status.configured,
@@ -1034,6 +1116,11 @@ export async function listPeople(
   }
 
   if (!canViewPeopleDirectory(viewerAccess.viewer)) {
+    trace.finish({
+      hasViewer: true,
+      personCount: 0,
+      result: "no-directory-access",
+    })
     return emptyPeopleListData(
       filters,
       status.configured,
@@ -1045,7 +1132,12 @@ export async function listPeople(
   }
 
   if (!client) {
-    const previewData = listPreviewPeople(filters)
+    const previewData = listPreviewPeople(filters, viewerAccess.viewer)
+    trace.finish({
+      personCount: previewData.people.length,
+      preview: true,
+      result: "preview",
+    })
 
     return {
       ...previewData,
@@ -1054,15 +1146,19 @@ export async function listPeople(
     }
   }
 
-  const [{ data: peopleData, error: peopleError }, offices] = await Promise.all([
-    client
-      .from("people")
-      .select(
-        "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-      )
-      .order("full_name"),
-    fetchOfficeRows(undefined, { client }),
-  ])
+  const [{ data: peopleData, error: peopleError }, offices] = await trace.measure(
+    "baseQueries",
+    () =>
+      Promise.all([
+        client
+          .from("people")
+          .select(
+            "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+          )
+          .order("full_name"),
+        fetchOfficeRows(undefined, { client }),
+      ]),
+  )
 
   if (peopleError) {
     throw peopleError
@@ -1085,21 +1181,26 @@ export async function listPeople(
   >()
   let hoursThisWeekByPersonId = new Map<string, number>()
   let permissionLabelByPersonId = new Map<string, string | null>()
+  let permissionValueByPersonId = new Map<string, CreatePersonPermission>()
 
   if (peopleIds.length > 0) {
     const { startDate: currentWeekStart, endDate: currentWeekEnd } = getCurrentWeekDateRange()
     const [{ data: timeEntryData, error: timeEntryError }, { data: userAccountData, error: userAccountError }] =
-      await Promise.all([
-        client
-          .from("time_entries")
-          .select("person_id, project_id, date, hours")
-          .in("person_id", peopleIds)
-          .not("project_id", "is", null),
-        client
-          .from("user_accounts")
-          .select("id, person_id, active")
-          .in("person_id", peopleIds),
-      ])
+      await trace.measure(
+        "timeEntriesAndUserAccounts",
+        () =>
+          Promise.all([
+            client
+              .from("time_entries")
+              .select("person_id, project_id, date, hours")
+              .in("person_id", peopleIds)
+              .not("project_id", "is", null),
+            client
+              .from("user_accounts")
+              .select("id, person_id, active")
+              .in("person_id", peopleIds),
+          ]),
+      )
 
     if (timeEntryError) {
       throw timeEntryError
@@ -1131,11 +1232,15 @@ export async function listPeople(
     >()
 
     if (projectIds.length > 0) {
-      const { data: projectData, error: projectError } = await client
-        .from("projects")
-        .select("id, name, photo_url, active")
-        .in("id", projectIds)
-        .eq("active", true)
+      const { data: projectData, error: projectError } = await trace.measure(
+        "fetchProjectsById",
+        () =>
+          client
+            .from("projects")
+            .select("id, name, photo_url, active")
+            .in("id", projectIds)
+            .eq("active", true),
+      )
 
       if (projectError) {
         throw projectError
@@ -1195,10 +1300,14 @@ export async function listPeople(
     let roleAssignmentsByUserAccountId = new Map<string, RoleAssignmentListRow[]>()
 
     if (userAccountIds.length > 0) {
-      const { data: roleAssignmentData, error: roleAssignmentError } = await client
-        .from("role_assignments")
-        .select("user_account_id, role, active")
-        .in("user_account_id", userAccountIds)
+      const { data: roleAssignmentData, error: roleAssignmentError } = await trace.measure(
+        "fetchRoleAssignments",
+        () =>
+          client
+            .from("role_assignments")
+            .select("user_account_id, role, active")
+            .in("user_account_id", userAccountIds),
+      )
 
       if (roleAssignmentError) {
         throw roleAssignmentError
@@ -1228,7 +1337,28 @@ export async function listPeople(
         ] as const
       }),
     )
+    permissionValueByPersonId = new Map(
+      filteredPeople.map((person) => {
+        const userAccount = userAccountsByPersonId.get(person.id) ?? null
+        const roleAssignments = userAccount
+          ? roleAssignmentsByUserAccountId.get(userAccount.id) ?? []
+          : []
+
+        return [
+          person.id,
+          buildEffectivePermissionValue(userAccount, roleAssignments),
+        ] as const
+      }),
+    )
   }
+
+  trace.finish({
+    filteredPeopleCount: filteredPeople.length,
+    officeCount: offices.length,
+    peopleIdsCount: peopleIds.length,
+    personCount: filteredPeople.length,
+    result: "live",
+  })
 
   return {
     accessMessage: viewerAccess.accessMessage,
@@ -1245,6 +1375,10 @@ export async function listPeople(
         staffedProjectsByPersonId,
         hoursThisWeekByPersonId,
         permissionLabelByPersonId,
+        permissionValueByPersonId,
+        canCreateOrUpdatePeople(viewerAccess.viewer!, row.office_id),
+        canEditPersonPermission(viewerAccess.viewer!, row),
+        isCurrentViewerPerson(viewerAccess.viewer!, row.id),
       ),
     ),
     viewerLabel,
@@ -1491,6 +1625,9 @@ export async function createPerson(
       }
     }
 
+    if (email) {
+      invalidateViewerAccessCache(email)
+    }
     return toPerson(createdPerson)
   } catch (error) {
     if (serviceClient && createdPersonId) {
@@ -1568,6 +1705,17 @@ export async function updatePerson(
     !canCreateOrUpdatePeople(viewerAccess.viewer, officeId)
   ) {
     throw new Error("You do not have permission to update this person.")
+  }
+
+  if (
+    viewerAccess.viewer.personId === personId &&
+    canViewPeopleDirectory(viewerAccess.viewer) &&
+    input.permission !== "admin" &&
+    input.permission !== "partner"
+  ) {
+    throw new Error(
+      "Ask another partner or admin to change your own permission.",
+    )
   }
 
   const [offices, supervisors, userAccountResponse] = await Promise.all([
@@ -1784,6 +1932,13 @@ export async function updatePerson(
     }
   }
 
+  if (currentUserAccount?.email) {
+    invalidateViewerAccessCache(currentUserAccount.email)
+  }
+
+  if (email) {
+    invalidateViewerAccessCache(email)
+  }
   return toPerson(updatedPersonData as PersonRow)
 }
 
@@ -2217,6 +2372,9 @@ export async function getPersonDetail(
     hoursThisWeekByPersonId,
     permissionLabelByPersonId,
     effectivePermission,
+    canCreateOrUpdatePeople(viewerAccess.viewer, person.office_id),
+    canEditPersonPermission(viewerAccess.viewer, person),
+    isCurrentViewerPerson(viewerAccess.viewer, person.id),
   )
   const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
 

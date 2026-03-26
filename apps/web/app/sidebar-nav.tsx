@@ -14,10 +14,47 @@ function FigmaIcon({ src }: { src: string }) {
   )
 }
 
+function TimeTrackerIcon() {
+  return (
+    <svg
+      aria-hidden
+      className="app-sidebar-icon"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M12 7.6v4.9l3.1 2"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
 const NAV_ITEMS = [
-  { href: "/projects", iconSrc: "/figma/nav/projects-icon.svg", label: "Projects" },
-  { href: "/people", iconSrc: "/figma/nav/people-icon.svg", label: "People" },
-  { href: "/library", iconSrc: "/figma/nav/resources-icon.svg", label: "Resources" },
+  {
+    href: "/projects",
+    label: "Projects",
+    renderIcon: () => <FigmaIcon src="/figma/nav/projects-icon.svg" />,
+  },
+  {
+    href: "/people",
+    label: "People",
+    renderIcon: () => <FigmaIcon src="/figma/nav/people-icon.svg" />,
+  },
+  {
+    href: "/time-tracker",
+    label: "Time tracker",
+    renderIcon: () => <TimeTrackerIcon />,
+  },
+  {
+    href: "/library",
+    label: "Resources",
+    renderIcon: () => <FigmaIcon src="/figma/nav/resources-icon.svg" />,
+  },
 ] as const
 
 interface SidebarNavProps {
@@ -30,7 +67,9 @@ export function SidebarNav({ isOpen }: SidebarNavProps) {
   return (
     <nav aria-label="Primary" className="app-sidebar-nav app-sidebar-nav-track">
       {NAV_ITEMS.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+        const isProjectsRoot = item.href === "/projects" && pathname === "/"
+        const isActive =
+          isProjectsRoot || pathname === item.href || pathname.startsWith(`${item.href}/`)
 
         return (
           <Link
@@ -42,7 +81,7 @@ export function SidebarNav({ isOpen }: SidebarNavProps) {
             key={item.href}
             prefetch={false}
           >
-            <FigmaIcon src={item.iconSrc} />
+            {item.renderIcon()}
             <span className={`app-sidebar-nav-label ${isOpen ? "" : "app-sidebar-nav-label-hidden"}`}>
               {item.label}
             </span>

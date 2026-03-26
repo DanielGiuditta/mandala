@@ -1,4 +1,5 @@
 import {
+  createPerfTrace,
   getSelfTimeTrackerData,
   invalidatePeopleReadCaches,
   invalidateProjectReadCaches,
@@ -47,14 +48,40 @@ function formatTrackerError(error: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
+  const trace = createPerfTrace("api.timeTracker.GET")
+
   try {
     const localDate = request.nextUrl.searchParams.get("localDate") ?? ""
-    const viewerContext = await getViewerRequestContext()
-    const result = await getSelfTimeTrackerData({ localDate }, viewerContext)
+    const viewerContext = await trace.measure("getViewerRequestContext", () =>
+      getViewerRequestContext(),
+    )
+    const result = await trace.measure("getSelfTimeTrackerData", () =>
+      getSelfTimeTrackerData({ localDate }, viewerContext),
+    )
+    trace.finish({
+      forbidden: result.forbidden,
+      projectCount: result.projects.length,
+      result: "ok",
+    })
 
-    return NextResponse.json(result)
+    const headers = new Headers()
+    const serverTiming = trace.toServerTimingHeader()
+
+    if (serverTiming) {
+      headers.set("Server-Timing", serverTiming)
+    }
+
+    return NextResponse.json(result, { headers })
   } catch (error) {
     console.error("GET /api/time-tracker failed", error)
+    trace.finish({ result: "error" })
+
+    const headers = new Headers()
+    const serverTiming = trace.toServerTimingHeader()
+
+    if (serverTiming) {
+      headers.set("Server-Timing", serverTiming)
+    }
 
     return NextResponse.json(
       {
@@ -64,7 +91,7 @@ export async function GET(request: NextRequest) {
         forbidden: false,
         projects: [],
       },
-      { status: 200 },
+      { headers, status: 200 },
     )
   }
 }
@@ -84,6 +111,7 @@ export async function POST(request: NextRequest) {
     revalidatePath(`/projects/${result.entry.projectId}`)
     revalidatePath("/people")
     revalidatePath(`/people/${result.entry.personId}`)
+    revalidatePath("/time-tracker")
 
     return NextResponse.json({
       entry: result.entry,

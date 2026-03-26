@@ -101,6 +101,8 @@ The person edit modal reuses the create-person permission selector with prefille
 
 Partners and scoped admins may update these values from the edit modal for visible people they can already update.
 
+As a safety guard, a person may not use that selector to remove their own elevated People-directory access. Another partner or scoped admin must make that permission downgrade.
+
 ## Minimal supporting models
 
 The existing core operational entities remain unchanged. V1 needs a small supporting authorization layer beside them:

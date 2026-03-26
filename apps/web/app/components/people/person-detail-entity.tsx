@@ -93,7 +93,12 @@ export function PersonDetailEntity({
         title={data.person.fullName}
       />
       <div className="pd-entity-content">
-        <PersonDetailGlance person={data.person} />
+        <PersonDetailGlance
+          loadSupervisorOptionsAction={loadSupervisorOptionsAction}
+          officeOptions={officeOptions}
+          onUpdatePersonAction={onUpdatePersonAction}
+          person={data.person}
+        />
 
         <div className="pd-columns">
           <div className="pd-col-main">

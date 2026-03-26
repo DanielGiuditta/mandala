@@ -14,6 +14,7 @@ interface ProjectStaffCardProps {
     personId: string;
     projectId: string;
   }) => Promise<{ error: string | null; ok: boolean }>;
+  canAssignPeople: boolean;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
     people: Array<{ fullName: string; id: string }>;
@@ -24,6 +25,7 @@ interface ProjectStaffCardProps {
 
 export function ProjectStaffCard({
   addStaffAction,
+  canAssignPeople,
   loadPeopleOptionsAction,
   projectId,
   staffedPeople,
@@ -69,21 +71,25 @@ export function ProjectStaffCard({
     <section className="pd-card">
       <ProjectCardHeader
         addAriaLabel="Add staff"
-        onAddClick={() => {
-          setShowAdd((value) => {
-            const nextValue = !value;
+        onAddClick={
+          canAssignPeople
+            ? () => {
+                setShowAdd((value) => {
+                  const nextValue = !value;
 
-            if (nextValue) {
-              void ensurePeopleOptions();
-            }
+                  if (nextValue) {
+                    void ensurePeopleOptions();
+                  }
 
-            return nextValue;
-          });
-        }}
+                  return nextValue;
+                });
+              }
+            : undefined
+        }
         title="Staff"
       />
 
-      {showAdd ? (
+      {showAdd && canAssignPeople ? (
         <form
           className="pd-inline-form"
           onSubmit={(event) => {

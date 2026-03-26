@@ -1,5 +1,6 @@
 export * from "./auth"
 export * from "./library"
+export * from "./perf"
 export * from "./people"
 export * from "./projects"
 export * from "./supabaseServer"

@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr"
+import { createPerfTrace } from "@mandala/db"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { getSafeNextPath } from "../auth/paths"
@@ -56,14 +57,20 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const pathname = request.nextUrl.pathname
+  const trace = createPerfTrace("middleware.updateSession", {
+    hasAuthCookie: hasAuthCookie(request),
+    pathname,
+  })
 
   if (isAssetPath(pathname)) {
+    trace.finish({ result: "asset-bypass" })
     return NextResponse.next({
       request,
     })
   }
 
   if (!url || !key) {
+    trace.finish({ result: "missing-config" })
     return NextResponse.next({
       request,
     })
@@ -71,11 +78,13 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   if (!hasAuthCookie(request)) {
     if (isProtectedPath(pathname)) {
+      trace.finish({ result: "redirect-login-no-cookie" })
       const loginUrl = new URL("/login", request.url)
       loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
       return NextResponse.redirect(loginUrl)
     }
 
+    trace.finish({ result: "public-no-cookie" })
     return NextResponse.next({
       request,
     })
@@ -85,6 +94,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // Skipping the middleware refresh here avoids a second Supabase auth roundtrip
   // on every in-app navigation while keeping full-document requests protected.
   if (isPrefetchRequest(request) || isRscNavigationRequest(request)) {
+    trace.finish({ result: "prefetch-or-rsc-bypass" })
     return NextResponse.next({
       request,
     })
@@ -109,23 +119,30 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   })
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await trace.measure("supabase.auth.getSession", () =>
+    supabase.auth.getSession(),
+  )
 
   if (session?.user && isSessionFresh(session.expires_at)) {
     if (pathname === "/login") {
+      trace.finish({ result: "redirect-from-login-fresh-session" })
       return NextResponse.redirect(
         new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
       )
     }
 
+    trace.finish({ result: "fresh-session" })
     return response
   }
 
   const {
     data: { user },
-  } = await supabase.auth.getUser()
+  } = await trace.measure("supabase.auth.getUser", () =>
+    supabase.auth.getUser(),
+  )
 
   if (!user && isProtectedPath(pathname)) {
+    trace.finish({ result: "redirect-login-no-user" })
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
 
@@ -135,6 +152,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   }
 
   if (user && pathname === "/login") {
+    trace.finish({ result: "redirect-from-login-user" })
     const redirectResponse = NextResponse.redirect(
       new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
     )
@@ -142,5 +160,6 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     return redirectResponse
   }
 
+  trace.finish({ result: user ? "user-allowed" : "anonymous-allowed" })
   return response
 }

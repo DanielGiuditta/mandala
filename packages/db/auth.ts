@@ -26,6 +26,7 @@ import {
   createServiceRoleSupabaseClient,
   getDatabaseStatus,
 } from "./supabaseServer"
+import { createPerfTrace } from "./perf"
 
 const DEFAULT_PREVIEW_VIEWER_EMAIL = "anjali.menon@kolam.local"
 const PREVIEW_VIEWER_MESSAGE =
@@ -129,6 +130,17 @@ interface CacheEntry<T> {
 }
 
 const liveViewerAccessCache = new Map<string, CacheEntry<CurrentViewerAccess>>()
+
+export function invalidateViewerAccessCache(sessionEmail?: string | null): void {
+  const normalizedEmail = normalizeEmail(sessionEmail)
+
+  if (!normalizedEmail) {
+    liveViewerAccessCache.clear()
+    return
+  }
+
+  liveViewerAccessCache.delete(normalizedEmail)
+}
 
 function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
   const entry = store.get(key)
@@ -422,10 +434,7 @@ function getPreviewViewerAccess(selection: ViewerSelection): CurrentViewerAccess
   const summary = buildViewerSummary(viewer, userAccount, person, office)
 
   return {
-    accessMessage:
-      !selection.userAccountId && !selection.email
-        ? `Previewing access as ${summary.displayName} (${summary.primaryTier ?? "unknown"}). Set KOLAM_VIEWER_EMAIL to impersonate another seeded user.`
-        : `Previewing access as ${summary.displayName} (${summary.primaryTier ?? "unknown"}).`,
+    accessMessage: null,
     summary,
     viewer,
   }
@@ -522,7 +531,17 @@ const getLiveViewerAccess = cache(
     sessionEmail: string | null,
     accessToken: string | null,
   ): Promise<CurrentViewerAccess> => {
+    const trace = createPerfTrace("getLiveViewerAccess", {
+      hasAccessToken: Boolean(accessToken),
+      hasSessionEmail: Boolean(sessionEmail),
+    })
+
     if (!sessionEmail || !accessToken) {
+      trace.finish({
+        cacheHit: false,
+        hasViewer: false,
+        result: "missing-session",
+      })
       return {
         accessMessage: SIGN_IN_REQUIRED_MESSAGE,
         summary: null,
@@ -533,12 +552,22 @@ const getLiveViewerAccess = cache(
     const cachedAccess = getCachedValue(liveViewerAccessCache, sessionEmail)
 
     if (cachedAccess) {
+      trace.finish({
+        cacheHit: true,
+        hasViewer: Boolean(cachedAccess.viewer),
+        result: "memory-cache",
+      })
       return cachedAccess
     }
 
     const client = createServerSupabaseClient({ accessToken })
 
     if (!client) {
+      trace.finish({
+        cacheHit: false,
+        hasViewer: false,
+        result: "missing-client",
+      })
       return {
         accessMessage: SIGN_IN_REQUIRED_MESSAGE,
         summary: null,
@@ -547,17 +576,30 @@ const getLiveViewerAccess = cache(
     }
 
     // Single consolidated DB call instead of 6 separate queries
-    const { data, error } = await client.rpc("get_viewer_access_context")
+    const { data, error } = await trace.measure(
+      "rpc.get_viewer_access_context",
+      () => client.rpc("get_viewer_access_context"),
+    )
 
     if (error) {
       throw error
     }
 
-    const response = await hydrateViewerAccessContextResponse(
-      data as ViewerAccessContextResponse,
-      sessionEmail,
+    const response = await trace.measure(
+      "hydrateViewerAccessContextResponse",
+      () =>
+        hydrateViewerAccessContextResponse(
+          data as ViewerAccessContextResponse,
+          sessionEmail,
+        ),
     )
     const result = buildViewerAccessFromDbResponse(response, sessionEmail)
+    trace.finish({
+      cacheHit: false,
+      hasPersonId: Boolean(result.viewer?.personId),
+      hasViewer: Boolean(result.viewer),
+      result: result.viewer ? "resolved" : "no-viewer",
+    })
 
     return setCachedValue(liveViewerAccessCache, sessionEmail, result)
   },

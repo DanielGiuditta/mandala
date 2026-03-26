@@ -63,6 +63,7 @@ export async function recordSelfTimeTrackerEntryAction(
     revalidatePath(`/projects/${result.entry.projectId}`);
     revalidatePath("/people");
     revalidatePath(`/people/${result.entry.personId}`);
+    revalidatePath("/time-tracker");
 
     return {
       entry: result.entry,

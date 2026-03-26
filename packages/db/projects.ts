@@ -9,6 +9,7 @@ import type {
 import {
   canAddChecklistItemsToProject,
   canAssignPeopleToProject,
+  canChangeProjectStage,
   canCreateOrUpdateProjects,
   canEditProjectTime,
   canUploadProjectDocuments,
@@ -44,6 +45,7 @@ import {
   createServerSupabaseClient,
   getDatabaseStatus,
 } from "./supabaseServer";
+import { createPerfTrace } from "./perf";
 
 const PROJECT_READ_CACHE_TTL_MS = 15_000;
 
@@ -203,6 +205,8 @@ export interface ProjectListFilters {
 }
 
 export interface ProjectListItem extends Project {
+  canEditProject: boolean;
+  canEditStage: boolean;
   clientName: string | null;
   description: string | null;
   leadPersonName: string | null;
@@ -266,7 +270,10 @@ export interface ProjectTimeSummary {
 
 export interface ProjectDetailData {
   accessMessage: string | null;
+  canAssignPeople: boolean;
   canEdit: boolean;
+  canEditChecklistItems: boolean;
+  canEditStage: boolean;
   checklistItems: ProjectChecklistItem[];
   configured: boolean;
   configMessage: string | null;
@@ -585,11 +592,15 @@ function buildProjectListItem(
   peopleById: Map<string, PersonRow>,
   metrics: { plannedHoursPerWeek: number; roughLaborCost: number } | null,
   restrictedToSummary: boolean,
+  canEditProject: boolean,
+  canEditStage: boolean,
 ): ProjectListItem {
   const project = toProject(row);
 
   return {
     ...project,
+    canEditProject,
+    canEditStage,
     clientName: project.clientName ?? null,
     description: project.description ?? null,
     leadPersonName: row.lead_person_id
@@ -697,7 +708,10 @@ function emptyProjectDetailData(
 ): ProjectDetailData {
   return {
     accessMessage,
+    canAssignPeople: false,
     canEdit: false,
+    canEditChecklistItems: false,
+    canEditStage: false,
     checklistItems: [],
     configured,
     configMessage,
@@ -861,6 +875,8 @@ function listPreviewProjects(
         peopleById,
         metricsByProjectId.get(row.id) ?? null,
         !canViewInternalProject(viewer, toProjectPermissionSubject(row)),
+        canCreateOrUpdateProjects(viewer, row.managing_office_id),
+        canChangeProjectStage(viewer, toProjectPermissionSubject(row)),
       ),
     ),
     viewerLabel: null,
@@ -971,6 +987,8 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
     peopleById,
     null,
     false,
+    false,
+    false,
   );
   const staffedPeople = buildProjectStaffedPeople(
     assignmentRows,
@@ -1063,7 +1081,10 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
 
   return {
     accessMessage: null,
+    canAssignPeople: false,
     canEdit: false,
+    canEditChecklistItems: false,
+    canEditStage: false,
     checklistItems,
     configured: false,
     configMessage: PREVIEW_CONFIG_MESSAGE,
@@ -1103,14 +1124,25 @@ export async function listProjects(
   filters: ProjectListFilters = {},
   context: ViewerRequestContext = {},
 ): Promise<ProjectListData> {
+  const trace = createPerfTrace("listProjects", {
+    hasOfficeFilter: Boolean(filters.officeId),
+    hasQuery: Boolean(filters.query?.trim()),
+    stage: filters.stage ?? null,
+  });
   const cacheKey = getProjectListCacheKey(filters, context);
   const cachedValue = cacheKey ? getCachedValue(projectListCache, cacheKey) : null;
 
   if (cachedValue) {
+    trace.finish({
+      cacheHit: true,
+      projectCount: cachedValue.projects.length,
+    });
     return cachedValue;
   }
 
-  const viewerAccess = await getCurrentViewerAccess(context);
+  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  );
   const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
   const client = status.configured
@@ -1118,6 +1150,12 @@ export async function listProjects(
     : null;
 
   if (!viewerAccess.viewer) {
+    trace.finish({
+      cacheHit: false,
+      hasViewer: false,
+      projectCount: 0,
+      result: "forbidden",
+    });
     return emptyProjectListData(
       filters,
       status.configured,
@@ -1137,19 +1175,28 @@ export async function listProjects(
       viewerLabel,
     };
 
+    trace.finish({
+      cacheHit: false,
+      preview: true,
+      projectCount: previewResult.projects.length,
+      result: "preview",
+    });
+
     return cacheKey
       ? setCachedValue(projectListCache, cacheKey, previewResult)
       : previewResult;
   }
 
   const [{ data: projectData, error: projectError }, offices] =
-    await Promise.all([
-      client
-        .from("projects")
-        .select(PROJECT_ROW_SELECT)
-        .order("name"),
-      fetchOfficeRows(undefined, { client }),
-    ]);
+    await trace.measure("baseQueries", () =>
+      Promise.all([
+        client
+          .from("projects")
+          .select(PROJECT_ROW_SELECT)
+          .order("name"),
+        fetchOfficeRows(undefined, { client }),
+      ]),
+    );
 
   if (projectError) {
     throw projectError;
@@ -1177,17 +1224,19 @@ export async function listProjects(
     { data: timeEntryData, error: timeEntryError },
   ] =
     internalProjectIds.length > 0
-      ? await Promise.all([
-          client
-            .from("assignments")
-            .select(ASSIGNMENT_ROW_SELECT)
-            .in("project_id", internalProjectIds)
-            .eq("active", true),
-          client
-            .from("time_entries")
-            .select(TIME_ENTRY_ROW_SELECT)
-            .in("project_id", internalProjectIds),
-        ])
+      ? await trace.measure("metricsQueries", () =>
+          Promise.all([
+            client
+              .from("assignments")
+              .select(ASSIGNMENT_ROW_SELECT)
+              .in("project_id", internalProjectIds)
+              .eq("active", true),
+            client
+              .from("time_entries")
+              .select(TIME_ENTRY_ROW_SELECT)
+              .in("project_id", internalProjectIds),
+          ]),
+        )
       : [
           { data: [], error: null },
           { data: [], error: null },
@@ -1207,9 +1256,11 @@ export async function listProjects(
   const metricPeopleIds = ((timeEntryData ?? []) as TimeEntryRow[]).map(
     (entry) => entry.person_id,
   );
-  const people = await fetchPeopleRows(
-    [...new Set([...leadIds, ...metricPeopleIds])],
-    { client },
+  const people = await trace.measure("fetchPeopleRows", () =>
+    fetchPeopleRows(
+      [...new Set([...leadIds, ...metricPeopleIds])],
+      { client },
+    ),
   );
   const officesById = new Map(offices.map((office) => [office.id, office]));
   const peopleById = new Map(people.map((person) => [person.id, person]));
@@ -1236,10 +1287,22 @@ export async function listProjects(
           viewerAccess.viewer!,
           toProjectPermissionSubject(row),
         ),
+        canCreateOrUpdateProjects(viewerAccess.viewer!, row.managing_office_id),
+        canChangeProjectStage(viewerAccess.viewer!, toProjectPermissionSubject(row)),
       ),
     ),
     viewerLabel,
   };
+
+  trace.finish({
+    cacheHit: false,
+    internalProjectCount: internalProjectIds.length,
+    officeCount: offices.length,
+    peopleCount: people.length,
+    projectCount: result.projects.length,
+    result: "live",
+    visibleProjectCount: visibleProjectRows.length,
+  });
 
   return cacheKey ? setCachedValue(projectListCache, cacheKey, result) : result;
 }
@@ -1451,6 +1514,9 @@ export async function updateProject(
   );
 
   const name = normalizeRequiredText(input.name, "Project name");
+  const clientName = normalizeNullableText(input.clientName);
+  const description = normalizeNullableText(input.description);
+  const leadPersonId = normalizeNullableText(input.leadPersonId);
   const originatingOfficeId = normalizeRequiredText(
     input.originatingOfficeId,
     "Originating office",
@@ -1459,14 +1525,32 @@ export async function updateProject(
     input.managingOfficeId,
     "Managing office",
   );
+  const photoUrl = normalizeNullableText(input.photoUrl);
 
   if (!isProjectStage(input.stage)) {
     throw new Error("Stage is invalid.");
   }
 
+  const canFullyEditProject =
+    canCreateOrUpdateProjects(viewer, projectRow.managing_office_id) &&
+    canCreateOrUpdateProjects(viewer, managingOfficeId);
+  const isStageOnlyUpdate =
+    name === projectRow.name &&
+    clientName === (projectRow.client_name ?? null) &&
+    description === (projectRow.description ?? null) &&
+    originatingOfficeId === projectRow.originating_office_id &&
+    managingOfficeId === projectRow.managing_office_id &&
+    leadPersonId === (projectRow.lead_person_id ?? null) &&
+    photoUrl === (projectRow.photo_url ?? null) &&
+    (input.startDate ?? null) === projectRow.start_date &&
+    (input.targetCompletionDate ?? null) === projectRow.target_completion_date;
+
   if (
-    !canCreateOrUpdateProjects(viewer, projectRow.managing_office_id) ||
-    !canCreateOrUpdateProjects(viewer, managingOfficeId)
+    !canFullyEditProject &&
+    !(
+      isStageOnlyUpdate &&
+      canChangeProjectStage(viewer, toProjectPermissionSubject(projectRow))
+    )
   ) {
     throw new Error("You do not have permission to update this project.");
   }
@@ -1490,8 +1574,8 @@ export async function updateProject(
   const officeIds = [...new Set([originatingOfficeId, managingOfficeId])];
   const [offices, leadPeople] = await Promise.all([
     fetchOfficeRows(officeIds, { client }),
-    input.leadPersonId
-      ? fetchPeopleRows([input.leadPersonId], { client })
+    leadPersonId
+      ? fetchPeopleRows([leadPersonId], { client })
       : Promise.resolve([]),
   ]);
 
@@ -1499,7 +1583,7 @@ export async function updateProject(
     throw new Error("Selected office is unavailable.");
   }
 
-  if (input.leadPersonId) {
+  if (leadPersonId) {
     const leadPerson = leadPeople[0];
 
     if (!leadPerson) {
@@ -1514,13 +1598,13 @@ export async function updateProject(
   const { data, error } = await client
     .from("projects")
     .update({
-      client_name: normalizeNullableText(input.clientName),
-      description: normalizeNullableText(input.description),
-      lead_person_id: normalizeNullableText(input.leadPersonId),
+      client_name: clientName,
+      description,
+      lead_person_id: leadPersonId,
       managing_office_id: managingOfficeId,
       name,
       originating_office_id: originatingOfficeId,
-      photo_url: normalizeNullableText(input.photoUrl),
+      photo_url: photoUrl,
       stage: input.stage,
       start_date: input.startDate ?? null,
       target_completion_date: input.targetCompletionDate ?? null,
@@ -1928,10 +2012,40 @@ export async function getProjectDetail(
       accessMessage: restrictedToSummary
         ? "Client access is currently limited to the project summary."
         : viewerAccess.accessMessage,
+      canAssignPeople: previewData.project
+        ? canAssignPeopleToProject(
+            viewerAccess.viewer,
+            {
+              id: previewData.project.id,
+              leadPersonId: previewData.project.leadPersonId,
+              managingOfficeId: previewData.project.managingOfficeId,
+            },
+          )
+        : false,
       canEdit: previewData.project
         ? canCreateOrUpdateProjects(
             viewerAccess.viewer,
             previewData.project.managingOfficeId,
+          )
+        : false,
+      canEditChecklistItems: previewData.project
+        ? canAddChecklistItemsToProject(
+            viewerAccess.viewer,
+            {
+              id: previewData.project.id,
+              leadPersonId: previewData.project.leadPersonId,
+              managingOfficeId: previewData.project.managingOfficeId,
+            },
+          )
+        : false,
+      canEditStage: previewData.project
+        ? canChangeProjectStage(
+            viewerAccess.viewer,
+            {
+              id: previewData.project.id,
+              leadPersonId: previewData.project.leadPersonId,
+              managingOfficeId: previewData.project.managingOfficeId,
+            },
           )
         : false,
       checklistItems: restrictedToSummary ? [] : previewData.checklistItems,
@@ -2074,6 +2188,8 @@ export async function getProjectDetail(
     peopleById,
     null,
     false,
+    canCreateOrUpdateProjects(viewerAccess.viewer, row.managing_office_id),
+    canChangeProjectStage(viewerAccess.viewer, toProjectPermissionSubject(row)),
   );
   const restrictedToSummary = !canViewInternalProject(
     viewerAccess.viewer,
@@ -2084,7 +2200,10 @@ export async function getProjectDetail(
     const summaryOnlyResult = {
       accessMessage:
         "Client access is currently limited to the project summary.",
+      canAssignPeople: false,
       canEdit: false,
+      canEditChecklistItems: false,
+      canEditStage: false,
       checklistItems: [],
       configured: status.configured,
       configMessage: status.message,
@@ -2197,7 +2316,19 @@ export async function getProjectDetail(
 
   const result = {
     accessMessage: viewerAccess.accessMessage,
+    canAssignPeople: canAssignPeopleToProject(
+      viewerAccess.viewer,
+      toProjectPermissionSubject(row),
+    ),
     canEdit: canCreateOrUpdateProjects(viewerAccess.viewer, row.managing_office_id),
+    canEditChecklistItems: canAddChecklistItemsToProject(
+      viewerAccess.viewer,
+      toProjectPermissionSubject(row),
+    ),
+    canEditStage: canChangeProjectStage(
+      viewerAccess.viewer,
+      toProjectPermissionSubject(row),
+    ),
     checklistItems,
     configured: status.configured,
     configMessage: status.message,

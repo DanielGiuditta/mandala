@@ -1,11 +1,13 @@
-"use client";
+"use client"
 
-import { SelectDropdownField } from "../components/ui/dropdown";
+import Link from "next/link"
+
+import { SelectDropdownField } from "../components/ui/dropdown"
 
 interface LibraryFiltersFormProps {
-  categories: string[];
-  category: string;
-  query: string;
+  categories: string[]
+  category: string
+  query: string
 }
 
 export function LibraryFiltersForm({
@@ -14,11 +16,12 @@ export function LibraryFiltersForm({
   query,
 }: LibraryFiltersFormProps) {
   return (
-    <form className="stack" method="get">
-      <div className="filters">
-        <label>
-          Search
+    <form className="ui-stack" method="get">
+      <div className="ui-filter-grid">
+        <label className="ui-field">
+          <span className="ui-label">Search</span>
           <input
+            className="ui-input"
             defaultValue={query}
             name="q"
             placeholder="Document name or category"
@@ -26,10 +29,11 @@ export function LibraryFiltersForm({
           />
         </label>
 
-        <label>
-          Category
+        <label className="ui-field">
+          <span className="ui-label">Category</span>
           <SelectDropdownField
             ariaLabel="Category"
+            className="ui-select-field"
             defaultValue={category}
             name="category"
             options={[
@@ -41,12 +45,14 @@ export function LibraryFiltersForm({
         </label>
       </div>
 
-      <div className="button-row">
-        <button type="submit">Apply filters</button>
-        <a className="secondary" href="/library">
+      <div className="ui-actions">
+        <button className="ui-button ui-button-primary" type="submit">
+          Apply filters
+        </button>
+        <Link className="ui-button ui-button-secondary" href="/library">
           Reset
-        </a>
+        </Link>
       </div>
     </form>
-  );
+  )
 }

@@ -1,5 +1,8 @@
-import type { PeopleListData } from "@mandala/db";
-import type { CreatePersonInput } from "@mandala/db";
+import type {
+  CreatePersonInput,
+  PeopleListData,
+  UpdatePersonInput,
+} from "@mandala/db";
 
 import { EntityHeader } from "./entity-header";
 import { PersonCreateModal } from "./people/person-create-modal";
@@ -15,12 +18,16 @@ interface PeopleDomainListProps {
   onCreatePersonAction: (
     input: CreatePersonInput,
   ) => Promise<{ personId: string }>;
+  onUpdatePersonAction: (
+    input: UpdatePersonInput,
+  ) => Promise<{ personId: string }>;
 }
 
 export function PeopleDomainList({
   data,
   loadSupervisorOptionsAction,
   onCreatePersonAction,
+  onUpdatePersonAction,
 }: PeopleDomainListProps) {
   const titleSuggestions = Array.from(
     new Set(
@@ -60,6 +67,9 @@ export function PeopleDomainList({
       <PeopleListTable
         configured={data.configured}
         forbidden={data.forbidden}
+        loadSupervisorOptionsAction={loadSupervisorOptionsAction}
+        officeOptions={data.offices}
+        onUpdatePersonAction={onUpdatePersonAction}
         people={data.people}
       />
 

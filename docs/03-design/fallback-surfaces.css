@@ -1,0 +1,313 @@
+/*
+  Mandala Figma-aligned fallback surface styles
+  --------------------------------------------
+  Use these for pages/components that do not yet have explicit Figma nodes.
+  These are intentionally conservative defaults based on existing app tokens,
+  radii, shadows, and spacing language already used in apps/web.
+
+  Codex handoff prompt (copy/paste):
+  ----------------------------------
+  Style this page/component using `docs/03-design/fallback-surfaces.css`.
+  Apply these rules:
+  - Prefer existing classes from this stylesheet over new one-off CSS.
+  - Keep tokens/radii/shadows/spacing aligned to this file and existing `--figma-*` vars.
+  - Use pill inputs/buttons (`48px` field height, `24px` pill radius) for interactive controls.
+  - Use `.ui-surface` / `.ui-card` for containers and `.ui-meta` for secondary text.
+  - Keep disabled states fully legible (no heavy opacity washout).
+  - Do not invent new visual language; only extend minimally when a layout need is missing.
+  - If introducing a new class, follow naming `ui-*` and document it inline.
+  Return: list of applied classes and any minimal additions.
+*/
+
+:root {
+  --ui-bg-base: var(--figma-color-background-base, #ffffff);
+  --ui-bg-wash: var(--figma-color-background-wash, #f3f4f6);
+  --ui-bg-wash-light: var(--figma-color-background-wash-light, #f6f7f9);
+  --ui-bg-hover: var(--figma-color-background-hover, #6f778012);
+
+  --ui-border: var(--figma-color-border-default, #dddee3);
+  --ui-text-primary: var(--figma-color-text-primary, #0c0f12);
+  --ui-text-tertiary: var(--figma-color-text-tertiary, #6f7780);
+
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
+  --ui-radius-xl: 20px;
+  --ui-radius-pill: 24px;
+
+  --ui-shadow-soft: 0 0 12px #6f778014;
+  --ui-shadow-flyout:
+    0 0 1px #00000014,
+    0 0 24px #0000000f;
+}
+
+/* ---------- Page-level ---------- */
+
+.ui-page {
+  background: var(--ui-bg-base);
+  color: var(--ui-text-primary);
+  min-height: 100%;
+}
+
+.ui-page-shell {
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 24px;
+}
+
+.ui-auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: var(--ui-bg-base);
+  padding: 24px;
+}
+
+.ui-auth-card {
+  width: min(100%, 460px);
+}
+
+/* ---------- Surfaces ---------- */
+
+.ui-surface {
+  background: var(--ui-bg-base);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-xl);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.ui-surface-muted {
+  background: var(--ui-bg-wash-light);
+}
+
+.ui-surface-flyout {
+  background: var(--ui-bg-base);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-flyout);
+  padding: 8px;
+}
+
+.ui-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.ui-card-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.ui-card-title {
+  color: var(--ui-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 25px;
+  margin: 0;
+}
+
+/* ---------- Inputs / fields ---------- */
+
+.ui-field {
+  display: grid;
+  gap: 8px;
+}
+
+.ui-label {
+  color: var(--ui-text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.ui-input,
+.ui-textarea,
+.ui-select-native {
+  appearance: none;
+  background: var(--ui-bg-wash);
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-pill);
+  color: var(--ui-text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  min-height: 48px;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.ui-textarea {
+  min-height: 96px;
+  padding: 12px 16px;
+  resize: vertical;
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: #9d9d9d;
+}
+
+.ui-input:focus-visible,
+.ui-textarea:focus-visible,
+.ui-select-native:focus-visible {
+  border-color: var(--ui-border);
+  outline: none;
+}
+
+.ui-input[disabled],
+.ui-textarea[disabled],
+.ui-select-native[disabled] {
+  background: var(--ui-bg-wash-light);
+  color: var(--ui-text-tertiary);
+  cursor: default;
+  opacity: 1;
+}
+
+/* ---------- Buttons ---------- */
+
+.ui-button {
+  align-items: center;
+  appearance: none;
+  border: none;
+  border-radius: var(--ui-radius-pill);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  height: 40px;
+  justify-content: center;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.ui-button-primary {
+  background: #2a74e8;
+  color: #ffffff;
+}
+
+.ui-button-secondary {
+  background: var(--ui-bg-wash);
+  color: var(--ui-text-primary);
+}
+
+.ui-button-ghost {
+  background: transparent;
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text-primary);
+}
+
+.ui-button-icon {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.ui-button-icon:hover {
+  background: var(--ui-bg-hover);
+}
+
+.ui-button[disabled],
+.ui-button-icon[disabled] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* ---------- Lists / table-like rows ---------- */
+
+.ui-list {
+  display: grid;
+  gap: 4px;
+}
+
+.ui-list-row {
+  align-items: center;
+  border-radius: var(--ui-radius-md);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 4px 0;
+}
+
+.ui-meta {
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  margin: 0;
+}
+
+/* ---------- Utility chips ---------- */
+
+.ui-chip {
+  align-items: center;
+  background: var(--ui-bg-wash-light);
+  border-radius: var(--ui-radius-pill);
+  display: inline-flex;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 10px 4px 4px;
+}
+
+/* ---------- Modal fallback ---------- */
+
+.ui-modal-backdrop {
+  align-items: center;
+  background: #0c0f1233;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 16px;
+  position: fixed;
+  z-index: 60;
+}
+
+.ui-modal-panel {
+  background: var(--ui-bg-base);
+  border: 1px solid var(--ui-bg-wash-light);
+  border-radius: var(--ui-radius-pill);
+  box-shadow: var(--ui-shadow-soft);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  width: min(100%, 760px);
+}
+
+.ui-modal-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 24px 0;
+}
+
+/* ---------- Empty / notices ---------- */
+
+.ui-empty {
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-text-tertiary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 12px;
+}
+
+.ui-notice {
+  background: #fff5d8;
+  border: 1px solid #d8bf71;
+  border-radius: 10px;
+  color: #5e4e20;
+  padding: 16px;
+}

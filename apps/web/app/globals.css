@@ -35,6 +35,348 @@ a {
   box-sizing: border-box;
 }
 
+:root {
+  --ui-bg-base: var(--figma-color-background-base, #ffffff);
+  --ui-bg-wash: var(--figma-color-background-wash, #f3f4f6);
+  --ui-bg-wash-light: var(--figma-color-background-wash-light, #f6f7f9);
+  --ui-bg-hover: var(--figma-color-background-hover, #6f778012);
+  --ui-border: var(--figma-color-border-default, #dddee3);
+  --ui-text-primary: var(--figma-color-text-primary, #0c0f12);
+  --ui-text-tertiary: var(--figma-color-text-tertiary, #6f7780);
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
+  --ui-radius-xl: 20px;
+  --ui-radius-pill: 24px;
+  --ui-shadow-soft: 0 0 12px #6f778014;
+  --ui-shadow-flyout:
+    0 0 1px #00000014,
+    0 0 24px #0000000f;
+}
+
+/* Fallback surfaces aligned to docs/03-design/fallback-surfaces.css. */
+.ui-page {
+  background: var(--ui-bg-base);
+  color: var(--ui-text-primary);
+  min-height: 100%;
+}
+
+.ui-page-shell {
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 24px;
+}
+
+.ui-auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: var(--ui-bg-base);
+  padding: 24px;
+}
+
+.ui-auth-card {
+  width: min(100%, 460px);
+}
+
+.ui-surface {
+  background: var(--ui-bg-base);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-xl);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+.ui-surface-muted {
+  background: var(--ui-bg-wash-light);
+}
+
+.ui-surface-flyout {
+  background: var(--ui-bg-base);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-flyout);
+  padding: 8px;
+}
+
+.ui-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.ui-card-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.ui-card-title {
+  color: var(--ui-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 25px;
+  margin: 0;
+}
+
+.ui-field {
+  display: grid;
+  gap: 8px;
+}
+
+.ui-label {
+  color: var(--ui-text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.ui-input,
+.ui-textarea,
+.ui-select-native {
+  appearance: none;
+  background: var(--ui-bg-wash);
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-pill);
+  color: var(--ui-text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  min-height: 48px;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.ui-textarea {
+  min-height: 96px;
+  padding: 12px 16px;
+  resize: vertical;
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: #9d9d9d;
+}
+
+.ui-input:focus-visible,
+.ui-textarea:focus-visible,
+.ui-select-native:focus-visible {
+  border-color: var(--ui-border);
+  outline: none;
+}
+
+.ui-input[disabled],
+.ui-textarea[disabled],
+.ui-select-native[disabled] {
+  background: var(--ui-bg-wash-light);
+  color: var(--ui-text-tertiary);
+  cursor: default;
+  opacity: 1;
+}
+
+.ui-button {
+  align-items: center;
+  appearance: none;
+  border: none;
+  border-radius: var(--ui-radius-pill);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  height: 40px;
+  justify-content: center;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.ui-button-primary {
+  background: #2a74e8;
+  color: #ffffff;
+}
+
+.ui-button-secondary {
+  background: var(--ui-bg-wash);
+  color: var(--ui-text-primary);
+}
+
+.ui-button-ghost {
+  background: transparent;
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text-primary);
+}
+
+.ui-button-icon {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-text-primary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.ui-button-icon:hover {
+  background: var(--ui-bg-hover);
+}
+
+.ui-button[disabled],
+.ui-button-icon[disabled] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.ui-list {
+  display: grid;
+  gap: 4px;
+}
+
+.ui-list-row {
+  align-items: center;
+  border-radius: var(--ui-radius-md);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 4px 0;
+}
+
+.ui-meta {
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  margin: 0;
+}
+
+.ui-chip {
+  align-items: center;
+  background: var(--ui-bg-wash-light);
+  border-radius: var(--ui-radius-pill);
+  display: inline-flex;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 10px 4px 4px;
+}
+
+.ui-modal-backdrop {
+  align-items: center;
+  background: #0c0f1233;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 16px;
+  position: fixed;
+  z-index: 60;
+}
+
+.ui-modal-panel {
+  background: var(--ui-bg-base);
+  border: 1px solid var(--ui-bg-wash-light);
+  border-radius: var(--ui-radius-pill);
+  box-shadow: var(--ui-shadow-soft);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  width: min(100%, 760px);
+}
+
+.ui-modal-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 24px 0;
+}
+
+.ui-empty {
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-text-tertiary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 12px;
+}
+
+.ui-notice {
+  background: #fff5d8;
+  border: 1px solid #d8bf71;
+  border-radius: 10px;
+  color: #5e4e20;
+  padding: 16px;
+}
+
+/* Minimal layout helpers for fallback pages that still need spacing and tables. */
+.ui-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.ui-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.ui-filter-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ui-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ui-inline-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ui-table-wrap {
+  overflow-x: auto;
+}
+
+.ui-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.ui-table th,
+.ui-table td {
+  border-bottom: 1px solid var(--ui-border);
+  padding: 12px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ui-table th {
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.ui-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ui-select-field .dropdown-trigger {
+  background: var(--ui-bg-wash);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.ui-select-field .dropdown-trigger-disabled {
+  background: var(--ui-bg-wash-light);
+  border-color: transparent;
+}
+
 .app-shell {
   margin: 0 auto;
   max-width: 1200px;
@@ -1476,6 +1818,67 @@ th {
   opacity: 1;
 }
 
+.editable-entity-pill {
+  display: inline-grid;
+  justify-items: start;
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.editable-entity-pill > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.editable-entity-pill-toggle {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 18px;
+  justify-content: center;
+  margin-left: 2px;
+  padding: 0;
+  width: 18px;
+}
+
+.editable-entity-pill-toggle:hover {
+  background: #0000000d;
+}
+
+.editable-entity-pill-toggle:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.editable-entity-pill-toggle:focus-visible {
+  outline: 1px solid var(--figma-color-border-default);
+  outline-offset: 0;
+}
+
+.editable-entity-pill-empty,
+.editable-entity-pill-error {
+  font-size: 12px;
+  line-height: 16px;
+  margin: 0;
+  padding: 4px 8px;
+}
+
+.editable-entity-pill-empty {
+  color: var(--figma-color-text-tertiary);
+}
+
+.editable-entity-pill-error {
+  color: #7d1d1d;
+}
+
 .app-native-text-input,
 .app-date-input {
   appearance: none;
@@ -1825,9 +2228,11 @@ th {
   font-size: 13px;
   font-weight: 500;
   gap: 6px;
+  justify-self: start;
   line-height: 16px;
   max-width: 100%;
   min-height: 22px;
+  min-width: 0;
   padding: 2px 7px 2px 3px;
   white-space: nowrap;
 }
@@ -1881,6 +2286,31 @@ th {
   max-width: 100%;
   white-space: nowrap;
   color: inherit;
+}
+
+.projects-stage-pill {
+  align-items: center;
+  background: #f3f4f6;
+  border-radius: 16px;
+  color: #0c0f12;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  justify-self: start;
+  line-height: 16px;
+  max-width: 100%;
+  min-height: 22px;
+  min-width: 0;
+  padding: 2px 7px 2px 8px;
+  white-space: nowrap;
+}
+
+.projects-stage-pill .projects-cell-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .projects-missing-attribute {
@@ -2210,9 +2640,24 @@ th {
   border-radius: 16px;
   display: inline-flex;
   gap: 6px;
+  justify-self: start;
   max-width: 100%;
   min-height: 22px;
+  min-width: 0;
   padding: 2px 8px 2px 2px;
+}
+
+.people-value-pill {
+  align-items: center;
+  background: #f3f4f6;
+  border-radius: 16px;
+  display: inline-flex;
+  gap: 6px;
+  justify-self: start;
+  max-width: 100%;
+  min-height: 22px;
+  min-width: 0;
+  padding: 2px 8px;
 }
 
 .people-reference-avatar {
@@ -2890,14 +3335,23 @@ th {
   margin: 0;
 }
 
+.pd-glance-footnote-inline {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .pd-person-chip {
   align-items: center;
   background: var(--figma-color-background-wash-light);
   border-radius: 24px;
   display: inline-flex;
   gap: 8px;
+  justify-self: start;
   max-width: 100%;
   min-height: 32px;
+  min-width: 0;
   padding: 4px 10px 4px 4px;
 }
 
@@ -2906,6 +3360,33 @@ th {
   font-size: 14px;
   line-height: 16px;
   white-space: nowrap;
+}
+
+.pd-value-chip {
+  align-items: center;
+  background: var(--figma-color-background-wash-light);
+  border-radius: 24px;
+  display: inline-flex;
+  gap: 8px;
+  justify-self: start;
+  max-width: 100%;
+  min-height: 32px;
+  min-width: 0;
+  padding: 4px 10px;
+}
+
+.pd-value-chip strong {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pd-person-chip > strong,
+.pd-value-chip > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pd-person-chip-hug {
@@ -3241,6 +3722,10 @@ th {
 
 .pd-check-complete {
   background: #0c0f12;
+}
+
+.pd-check-static {
+  cursor: default;
 }
 
 .pd-doc-icon {

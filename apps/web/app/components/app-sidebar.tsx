@@ -21,6 +21,7 @@ export interface AppShellState {
   photoUrl: string | null
   primaryTier: string | null
   sessionEmail: string | null
+  viewerEmail: string | null
 }
 
 const NAV_FORCE_COLLAPSE_WIDTH = 800
@@ -41,6 +42,21 @@ interface TimeTrackerMutationResponse {
   ok: boolean
   todayHours: number | null
 }
+
+interface IdleDeadlineLike {
+  didTimeout: boolean
+  timeRemaining(): number
+}
+
+type WindowWithIdleCallback = Window & {
+  cancelIdleCallback?: (handle: number) => void
+  requestIdleCallback?: (
+    callback: (deadline: IdleDeadlineLike) => void,
+    options?: { timeout: number },
+  ) => number
+}
+
+const TRACKER_DEFER_TIMEOUT_MS = 2500
 
 function BrandMark() {
   return (
@@ -164,6 +180,13 @@ function clearTimeTrackerStorage(sessionEmail: string) {
   localStorage.removeItem(storageKeys.selectedProjectId)
 }
 
+function shouldHydrateTrackerImmediately(
+  pathname: string | null,
+  runningState: RunningTrackerState | null,
+): boolean {
+  return pathname === "/time-tracker" || Boolean(runningState)
+}
+
 function readTimeTrackerStorage(sessionEmail: string): {
   runningState: RunningTrackerState | null
   selectedProjectId: string
@@ -197,6 +220,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const router = useRouter()
   const profilePanelId = useId()
   const signOutFormRef = useRef<HTMLFormElement | null>(null)
+  const trackerHydrationKeyRef = useRef<string | null>(null)
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
   const [isProfileExpanded, setIsProfileExpanded] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
@@ -212,7 +236,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const profileName = shell.displayName ?? shell.sessionEmail ?? "kolam user"
   const profileInitial = getFallbackAvatarInitial(profileName, "K")
   const profileAvatarStyle = getPersonFallbackAvatarStyle(profileName, "app-shell")
-  const sessionEmail = shell.sessionEmail
+  const trackerSessionEmail = shell.sessionEmail ?? shell.viewerEmail
   const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
   const isDetailWorkspaceOpen = isDetailWorkspacePath(pathname)
   const isSidebarOpen =
@@ -285,7 +309,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
     Boolean(trackerRunningState)
 
   useEffect(() => {
-    if (!isSidebarOpen || !shell.isAuthenticated || !sessionEmail) {
+    if (!isSidebarOpen || !trackerSessionEmail) {
       setTrackerVisible(false)
       setTrackerProjects([])
       setTrackerSelectedProjectId("")
@@ -297,20 +321,22 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
       return
     }
 
-    const trackerSessionEmail: string = sessionEmail
+    const trackerEmail = trackerSessionEmail
+    const trackerHydrationKey = `${trackerEmail}:${getLocalDateString(new Date())}`
+    const persistedState = readTimeTrackerStorage(trackerEmail)
+    const prioritizeHydration = shouldHydrateTrackerImmediately(
+      pathname,
+      persistedState.runningState,
+    )
     let isCancelled = false
+    let idleCallbackHandle: number | null = null
+    let loadTimeoutHandle: number | null = null
+    let removeLoadListener: (() => void) | null = null
 
     async function hydrateTracker() {
-      const persistedState = readTimeTrackerStorage(trackerSessionEmail)
-      setTrackerVisible(true)
-      setTrackerLoading(true)
-      setTrackerAccessMessage(null)
-      setTrackerError(null)
-      setTrackerSelectedProjectId(persistedState.selectedProjectId)
-      setTrackerRunningState(persistedState.runningState)
-
       try {
         const localDate = getLocalDateString(new Date())
+        const requestStartedAt = performance.now()
         const trackerResponse = await fetch(
           `/api/time-tracker?localDate=${encodeURIComponent(localDate)}`,
           {
@@ -325,8 +351,22 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           return
         }
 
-        if (response.forbidden || !response.configured) {
-          clearTimeTrackerStorage(trackerSessionEmail)
+        if (process.env.NODE_ENV !== "production") {
+          console.info(
+            `[mandala-perf] ${JSON.stringify({
+              durationMs: Math.round((performance.now() - requestStartedAt) * 100) / 100,
+              forbidden: response.forbidden,
+              projectCount: response.projects.length,
+              scope: "client.timeTrackerFetch",
+              status: trackerResponse.status,
+            })}`,
+          )
+        }
+
+        trackerHydrationKeyRef.current = trackerHydrationKey
+
+        if (response.forbidden) {
+          clearTimeTrackerStorage(trackerEmail)
           setTrackerProjects([])
           setTrackerSelectedProjectId("")
           setTrackerRunningState(null)
@@ -336,8 +376,8 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           return
         }
 
-        const storageKeys = getTimeTrackerStorageKeys(trackerSessionEmail)
-        const persistedTrackerState = readTimeTrackerStorage(trackerSessionEmail)
+        const storageKeys = getTimeTrackerStorageKeys(trackerEmail)
+        const persistedTrackerState = readTimeTrackerStorage(trackerEmail)
         const storedSelectedProjectId = persistedTrackerState.selectedProjectId
         const availableProjectIds = new Set(response.projects.map((project) => project.id))
 
@@ -353,10 +393,10 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         if (nextRunningState && !availableProjectIds.has(nextRunningState.projectId)) {
           nextRunningState = null
           nextSelectedProjectId = ""
-          clearTimeTrackerStorage(trackerSessionEmail)
+          clearTimeTrackerStorage(trackerEmail)
         } else if (response.accessMessage) {
           nextRunningState = null
-          clearTimeTrackerStorage(trackerSessionEmail)
+          clearTimeTrackerStorage(trackerEmail)
         } else if (nextRunningState) {
           nextSelectedProjectId = nextRunningState.projectId
           localStorage.setItem(storageKeys.selectedProjectId, nextSelectedProjectId)
@@ -371,7 +411,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         if (isCancelled) {
           return
         }
-        const persistedTrackerState = readTimeTrackerStorage(trackerSessionEmail)
+        const persistedTrackerState = readTimeTrackerStorage(trackerEmail)
         setTrackerVisible(true)
         setTrackerProjects([])
         setTrackerSelectedProjectId(persistedTrackerState.selectedProjectId)
@@ -385,12 +425,71 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
       }
     }
 
-    void hydrateTracker()
+    function startHydrate() {
+      if (isCancelled) {
+        return
+      }
+
+      setTrackerLoading(true)
+      void hydrateTracker()
+    }
+
+    setTrackerVisible(true)
+    setTrackerAccessMessage(null)
+    setTrackerError(null)
+    setTrackerLoading(false)
+    setTrackerSelectedProjectId(persistedState.selectedProjectId)
+    setTrackerRunningState(persistedState.runningState)
+
+    if (trackerHydrationKeyRef.current === trackerHydrationKey) {
+      return () => {
+        isCancelled = true
+      }
+    }
+
+    if (prioritizeHydration) {
+      startHydrate()
+    } else {
+      const browserWindow = window as WindowWithIdleCallback
+      const scheduleBackgroundHydration = () => {
+        if (typeof browserWindow.requestIdleCallback === "function") {
+          idleCallbackHandle = browserWindow.requestIdleCallback(
+            () => {
+              startHydrate()
+            },
+            { timeout: TRACKER_DEFER_TIMEOUT_MS },
+          )
+          return
+        }
+
+        loadTimeoutHandle = window.setTimeout(startHydrate, 1200)
+      }
+
+      if (document.readyState === "complete") {
+        scheduleBackgroundHydration()
+      } else {
+        const onWindowLoad = () => {
+          scheduleBackgroundHydration()
+        }
+
+        window.addEventListener("load", onWindowLoad, { once: true })
+        removeLoadListener = () => window.removeEventListener("load", onWindowLoad)
+      }
+    }
 
     return () => {
       isCancelled = true
+      removeLoadListener?.()
+
+      if (idleCallbackHandle !== null) {
+        ;(window as WindowWithIdleCallback).cancelIdleCallback?.(idleCallbackHandle)
+      }
+
+      if (loadTimeoutHandle !== null) {
+        window.clearTimeout(loadTimeoutHandle)
+      }
     }
-  }, [isSidebarOpen, shell.isAuthenticated, sessionEmail])
+  }, [isSidebarOpen, pathname, trackerSessionEmail])
 
   useEffect(() => {
     if (!isSidebarOpen || !trackerVisible || !trackerRunningState) {
@@ -406,10 +505,11 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   }, [isSidebarOpen, trackerRunningState, trackerVisible])
 
   async function handleTrackerStop() {
-    if (!sessionEmail || !trackerRunningState || trackerSaving || trackerLoading) {
+    if (!trackerSessionEmail || !trackerRunningState || trackerSaving || trackerLoading) {
       return
     }
 
+    const trackerEmail = trackerSessionEmail
     setTrackerSaving(true)
     setTrackerError(null)
     const stoppedAt = new Date().toISOString()
@@ -436,7 +536,7 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
         return
       }
 
-      const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+      const storageKeys = getTimeTrackerStorageKeys(trackerEmail)
       localStorage.removeItem(storageKeys.running)
       setTrackerRunningState(null)
       setTrackerProjects((previous) =>
@@ -455,15 +555,16 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   }
 
   function handleTrackerStart() {
-    if (!sessionEmail || !trackerSelectedProjectId || trackerLoading || trackerSaving) {
+    if (!trackerSessionEmail || !trackerSelectedProjectId || trackerLoading || trackerSaving) {
       return
     }
 
+    const trackerEmail = trackerSessionEmail
     const runningState: RunningTrackerState = {
       projectId: trackerSelectedProjectId,
       startedAt: new Date().toISOString(),
     }
-    const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+    const storageKeys = getTimeTrackerStorageKeys(trackerEmail)
     localStorage.setItem(storageKeys.running, JSON.stringify(runningState))
     localStorage.setItem(storageKeys.selectedProjectId, trackerSelectedProjectId)
     setTrackerRunningState(runningState)
@@ -472,11 +573,12 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   }
 
   function handleTrackerSelectionChange(nextProjectId: string) {
-    if (!sessionEmail || trackerRunningState) {
+    if (!trackerSessionEmail || trackerRunningState) {
       return
     }
 
-    const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
+    const trackerEmail = trackerSessionEmail
+    const storageKeys = getTimeTrackerStorageKeys(trackerEmail)
     if (!nextProjectId) {
       localStorage.removeItem(storageKeys.selectedProjectId)
       setTrackerSelectedProjectId("")

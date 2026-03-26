@@ -1,5 +1,5 @@
 import type { ViewerRequestContext } from "@mandala/db"
-import { getDatabaseStatus } from "@mandala/db"
+import { createPerfTrace, getDatabaseStatus } from "@mandala/db"
 import { headers } from "next/headers"
 import { cache } from "react"
 
@@ -29,10 +29,16 @@ async function getAppOrigin(): Promise<string | null> {
 }
 
 export const getAppSessionState = cache(async (): Promise<AppSessionState> => {
+  const trace = createPerfTrace("getAppSessionState")
   const status = getDatabaseStatus()
   const appOrigin = await getAppOrigin()
 
   if (!status.configured) {
+    trace.finish({
+      configured: false,
+      isAuthenticated: false,
+      result: "preview",
+    })
     return {
       accessToken: null,
       appOrigin,
@@ -45,6 +51,11 @@ export const getAppSessionState = cache(async (): Promise<AppSessionState> => {
   const supabase = await createWebServerSupabaseClient()
 
   if (!supabase) {
+    trace.finish({
+      configured: true,
+      isAuthenticated: false,
+      result: "missing-client",
+    })
     return {
       accessToken: null,
       appOrigin,
@@ -56,18 +67,28 @@ export const getAppSessionState = cache(async (): Promise<AppSessionState> => {
 
   const {
     data: { session },
-  } = await supabase.auth.getSession()
+  } = await trace.measure("supabase.auth.getSession", () =>
+    supabase.auth.getSession(),
+  )
 
   const accessToken = session?.access_token ?? null
   const sessionEmail = session?.user.email?.trim().toLowerCase() ?? null
-
-  return {
+  const result = {
     accessToken,
     appOrigin,
     configured: true,
     isAuthenticated: Boolean(accessToken && sessionEmail),
     sessionEmail,
   }
+
+  trace.finish({
+    configured: true,
+    hasSessionEmail: Boolean(sessionEmail),
+    isAuthenticated: result.isAuthenticated,
+    result: result.isAuthenticated ? "authenticated" : "anonymous",
+  })
+
+  return result
 })
 
 export const getViewerRequestContext = cache(

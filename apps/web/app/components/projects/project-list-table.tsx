@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
-import type { ProjectListItem } from "@mandala/db";
+import type { ProjectListItem, UpdateProjectInput } from "@mandala/db";
 
+import { EditableEntityPill } from "../editable-entity-pill";
 import {
   formatCurrency,
   formatHours,
@@ -17,13 +18,25 @@ import {
   getPersonFallbackAvatarStyle,
   getProjectFallbackAvatarStyle,
 } from "./project-avatar-utils";
+import {
+  formatProjectStageLabel,
+  PROJECT_CREATE_STAGE_OPTIONS,
+} from "./project-create-utils";
+import { buildProjectUpdateInput } from "./project-inline-edit-utils";
 import { EntityReturnLink } from "../entity-return-link";
 
 interface ProjectListTableProps {
   activeProjectId?: string;
   configured: boolean;
   forbidden: boolean;
+  loadPeopleOptionsAction: () => Promise<{
+    forbidden: boolean;
+    people: Array<{ fullName: string; id: string }>;
+  }>;
   mode?: "collapsed" | "table";
+  onUpdateProjectAction: (
+    input: UpdateProjectInput,
+  ) => Promise<{ projectId: string }>;
   projects: ProjectListItem[];
 }
 
@@ -60,12 +73,18 @@ export function ProjectListTable({
   activeProjectId,
   configured,
   forbidden,
+  loadPeopleOptionsAction,
   mode = "table",
+  onUpdateProjectAction,
   projects,
 }: ProjectListTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("project");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [hasUserSorted, setHasUserSorted] = useState(false);
+  const [leadOptions, setLeadOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [leadOptionsStatus, setLeadOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable" | "error"
+  >("idle");
 
   function toggleSort(nextKey: SortKey) {
     setHasUserSorted(true);
@@ -193,6 +212,96 @@ export function ProjectListTable({
     return items;
   }, [projects, sortDirection, sortKey]);
 
+  const stageOptions = useMemo(
+    () =>
+      PROJECT_CREATE_STAGE_OPTIONS.map((stage) => ({
+        label: formatProjectStageLabel(stage),
+        value: stage,
+      })),
+    [],
+  );
+
+  async function ensureLeadOptions() {
+    if (leadOptionsStatus === "ready") {
+      return;
+    }
+
+    if (leadOptionsStatus === "loading") {
+      return;
+    }
+
+    setLeadOptionsStatus("loading");
+
+    try {
+      const result = await loadPeopleOptionsAction();
+
+      if (result.forbidden) {
+        setLeadOptions([]);
+        setLeadOptionsStatus("unavailable");
+        throw new Error("Lead options are unavailable for the current viewer.");
+      }
+
+      setLeadOptions(result.people);
+      setLeadOptionsStatus("ready");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("unavailable")) {
+        throw error;
+      }
+
+      setLeadOptionsStatus("error");
+      throw new Error("Unable to load lead options.");
+    }
+  }
+
+  function renderLeadChip(
+    project: ProjectListItem,
+    toggleButton: ReactNode | null,
+  ) {
+    return (
+      <span className="projects-lead-pill">
+        {project.leadPersonPhotoUrl ? (
+          <img
+            alt=""
+            aria-hidden
+            className="projects-lead-avatar-image"
+            loading="lazy"
+            src={project.leadPersonPhotoUrl}
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="projects-lead-avatar-fallback"
+            style={getPersonFallbackAvatarStyle(
+              formatLeadName(project),
+              project.leadPersonId ?? project.id,
+            )}
+          >
+            {getFallbackAvatarInitial(formatLeadName(project), "L")}
+          </span>
+        )}
+        <span className="projects-lead-pill-text">{formatLeadName(project)}</span>
+        {toggleButton}
+      </span>
+    );
+  }
+
+  function renderStageChip(
+    project: ProjectListItem,
+    toggleButton: ReactNode | null,
+  ) {
+    return (
+      <span className="projects-stage-pill">
+        <span aria-hidden className="projects-inline-icon">
+          {stageIcon(project.stage)}
+        </span>
+        <span className="projects-cell-value">
+          {formatStageLabel(project.stage)}
+        </span>
+        {toggleButton}
+      </span>
+    );
+  }
+
   return (
     <div className={mode === "collapsed" ? "projects-list-collapsed" : "projects-list"}>
       {mode === "table" ? (
@@ -287,41 +396,53 @@ export function ProjectListTable({
               </span>
             </div>
             <div className="projects-cell">
-              <span className="projects-lead-pill">
-                {project.leadPersonPhotoUrl ? (
-                  <img
-                    alt=""
-                    aria-hidden
-                    className="projects-lead-avatar-image"
-                    loading="lazy"
-                    src={project.leadPersonPhotoUrl}
-                  />
-                ) : (
-                  <span
-                    aria-hidden
-                    className="projects-lead-avatar-fallback"
-                    style={getPersonFallbackAvatarStyle(
-                      formatLeadName(project),
-                      project.leadPersonId ?? project.id,
-                    )}
-                  >
-                    {getFallbackAvatarInitial(formatLeadName(project), "L")}
-                  </span>
-                )}
-                <span className="projects-lead-pill-text">
-                  {formatLeadName(project)}
-                </span>
-              </span>
+              {project.canEditProject ? (
+                <EditableEntityPill
+                  ariaLabel={`Change lead for ${project.name}`}
+                  onCommit={async (nextValue) => {
+                    await onUpdateProjectAction(
+                      buildProjectUpdateInput(project, {
+                        leadPersonId: nextValue || null,
+                      }),
+                    );
+                  }}
+                  onOpenRequested={ensureLeadOptions}
+                  options={[
+                    { label: "No lead", value: "" },
+                    ...leadOptions.map((person) => ({
+                      label: person.fullName,
+                      value: person.id,
+                    })),
+                  ]}
+                  value={project.leadPersonId ?? ""}
+                  renderTrigger={({ toggleButton }) =>
+                    renderLeadChip(project, toggleButton)
+                  }
+                />
+              ) : (
+                renderLeadChip(project, null)
+              )}
             </div>
             <div className="projects-cell">
-              <span className="projects-stage-text">
-                <span aria-hidden className="projects-inline-icon">
-                  {stageIcon(project.stage)}
-                </span>
-                <span className="projects-cell-value">
-                  {formatStageLabel(project.stage)}
-                </span>
-              </span>
+              {project.canEditStage ? (
+                <EditableEntityPill
+                  ariaLabel={`Change stage for ${project.name}`}
+                  onCommit={async (nextValue) => {
+                    await onUpdateProjectAction(
+                      buildProjectUpdateInput(project, {
+                        stage: nextValue as ProjectListItem["stage"],
+                      }),
+                    );
+                  }}
+                  options={stageOptions}
+                  value={project.stage}
+                  renderTrigger={({ toggleButton }) =>
+                    renderStageChip(project, toggleButton)
+                  }
+                />
+              ) : (
+                renderStageChip(project, null)
+              )}
             </div>
             <div className="projects-cell projects-cell-metric">
               <span
