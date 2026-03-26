@@ -24,7 +24,7 @@ export function EntityReturnLink({
   className,
   href,
   onClick,
-  prefetch,
+  prefetch = false,
   scope,
 }: EntityReturnLinkProps) {
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {

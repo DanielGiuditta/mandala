@@ -39,7 +39,7 @@ export function PersonDetailRail({
                 className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
                 href={`/people/${person.id}`}
                 key={person.id}
-                prefetch
+                prefetch={false}
               >
                 {person.photoUrl ? (
                   <img alt="" aria-hidden className="people-avatar-image" loading="lazy" src={person.photoUrl} />
