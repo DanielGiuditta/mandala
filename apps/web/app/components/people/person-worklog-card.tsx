@@ -6,7 +6,6 @@ import {
   formatDate,
   formatHoursWithUnit,
   formatInrMetric,
-  formatTimeSource,
 } from "./person-detail-utils";
 
 interface PersonWorklogCardProps {
@@ -39,18 +38,16 @@ export function PersonWorklogCard({ person, timeSummary }: PersonWorklogCardProp
 
             return (
               <article className="pd-list-item" key={entry.id}>
-                <div className="pd-list-item-main pd-list-item-main-column">
-                  <span className="pd-person-chip">
+                <div className="pd-list-item-main">
+                  <span className="pd-person-chip pd-person-chip-hug">
                     <Avatar fallbackKey={entry.projectId} label={entry.projectName} variant="project" />
                     <span>{entry.projectName}</span>
                   </span>
+                </div>
+                <div className="pd-list-item-aside">
                   <p className="pd-meta-text">
                     {formatDate(entry.date)} · {formatHoursWithUnit(entry.hours)} · {formatInrMetric(entryCost)}
                   </p>
-                  {entry.notes ? <p className="pd-meta-text">{entry.notes}</p> : null}
-                </div>
-                <div className="pd-list-item-aside">
-                  <span className="pd-meta-text">{formatTimeSource(entry.source)}</span>
                 </div>
               </article>
             );

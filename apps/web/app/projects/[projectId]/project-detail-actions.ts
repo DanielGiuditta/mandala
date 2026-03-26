@@ -57,6 +57,19 @@ export async function addStaffAction(
   }
 }
 
+export async function quickAddStaffAction(input: {
+  personId: string;
+  projectId: string;
+}): Promise<ProjectDetailActionResult> {
+  return addStaffAction({
+    // The staff card is a quick-add affordance, but assignments remain
+    // the documented staffing record in the data model.
+    assignedHoursPerWeek: 1,
+    personId: input.personId,
+    projectId: input.projectId,
+  });
+}
+
 export async function addTaskAction(
   input: CreateProjectChecklistItemInput,
 ): Promise<ProjectDetailActionResult> {

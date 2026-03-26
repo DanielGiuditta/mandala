@@ -41,6 +41,7 @@ Read these files before making changes:
 
 - During the current pre-launch stage, ship deployments to production by default.
 - Do not create preview deployments unless the user explicitly asks for a preview deployment.
+- When deploying, include the full current code changes for the requested work instead of deploying only a partial subset, unless the user explicitly asks to exclude something.
 - Revisit this preference after launch if the team decides to return to preview-first deploys.
 
 ## Build order preference

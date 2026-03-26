@@ -17,11 +17,16 @@ export function ProjectCardHeader({
       {onAddClick ? (
         <button
           aria-label={addAriaLabel}
-          className="pd-icon-button"
+          className="projects-add-button"
           onClick={onAddClick}
           type="button"
         >
-          +
+          <img
+            alt=""
+            aria-hidden
+            className="projects-add-icon"
+            src="/figma/projects/add-icon.svg"
+          />
         </button>
       ) : null}
     </div>

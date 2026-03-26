@@ -2908,6 +2908,11 @@ th {
   white-space: nowrap;
 }
 
+.pd-person-chip-hug {
+  inline-size: fit-content;
+  max-inline-size: fit-content;
+}
+
 .pd-avatar {
   border-radius: 999px;
   display: block;
@@ -2996,6 +3001,22 @@ th {
   justify-content: center;
   line-height: 1;
   width: 32px;
+}
+
+.pd-icon-button-edit {
+  background: transparent;
+  border-radius: 0;
+  color: var(--figma-color-text-primary);
+}
+
+.pd-icon-button-edit-active {
+  background: transparent;
+}
+
+.pd-icon-button-edit-icon {
+  display: block;
+  height: 18px;
+  width: 18px;
 }
 
 .pd-list {

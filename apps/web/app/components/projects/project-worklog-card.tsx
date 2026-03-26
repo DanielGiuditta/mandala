@@ -8,10 +8,10 @@ import type { ProjectAssignmentItem, ProjectTimeSummary } from "@mandala/db";
 import { SelectDropdownField } from "../ui/dropdown";
 import {
   Avatar,
+  formatDate,
   formatCostMetric,
   formatHoursMetric,
 } from "./project-detail-utils";
-import { ProjectCardHeader } from "./project-card-header";
 
 interface ProjectWorklogCardProps {
   editWorklogAction: (input: {
@@ -36,6 +36,7 @@ export function ProjectWorklogCard({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [showRowEditControls, setShowRowEditControls] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const assignmentOptions = useMemo(
@@ -50,7 +51,41 @@ export function ProjectWorklogCard({
 
   return (
     <section className="pd-card">
-      <ProjectCardHeader title="Log" />
+      <div className="pd-card-header">
+        <h3 className="pd-card-title">Work log</h3>
+        <button
+          aria-label={showRowEditControls ? "Hide row edit controls" : "Show row edit controls"}
+          className={`pd-icon-button pd-icon-button-edit${showRowEditControls ? " pd-icon-button-edit-active" : ""}`}
+          onClick={() => {
+            setShowRowEditControls((current) => {
+              const next = !current;
+              if (!next) {
+                setEditingEntryId(null);
+              }
+              return next;
+            });
+          }}
+          type="button"
+        >
+          <svg aria-hidden className="pd-icon-button-edit-icon" viewBox="0 0 24 24">
+            <path
+              d="M15.77 3.3a2.06 2.06 0 0 1 2.92 0l2 2a2.06 2.06 0 0 1 0 2.92l-9.9 9.9a1 1 0 0 1-.43.25l-4 1.07a1 1 0 0 1-1.22-1.23l1.07-4a1 1 0 0 1 .25-.42l9.31-9.31Zm1.5 1.41L8.1 13.9l-.72 2.68 2.68-.72 9.22-9.22a.06.06 0 0 0 0-.09l-2-2a.06.06 0 0 0-.09 0Z"
+              fill="currentColor"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div className="pd-log-summary">
+        <div>
+          <span className="pd-meta-label">Total hours</span>
+          <strong>{`${formatHoursMetric(timeSummary.totalHours)}h`}</strong>
+        </div>
+        <div>
+          <span className="pd-meta-label">Total labor cost</span>
+          <strong>{formatCostMetric(timeSummary.totalLaborCost)}</strong>
+        </div>
+      </div>
 
       {timeSummary.recentEntries.length === 0 ? (
         <p className="pd-empty">No worklog entries yet.</p>
@@ -130,40 +165,31 @@ export function ProjectWorklogCard({
                   </form>
                 ) : (
                   <>
-                    <div className="pd-list-item-main pd-list-item-main-column">
-                      <p>
-                        Total Cost: <strong>{formatCostMetric(entry.laborCost)}</strong> Hours:{" "}
-                        <strong>{formatHoursMetric(entry.hours)}</strong>
-                      </p>
-                    </div>
-                    <div className="pd-list-item-aside">
+                    <div className="pd-list-item-main">
                       <span className="pd-person-chip">
                         <Avatar
                           fallbackKey={entry.personId}
                           label={entry.personName ?? "Unknown person"}
                           photoUrl={entry.personPhotoUrl}
                         />
-                        <span>
-                          {entry.personTitle
-                            ? `${entry.personTitle}: ${entry.personName ?? "Unknown person"}`
-                            : (entry.personName ?? "Unknown person")}
-                        </span>
+                        <span>{entry.personName ?? "Unknown person"}</span>
                       </span>
-                      <button className="pd-text-button" onClick={() => setEditingEntryId(entry.id)} type="button">
-                        Edit
-                      </button>
+                    </div>
+                    <div className="pd-list-item-aside">
+                      <p className="pd-meta-text">
+                        {formatDate(entry.date)} · {`${formatHoursMetric(entry.hours)}h`} · {formatCostMetric(entry.laborCost)}
+                      </p>
+                      {showRowEditControls ? (
+                        <button className="pd-text-button" onClick={() => setEditingEntryId(entry.id)} type="button">
+                          Edit
+                        </button>
+                      ) : null}
                     </div>
                   </>
                 )}
               </article>
             );
           })}
-          <article className="pd-list-item pd-log-total-row">
-            <p>
-              Total Cost: <strong>{formatCostMetric(timeSummary.totalLaborCost)}</strong> Total Hours:{" "}
-              <strong>{formatHoursMetric(timeSummary.totalHours)}</strong>
-            </p>
-          </article>
         </div>
       )}
 
