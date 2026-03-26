@@ -1,12 +1,15 @@
 import {
   getPersonDetail,
   listPeople,
+  listPeopleOfficeOptions,
   listPeopleOptions,
+  listPeopleRailData,
   type PeopleOptionsData,
   type PeopleListData,
   type PeopleListFilters,
+  type PeopleOfficeOptionsData,
+  type PeopleRailData,
   type PersonDetailData,
-  type PersonListItem,
   type ViewerRequestContext,
 } from "@mandala/db";
 import { unstable_cache } from "next/cache";
@@ -66,14 +69,10 @@ export async function getCachedPersonDetail(
 
 export async function getCachedPeopleRailData(
   context: ViewerRequestContext,
-): Promise<{
-  configured: boolean;
-  forbidden: boolean;
-  people: PersonListItem[];
-}> {
+): Promise<Pick<PeopleRailData, "configured" | "forbidden" | "people">> {
   return unstable_cache(
     async () => {
-      const data = await listPeople({}, context);
+      const data = await listPeopleRailData(context);
       return {
         configured: data.configured,
         forbidden: data.forbidden,
@@ -81,6 +80,27 @@ export async function getCachedPeopleRailData(
       };
     },
     ["people-rail", getViewerCacheKey(context)],
+    {
+      revalidate: PEOPLE_REVALIDATE_SECONDS,
+      tags: [PEOPLE_TAG],
+    },
+  )();
+}
+
+export async function getCachedPeopleOfficeOptions(
+  context: ViewerRequestContext,
+): Promise<Pick<PeopleOfficeOptionsData, "configured" | "forbidden" | "offices">> {
+  return unstable_cache(
+    async () => {
+      const data = await listPeopleOfficeOptions(context);
+
+      return {
+        configured: data.configured,
+        forbidden: data.forbidden,
+        offices: data.offices,
+      };
+    },
+    ["people-office-options", getViewerCacheKey(context)],
     {
       revalidate: PEOPLE_REVALIDATE_SECONDS,
       tags: [PEOPLE_TAG],

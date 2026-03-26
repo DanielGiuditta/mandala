@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import type { PersonListItem } from "@mandala/db";
+import type { PersonRailItem } from "@mandala/db";
 
 import { EntityHeader } from "../entity-header";
 import {
@@ -12,7 +12,7 @@ interface PersonDetailRailProps {
   activePersonId: string;
   configured: boolean;
   forbidden: boolean;
-  people: PersonListItem[];
+  people: PersonRailItem[];
 }
 
 export function PersonDetailRail({

@@ -1,4 +1,4 @@
-import type { PersonDetailData, PersonListItem, UpdatePersonInput } from "@mandala/db";
+import type { PersonDetailData, PersonRailItem, UpdatePersonInput } from "@mandala/db";
 import type { ReactNode } from "react";
 
 import { PersonDetailEntity } from "./person-detail-entity";
@@ -23,7 +23,7 @@ interface PersonDetailShellProps {
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
   personId: string;
-  railPeople: PersonListItem[];
+  railPeople: PersonRailItem[];
 }
 
 export function PersonDetailShell({

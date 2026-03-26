@@ -1,3 +1,4 @@
+import { createPerfTrace } from "@mandala/db";
 import { notFound } from "next/navigation";
 
 import { getViewerRequestContext } from "../../../lib/auth/session";
@@ -7,7 +8,11 @@ import {
   resendPersonAccountEmailAction,
   updatePersonAction,
 } from "../actions";
-import { getCachedPeople, getCachedPersonDetail } from "../data-cache";
+import {
+  getCachedPeopleOfficeOptions,
+  getCachedPeopleRailData,
+  getCachedPersonDetail,
+} from "../data-cache";
 
 interface PersonDetailPageProps {
   params: Promise<{
@@ -18,26 +23,39 @@ interface PersonDetailPageProps {
 export const dynamic = "force-dynamic"
 
 export default async function PersonDetailPage({ params }: PersonDetailPageProps) {
-  const { personId } = await params;
-  const viewerContext = await getViewerRequestContext();
-  const [data, listData] = await Promise.all([
-    getCachedPersonDetail(personId, viewerContext),
-    getCachedPeople({}, viewerContext),
-  ]);
+  const trace = createPerfTrace("app.people.personDetail.page");
+  const { personId } = await trace.measure("resolveParams", () => params);
+  const viewerContext = await trace.measure("getViewerRequestContext", () =>
+    getViewerRequestContext(),
+  );
+  const [data, officeData, railData] = await trace.measure("loadDetailShellData", () =>
+    Promise.all([
+      getCachedPersonDetail(personId, viewerContext),
+      getCachedPeopleOfficeOptions(viewerContext),
+      getCachedPeopleRailData(viewerContext),
+    ]),
+  );
 
   if (data.configured && !data.person && !data.forbidden) {
     notFound();
   }
 
+  trace.finish({
+    forbidden: data.forbidden,
+    hasPerson: Boolean(data.person),
+    railCount: railData.people.length,
+    result: "ok",
+  });
+
   return (
     <PersonDetailView
       data={data}
       loadSupervisorOptionsAction={loadPeopleOptionsAction}
-      officeOptions={listData.offices}
+      officeOptions={officeData.offices}
       onResendPersonAccountEmailAction={resendPersonAccountEmailAction}
       onUpdatePersonAction={updatePersonAction}
       personId={personId}
-      railPeople={listData.people}
+      railPeople={railData.people}
     />
   );
 }

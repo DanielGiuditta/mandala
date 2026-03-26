@@ -86,10 +86,17 @@ interface CacheEntry<T> {
   value: T
 }
 
+const peopleOfficeOptionsCache = new Map<
+  string,
+  CacheEntry<PeopleOfficeOptionsData>
+>()
 const peopleOptionsCache = new Map<string, CacheEntry<PeopleOptionsData>>()
+const peopleRailCache = new Map<string, CacheEntry<PeopleRailData>>()
 
 export function invalidatePeopleReadCaches(): void {
+  peopleOfficeOptionsCache.clear()
   peopleOptionsCache.clear()
+  peopleRailCache.clear()
 }
 
 function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
@@ -116,9 +123,13 @@ function setCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string, value
   return value
 }
 
-function getPeopleOptionsCacheKey(context: ViewerRequestContext): string | null {
+function getPeopleReadCacheKey(context: ViewerRequestContext): string | null {
   const sessionEmail = context.sessionEmail?.trim().toLowerCase()
   return sessionEmail || null
+}
+
+function getPeopleOptionsCacheKey(context: ViewerRequestContext): string | null {
+  return getPeopleReadCacheKey(context)
 }
 
 interface ChecklistItemRow {
@@ -168,6 +179,13 @@ export interface PersonListItem {
   title?: string | null
 }
 
+export interface PersonRailItem {
+  fullName: string
+  id: string
+  photoUrl?: string | null
+  title?: string | null
+}
+
 export interface PersonDetailPerson extends PersonListItem {
   allocationPercent: number
   assignedHours: number
@@ -196,6 +214,24 @@ export interface PeopleOptionsData {
     id: string
     fullName: string
   }>
+  viewerLabel: string | null
+}
+
+export interface PeopleOfficeOptionsData {
+  accessMessage: string | null
+  forbidden: boolean
+  configMessage: string | null
+  configured: boolean
+  offices: PeopleOfficeFilter[]
+  viewerLabel: string | null
+}
+
+export interface PeopleRailData {
+  accessMessage: string | null
+  forbidden: boolean
+  configMessage: string | null
+  configured: boolean
+  people: PersonRailItem[]
   viewerLabel: string | null
 }
 
@@ -564,6 +600,17 @@ function buildPersonListItem(
   }
 }
 
+function buildPersonRailItem(
+  row: Pick<PersonRow, "full_name" | "id" | "photo_url" | "title">,
+): PersonRailItem {
+  return {
+    fullName: row.full_name,
+    id: row.id,
+    photoUrl: row.photo_url,
+    title: row.title,
+  }
+}
+
 function buildPersonDetailPerson(
   row: PersonRow,
   assignmentsByPersonId: Map<string, number>,
@@ -668,6 +715,40 @@ function emptyPeopleOptionsData(
   viewerLabel: string | null,
   forbidden: boolean,
 ): PeopleOptionsData {
+  return {
+    accessMessage,
+    configMessage,
+    configured,
+    forbidden,
+    people: [],
+    viewerLabel,
+  }
+}
+
+function emptyPeopleOfficeOptionsData(
+  configured: boolean,
+  configMessage: string | null,
+  accessMessage: string | null,
+  viewerLabel: string | null,
+  forbidden: boolean,
+): PeopleOfficeOptionsData {
+  return {
+    accessMessage,
+    configMessage,
+    configured,
+    forbidden,
+    offices: [],
+    viewerLabel,
+  }
+}
+
+function emptyPeopleRailData(
+  configured: boolean,
+  configMessage: string | null,
+  accessMessage: string | null,
+  viewerLabel: string | null,
+  forbidden: boolean,
+): PeopleRailData {
   return {
     accessMessage,
     configMessage,
@@ -845,6 +926,31 @@ function listPreviewPeopleOptions(): PeopleOptionsData {
         fullName: person.full_name,
         id: person.id,
       })),
+    viewerLabel: null,
+  }
+}
+
+function listPreviewPeopleOfficeOptions(): PeopleOfficeOptionsData {
+  return {
+    accessMessage: null,
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    configured: false,
+    forbidden: false,
+    offices: previewOffices.map((office) => ({ id: office.id, name: office.name })),
+    viewerLabel: null,
+  }
+}
+
+function listPreviewPeopleRailData(): PeopleRailData {
+  return {
+    accessMessage: null,
+    configMessage: PREVIEW_CONFIG_MESSAGE,
+    configured: false,
+    forbidden: false,
+    people: previewPeople
+      .filter((person) => person.active)
+      .sort((left, right) => left.full_name.localeCompare(right.full_name))
+      .map((person) => buildPersonRailItem(person)),
     viewerLabel: null,
   }
 }
@@ -1185,22 +1291,33 @@ export async function listPeople(
 
   if (peopleIds.length > 0) {
     const { startDate: currentWeekStart, endDate: currentWeekEnd } = getCurrentWeekDateRange()
-    const [{ data: timeEntryData, error: timeEntryError }, { data: userAccountData, error: userAccountError }] =
-      await trace.measure(
-        "timeEntriesAndUserAccounts",
-        () =>
-          Promise.all([
-            client
-              .from("time_entries")
-              .select("person_id, project_id, date, hours")
-              .in("person_id", peopleIds)
-              .not("project_id", "is", null),
-            client
-              .from("user_accounts")
-              .select("id, person_id, active")
-              .in("person_id", peopleIds),
-          ]),
-      )
+    const [
+      { data: assignmentData, error: assignmentError },
+      { data: timeEntryData, error: timeEntryError },
+      { data: userAccountData, error: userAccountError },
+    ] = await trace.measure("assignmentsTimeEntriesAndUserAccounts", () =>
+      Promise.all([
+        client
+          .from("assignments")
+          .select("person_id, project_id")
+          .in("person_id", peopleIds)
+          .eq("active", true),
+        client
+          .from("time_entries")
+          .select("person_id, date, hours")
+          .in("person_id", peopleIds)
+          .gte("date", currentWeekStart)
+          .lte("date", currentWeekEnd),
+        client
+          .from("user_accounts")
+          .select("id, person_id, active")
+          .in("person_id", peopleIds),
+      ]),
+    )
+
+    if (assignmentError) {
+      throw assignmentError
+    }
 
     if (timeEntryError) {
       throw timeEntryError
@@ -1210,55 +1327,69 @@ export async function listPeople(
       throw userAccountError
     }
 
-    const timeEntryRows = (timeEntryData ?? []) as Array<{
+    const assignmentRows = (assignmentData ?? []) as Array<{
       person_id: string
       project_id: string
+    }>
+    const timeEntryRows = (timeEntryData ?? []) as Array<{
+      person_id: string
       date: string
       hours: number | string
     }>
     hoursThisWeekByPersonId = timeEntryRows.reduce((map, entry) => {
-      if (entry.date < currentWeekStart || entry.date > currentWeekEnd) {
-        return map
-      }
-
       map.set(entry.person_id, (map.get(entry.person_id) ?? 0) + Number(entry.hours))
       return map
     }, new Map<string, number>())
-    const projectIds = [...new Set(timeEntryRows.map((entry) => entry.project_id))]
+    const projectIds = [...new Set(assignmentRows.map((entry) => entry.project_id))]
+    const userAccounts = (userAccountData ?? []) as UserAccountListRow[]
+    const userAccountsByPersonId = new Map(
+      userAccounts
+        .filter((account) => account.person_id)
+        .map((account) => [account.person_id as string, account]),
+    )
+    const userAccountIds = userAccounts.map((account) => account.id)
 
-    let projectsById = new Map<
-      string,
-      { active: boolean; id: string; name: string; photo_url: string | null }
-    >()
+    const [
+      { data: projectData, error: projectError },
+      { data: roleAssignmentData, error: roleAssignmentError },
+    ] = await trace.measure("projectsAndRoleAssignments", () =>
+      Promise.all([
+        projectIds.length > 0
+          ? client
+              .from("projects")
+              .select("id, name, photo_url, active")
+              .in("id", projectIds)
+              .eq("active", true)
+          : Promise.resolve({ data: [], error: null }),
+        userAccountIds.length > 0
+          ? client
+              .from("role_assignments")
+              .select("user_account_id, role, active")
+              .in("user_account_id", userAccountIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]),
+    )
 
-    if (projectIds.length > 0) {
-      const { data: projectData, error: projectError } = await trace.measure(
-        "fetchProjectsById",
-        () =>
-          client
-            .from("projects")
-            .select("id, name, photo_url, active")
-            .in("id", projectIds)
-            .eq("active", true),
-      )
-
-      if (projectError) {
-        throw projectError
-      }
-
-      projectsById = new Map(
-        (
-          (projectData ?? []) as Array<{
-            active: boolean
-            id: string
-            name: string
-            photo_url: string | null
-          }>
-        ).map((project) => [project.id, project]),
-      )
+    if (projectError) {
+      throw projectError
     }
 
-    staffedProjectsByPersonId = timeEntryRows.reduce(
+    if (roleAssignmentError) {
+      throw roleAssignmentError
+    }
+
+    const projectsById = new Map(
+      (
+        (projectData ?? []) as Array<{
+          active: boolean
+          id: string
+          name: string
+          photo_url: string | null
+        }>
+      ).map((project) => [project.id, project]),
+    )
+
+    staffedProjectsByPersonId = assignmentRows.reduce(
       (map, entry) => {
         const project = projectsById.get(entry.project_id)
 
@@ -1290,39 +1421,15 @@ export async function listPeople(
       >(),
     )
 
-    const userAccounts = (userAccountData ?? []) as UserAccountListRow[]
-    const userAccountsByPersonId = new Map(
-      userAccounts
-        .filter((account) => account.person_id)
-        .map((account) => [account.person_id as string, account]),
+    const roleAssignmentsByUserAccountId = ((roleAssignmentData ?? []) as RoleAssignmentListRow[]).reduce(
+      (map, assignment) => {
+        const current = map.get(assignment.user_account_id) ?? []
+        current.push(assignment)
+        map.set(assignment.user_account_id, current)
+        return map
+      },
+      new Map<string, RoleAssignmentListRow[]>(),
     )
-    const userAccountIds = userAccounts.map((account) => account.id)
-    let roleAssignmentsByUserAccountId = new Map<string, RoleAssignmentListRow[]>()
-
-    if (userAccountIds.length > 0) {
-      const { data: roleAssignmentData, error: roleAssignmentError } = await trace.measure(
-        "fetchRoleAssignments",
-        () =>
-          client
-            .from("role_assignments")
-            .select("user_account_id, role, active")
-            .in("user_account_id", userAccountIds),
-      )
-
-      if (roleAssignmentError) {
-        throw roleAssignmentError
-      }
-
-      roleAssignmentsByUserAccountId = ((roleAssignmentData ?? []) as RoleAssignmentListRow[]).reduce(
-        (map, assignment) => {
-          const current = map.get(assignment.user_account_id) ?? []
-          current.push(assignment)
-          map.set(assignment.user_account_id, current)
-          return map
-        },
-        new Map<string, RoleAssignmentListRow[]>(),
-      )
-    }
 
     permissionLabelByPersonId = new Map(
       filteredPeople.map((person) => {
@@ -1457,6 +1564,176 @@ export async function listPeopleOptions(
   }
 
   return cacheKey ? setCachedValue(peopleOptionsCache, cacheKey, result) : result
+}
+
+export async function listPeopleOfficeOptions(
+  context: ViewerRequestContext = {},
+): Promise<PeopleOfficeOptionsData> {
+  const cacheKey = getPeopleReadCacheKey(context)
+  const cachedValue = cacheKey
+    ? getCachedValue(peopleOfficeOptionsCache, cacheKey)
+    : null
+
+  if (cachedValue) {
+    return cachedValue
+  }
+
+  const viewerAccess = await getCurrentViewerAccess(context)
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
+  const status = getDatabaseStatus()
+  const client = status.configured
+    ? createServerSupabaseClient({ accessToken: context.accessToken })
+    : null
+
+  if (!viewerAccess.viewer) {
+    return emptyPeopleOfficeOptionsData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!canViewPeopleDirectory(viewerAccess.viewer)) {
+    return emptyPeopleOfficeOptionsData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage ?? "Current viewer cannot access the people directory.",
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!client) {
+    const previewData = listPreviewPeopleOfficeOptions()
+    const previewResult = {
+      ...previewData,
+      accessMessage: viewerAccess.accessMessage,
+      viewerLabel,
+    }
+
+    return cacheKey
+      ? setCachedValue(peopleOfficeOptionsCache, cacheKey, previewResult)
+      : previewResult
+  }
+
+  const offices = await fetchOfficeRows(undefined, { client })
+  const result = {
+    accessMessage: viewerAccess.accessMessage,
+    configMessage: status.message,
+    configured: status.configured,
+    forbidden: false,
+    offices: offices.map((office) => ({ id: office.id, name: office.name })),
+    viewerLabel,
+  }
+
+  return cacheKey
+    ? setCachedValue(peopleOfficeOptionsCache, cacheKey, result)
+    : result
+}
+
+export async function listPeopleRailData(
+  context: ViewerRequestContext = {},
+): Promise<PeopleRailData> {
+  const cacheKey = getPeopleReadCacheKey(context)
+  const cachedValue = cacheKey ? getCachedValue(peopleRailCache, cacheKey) : null
+
+  if (cachedValue) {
+    return cachedValue
+  }
+
+  const trace = createPerfTrace("listPeopleRailData")
+  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  )
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
+  const status = getDatabaseStatus()
+  const client = status.configured
+    ? createServerSupabaseClient({ accessToken: context.accessToken })
+    : null
+
+  if (!viewerAccess.viewer) {
+    trace.finish({
+      hasViewer: false,
+      personCount: 0,
+      result: "forbidden",
+    })
+    return emptyPeopleRailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!canViewPeopleDirectory(viewerAccess.viewer)) {
+    trace.finish({
+      hasViewer: true,
+      personCount: 0,
+      result: "no-directory-access",
+    })
+    return emptyPeopleRailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage ?? "Current viewer cannot access the people directory.",
+      viewerLabel,
+      true,
+    )
+  }
+
+  if (!client) {
+    const previewData = listPreviewPeopleRailData()
+    const previewResult = {
+      ...previewData,
+      accessMessage: viewerAccess.accessMessage,
+      viewerLabel,
+    }
+
+    trace.finish({
+      personCount: previewResult.people.length,
+      preview: true,
+      result: "preview",
+    })
+
+    return cacheKey ? setCachedValue(peopleRailCache, cacheKey, previewResult) : previewResult
+  }
+
+  const { data, error } = await trace.measure("fetchActivePeople", () =>
+    client
+      .from("people")
+      .select("id, full_name, photo_url, title")
+      .eq("active", true)
+      .order("full_name"),
+  )
+
+  if (error) {
+    throw error
+  }
+
+  const result = {
+    accessMessage: viewerAccess.accessMessage,
+    configMessage: status.message,
+    configured: status.configured,
+    forbidden: false,
+    people: (
+      (data ?? []) as Array<{
+        full_name: string
+        id: string
+        photo_url: string | null
+        title: string | null
+      }>
+    ).map((person) => buildPersonRailItem(person)),
+    viewerLabel,
+  }
+
+  trace.finish({
+    personCount: result.people.length,
+    result: "live",
+  })
+
+  return cacheKey ? setCachedValue(peopleRailCache, cacheKey, result) : result
 }
 
 export async function createPerson(
@@ -2127,7 +2404,10 @@ export async function getPersonDetail(
   personId: string,
   context: ViewerRequestContext = {},
 ): Promise<PersonDetailData> {
-  const viewerAccess = await getCurrentViewerAccess(context)
+  const trace = createPerfTrace("getPersonDetail")
+  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  )
   const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
@@ -2135,6 +2415,11 @@ export async function getPersonDetail(
     : null
 
   if (!viewerAccess.viewer) {
+    trace.finish({
+      hasViewer: false,
+      personId,
+      result: "forbidden",
+    })
     return emptyPersonDetailData(
       status.configured,
       status.message,
@@ -2154,6 +2439,11 @@ export async function getPersonDetail(
         officeId: previewData.person.officeId,
       })
     ) {
+      trace.finish({
+        hasViewer: true,
+        personId,
+        result: "preview-forbidden",
+      })
       return emptyPersonDetailData(
         false,
         PREVIEW_CONFIG_MESSAGE,
@@ -2163,6 +2453,12 @@ export async function getPersonDetail(
       )
     }
 
+    trace.finish({
+      hasViewer: true,
+      personId,
+      preview: true,
+      result: "preview",
+    })
     return {
       ...previewData,
       accessMessage: viewerAccess.accessMessage,
@@ -2170,19 +2466,28 @@ export async function getPersonDetail(
     }
   }
 
-  const { data: personRow, error: personError } = await client
-    .from("people")
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
-    .eq("id", personId)
-    .maybeSingle()
+  const { data: personRow, error: personError } = await trace.measure(
+    "fetchPerson",
+    () =>
+      client
+        .from("people")
+        .select(
+          "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+        )
+        .eq("id", personId)
+        .maybeSingle(),
+  )
 
   if (personError) {
     throw personError
   }
 
   if (!personRow) {
+    trace.finish({
+      hasViewer: true,
+      personId,
+      result: "missing-person",
+    })
     return emptyPersonDetailData(
       status.configured,
       status.message,
@@ -2200,6 +2505,12 @@ export async function getPersonDetail(
       officeId: person.office_id,
     })
   ) {
+    trace.finish({
+      hasViewer: true,
+      officeId: person.office_id,
+      personId,
+      result: "no-person-access",
+    })
     return emptyPersonDetailData(
       status.configured,
       status.message,
@@ -2216,36 +2527,38 @@ export async function getPersonDetail(
     timeEntryResponse,
     checklistResponse,
     userAccountResponse,
-  ] = await Promise.all([
-    fetchOfficeRows([person.office_id], { client }),
-    person.supervisor_person_id
-      ? fetchPeopleRows([person.supervisor_person_id], { client })
-      : Promise.resolve([]),
-    client
-      .from("assignments")
-      .select(
-        "id, person_id, project_id, assigned_hours_per_week, start_date, end_date, notes, active",
-      )
-      .eq("person_id", personId)
-      .order("active", { ascending: false })
-      .order("start_date", { ascending: true }),
-    client
-      .from("time_entries")
-      .select("id, person_id, project_id, assignment_id, date, hours, notes, source")
-      .eq("person_id", personId)
-      .order("date", { ascending: false }),
-    client
-      .from("checklist_items")
-      .select("id, project_id, title, completed, created_at, completed_at")
-      .eq("assigned_person_id", personId)
-      .order("completed", { ascending: true })
-      .order("created_at", { ascending: false }),
-    client
-      .from("user_accounts")
-      .select("id, person_id, email, active")
-      .eq("person_id", personId)
-      .maybeSingle(),
-  ])
+  ] = await trace.measure("detailBaseQueries", () =>
+    Promise.all([
+      fetchOfficeRows([person.office_id], { client }),
+      person.supervisor_person_id
+        ? fetchPeopleRows([person.supervisor_person_id], { client })
+        : Promise.resolve([]),
+      client
+        .from("assignments")
+        .select(
+          "id, person_id, project_id, assigned_hours_per_week, start_date, end_date, notes, active",
+        )
+        .eq("person_id", personId)
+        .order("active", { ascending: false })
+        .order("start_date", { ascending: true }),
+      client
+        .from("time_entries")
+        .select("id, person_id, project_id, assignment_id, date, hours, notes, source")
+        .eq("person_id", personId)
+        .order("date", { ascending: false }),
+      client
+        .from("checklist_items")
+        .select("id, project_id, title, completed, created_at, completed_at")
+        .eq("assigned_person_id", personId)
+        .order("completed", { ascending: true })
+        .order("created_at", { ascending: false }),
+      client
+        .from("user_accounts")
+        .select("id, person_id, email, active")
+        .eq("person_id", personId)
+        .maybeSingle(),
+    ]),
+  )
 
   if (assignmentResponse.error) throw assignmentResponse.error
   if (timeEntryResponse.error) throw timeEntryResponse.error
@@ -2263,29 +2576,45 @@ export async function getPersonDetail(
       ...checklistRows.map((item) => item.project_id),
     ]),
   ]
+  const userAccount = (userAccountResponse.data ?? null) as UserAccountListRow | null
 
-  let projectRows: ProjectRow[] = []
+  const [
+    { data: projectsData, error: projectsError },
+    { data: roleAssignmentData, error: roleAssignmentError },
+  ] = await trace.measure("projectsAndRoleAssignments", () =>
+    Promise.all([
+      projectIds.length > 0
+        ? client
+            .from("projects")
+            .select("id, name, photo_url, stage, managing_office_id, active")
+            .in("id", projectIds)
+        : Promise.resolve({ data: [], error: null }),
+      userAccount
+        ? client
+            .from("role_assignments")
+            .select("user_account_id, role, active")
+            .eq("user_account_id", userAccount.id)
+        : Promise.resolve({ data: [], error: null }),
+    ]),
+  )
 
-  if (projectIds.length > 0) {
-    const { data: projectsData, error: projectsError } = await client
-      .from("projects")
-      .select("id, name, photo_url, stage, managing_office_id, active")
-      .in("id", projectIds)
-
-    if (projectsError) {
-      throw projectsError
-    }
-
-    projectRows = (projectsData ?? []) as ProjectRow[]
+  if (projectsError) {
+    throw projectsError
   }
 
+  if (roleAssignmentError) {
+    throw roleAssignmentError
+  }
+
+  const projectRows = (projectsData ?? []) as ProjectRow[]
   const managingOfficeIds = [
     ...new Set(projectRows.map((project) => project.managing_office_id)),
   ]
-  const managingOffices =
+  const managingOffices = await trace.measure("fetchManagingOffices", () =>
     managingOfficeIds.length > 0
-      ? await fetchOfficeRows(managingOfficeIds, { client })
-      : []
+      ? fetchOfficeRows(managingOfficeIds, { client })
+      : Promise.resolve([]),
+  )
   const officesById = new Map(
     [...offices, ...managingOffices].map((office) => [office.id, office]),
   )
@@ -2308,7 +2637,7 @@ export async function getPersonDetail(
     map.set(entry.person_id, (map.get(entry.person_id) ?? 0) + Number(entry.hours))
     return map
   }, new Map<string, number>())
-  const staffedProjectsByPersonId = timeEntryRows.reduce(
+  const staffedProjectsByPersonId = assignmentRows.reduce(
     (map, entry) => {
       const project = projectsById.get(entry.project_id)
 
@@ -2337,23 +2666,9 @@ export async function getPersonDetail(
         projectName: string
         projectPhotoUrl: string | null
       }>
-    >(),
+      >(),
   )
-  const userAccount = (userAccountResponse.data ?? null) as UserAccountListRow | null
-  let roleAssignmentsForPerson: RoleAssignmentListRow[] = []
-
-  if (userAccount) {
-    const { data: roleAssignmentData, error: roleAssignmentError } = await client
-      .from("role_assignments")
-      .select("user_account_id, role, active")
-      .eq("user_account_id", userAccount.id)
-
-    if (roleAssignmentError) {
-      throw roleAssignmentError
-    }
-
-    roleAssignmentsForPerson = (roleAssignmentData ?? []) as RoleAssignmentListRow[]
-  }
+  const roleAssignmentsForPerson = (roleAssignmentData ?? []) as RoleAssignmentListRow[]
 
   const permissionLabelByPersonId = new Map<string, string | null>([
     [personId, buildEffectivePermissionLabel(userAccount, roleAssignmentsForPerson)],
@@ -2459,6 +2774,16 @@ export async function getPersonDetail(
       })
     }
   }
+
+  trace.finish({
+    assignmentCount: assignmentRows.length,
+    checklistCount: checklistItems.length,
+    personId,
+    projectCount: projectRows.length,
+    recentEntryCount: recentEntries.length,
+    result: "live",
+    timeEntryCount: timeEntryRows.length,
+  })
 
   return {
     accessMessage: viewerAccess.accessMessage,

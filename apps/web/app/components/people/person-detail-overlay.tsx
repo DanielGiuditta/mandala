@@ -1,4 +1,4 @@
-import type { PersonDetailData, PersonListItem, UpdatePersonInput } from "@mandala/db";
+import type { PersonDetailData, PersonRailItem, UpdatePersonInput } from "@mandala/db";
 
 import { EntityModal } from "../entity-modal";
 import { PersonDetailCloseButton } from "./person-detail-close-button";
@@ -22,7 +22,7 @@ interface PersonDetailOverlayProps {
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
   personId: string;
-  railPeople: PersonListItem[];
+  railPeople: PersonRailItem[];
 }
 
 export function PersonDetailOverlay({
