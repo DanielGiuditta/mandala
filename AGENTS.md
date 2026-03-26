@@ -37,6 +37,12 @@ Read these files before making changes:
 - Keep changes scoped to the requested feature.
 - Reuse shared packages and existing patterns before creating new ones.
 
+## Deployment preference
+
+- During the current pre-launch stage, ship deployments to production by default.
+- Do not create preview deployments unless the user explicitly asks for a preview deployment.
+- Revisit this preference after launch if the team decides to return to preview-first deploys.
+
 ## Build order preference
 
 When implementing the core model, prefer this order:
