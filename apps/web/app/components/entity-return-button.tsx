@@ -1,7 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { type ReactNode } from "react";
 
 import {
   getEntityReturnUrl,
@@ -27,15 +26,10 @@ export function EntityReturnButton({
   label,
   scope,
 }: EntityReturnButtonProps) {
-  const router = useRouter();
   const returnUrl = getEntityReturnUrl(scope) ?? fallbackHref;
 
-  useEffect(() => {
-    router.prefetch(returnUrl);
-  }, [returnUrl, router]);
-
   function handleClick() {
-    router.replace(returnUrl);
+    window.location.replace(returnUrl);
   }
 
   return (
