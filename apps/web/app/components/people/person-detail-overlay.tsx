@@ -40,7 +40,7 @@ export function PersonDetailOverlay({
       showBackdrop={false}
     >
       <PersonDetailShell
-        closeControl={<PersonDetailCloseButton preferBack />}
+        closeControl={<PersonDetailCloseButton />}
         data={data}
         loadSupervisorOptionsAction={loadSupervisorOptionsAction}
         officeOptions={officeOptions}

@@ -11,12 +11,8 @@ import { ProjectCardHeader } from "./project-card-header";
 
 interface ProjectStaffCardProps {
   addStaffAction: (input: {
-    assignedHoursPerWeek: number;
-    endDate?: string | null;
-    notes?: string | null;
     personId: string;
     projectId: string;
-    startDate?: string | null;
   }) => Promise<{ error: string | null; ok: boolean }>;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
@@ -72,7 +68,7 @@ export function ProjectStaffCard({
   return (
     <section className="pd-card">
       <ProjectCardHeader
-        addAriaLabel="Add staff assignment"
+        addAriaLabel="Add staff"
         onAddClick={() => {
           setShowAdd((value) => {
             const nextValue = !value;
@@ -94,25 +90,17 @@ export function ProjectStaffCard({
             event.preventDefault();
             const formData = new FormData(event.currentTarget);
             const personId = String(formData.get("personId") ?? "");
-            const assignedHoursPerWeek = Number(formData.get("assignedHoursPerWeek") ?? "");
-            const startDate = String(formData.get("startDate") ?? "");
-            const endDate = String(formData.get("endDate") ?? "");
-            const notes = String(formData.get("notes") ?? "").trim();
 
-            if (!personId || !Number.isFinite(assignedHoursPerWeek) || assignedHoursPerWeek <= 0) {
-              setFormError("Select a person and assign positive weekly hours.");
+            if (!personId) {
+              setFormError("Select a person to add.");
               return;
             }
 
             setFormError(null);
             startTransition(async () => {
               const result = await addStaffAction({
-                assignedHoursPerWeek,
-                endDate: endDate || null,
-                notes: notes || null,
                 personId,
                 projectId,
-                startDate: startDate || null,
               });
               if (!result.ok) {
                 setFormError(result.error ?? "Unable to add staff.");
@@ -131,20 +119,6 @@ export function ProjectStaffCard({
             options={peopleOptions.map((person) => ({ label: person.fullName, value: person.id }))}
             placeholder="Select person"
           />
-          <input min={0.1} name="assignedHoursPerWeek" placeholder="Hours/week" required step={0.1} type="number" />
-          <span className="app-native-input-wrap">
-            <input className="app-date-input" name="startDate" type="date" />
-            <span aria-hidden className="app-native-input-chevron">
-              ˅
-            </span>
-          </span>
-          <span className="app-native-input-wrap">
-            <input className="app-date-input" name="endDate" type="date" />
-            <span aria-hidden className="app-native-input-chevron">
-              ˅
-            </span>
-          </span>
-          <input name="notes" placeholder="Notes (optional)" type="text" />
           <button
             className="pd-primary-button"
             disabled={isPending || peopleOptionsStatus !== "ready"}

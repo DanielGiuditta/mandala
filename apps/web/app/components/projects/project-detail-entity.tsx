@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { ProjectDetailActionResult } from "../../projects/[projectId]/project-detail-actions";
 import {
   addResourceAction,
-  addStaffAction,
+  addStaffAction as addProjectStaffAction,
   addTaskAction,
   editWorklogAction,
   updateTaskAction,
@@ -36,12 +36,8 @@ interface ProjectDetailEntityProps {
 
 type AddStaffAction = (
   input: {
-    assignedHoursPerWeek: number;
-    endDate?: string | null;
-    notes?: string | null;
     personId: string;
     projectId: string;
-    startDate?: string | null;
   },
 ) => Promise<ProjectDetailActionResult>;
 
@@ -93,6 +89,7 @@ export function ProjectDetailEntity({
   onUpdateProjectAction,
   projectId,
 }: ProjectDetailEntityProps) {
+  const QUICK_ADD_STAFF_ASSIGNED_HOURS_PER_WEEK = 1;
   const taskActions: {
     addTaskAction: AddTaskAction;
     updateTaskAction: UpdateTaskAction;
@@ -103,7 +100,14 @@ export function ProjectDetailEntity({
   const staffActions: {
     addStaffAction: AddStaffAction;
   } = {
-    addStaffAction,
+    addStaffAction: ({ personId, projectId }) =>
+      addProjectStaffAction({
+        // The staff card is a quick-add affordance, but assignments remain
+        // the documented staffing record in the data model.
+        assignedHoursPerWeek: QUICK_ADD_STAFF_ASSIGNED_HOURS_PER_WEEK,
+        personId,
+        projectId,
+      }),
   };
   const resourceActions: {
     addResourceAction: AddResourceAction;

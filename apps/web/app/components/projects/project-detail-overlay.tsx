@@ -42,7 +42,7 @@ export function ProjectDetailOverlay({
       showBackdrop={false}
     >
       <ProjectDetailShell
-        closeControl={<ProjectDetailCloseButton preferBack />}
+        closeControl={<ProjectDetailCloseButton />}
         createProjectAction={createProjectAction}
         data={data}
         loadPeopleOptionsAction={loadPeopleOptionsAction}

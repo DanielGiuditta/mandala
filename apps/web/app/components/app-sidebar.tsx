@@ -1,7 +1,7 @@
 "use client"
 
 import type { SelfTimeTrackerData } from "@mandala/db"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
 
 import { signOutAction } from "../login/actions"
@@ -150,6 +150,14 @@ function getTimeTrackerStorageKeys(sessionEmail: string): TimeTrackerStorageKeys
   }
 }
 
+function isDetailWorkspacePath(pathname: string | null): boolean {
+  if (!pathname) {
+    return false
+  }
+
+  return /^\/(?:people|projects)\/[^/]+$/.test(pathname)
+}
+
 function clearTimeTrackerStorage(sessionEmail: string) {
   const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
   localStorage.removeItem(storageKeys.running)
@@ -185,6 +193,7 @@ function readTimeTrackerStorage(sessionEmail: string): {
 }
 
 export function AppSidebar({ shell }: { shell: AppShellState }) {
+  const pathname = usePathname()
   const router = useRouter()
   const profilePanelId = useId()
   const signOutFormRef = useRef<HTMLFormElement | null>(null)
@@ -205,7 +214,9 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
   const profileAvatarStyle = getPersonFallbackAvatarStyle(profileName, "app-shell")
   const sessionEmail = shell.sessionEmail
   const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
-  const isSidebarOpen = !isForcedCollapsed && !isManuallyCollapsed
+  const isDetailWorkspaceOpen = isDetailWorkspacePath(pathname)
+  const isSidebarOpen =
+    !isForcedCollapsed && !isDetailWorkspaceOpen && !isManuallyCollapsed
   const profileAvatar = shell.photoUrl ? (
     <img
       alt=""

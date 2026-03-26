@@ -54,7 +54,7 @@ export function ProjectCreateModal({
   const [leadOptions, setLeadOptions] = useState<ProjectCreateLeadOption[]>([]);
   const [leadOptionsUnavailable, setLeadOptionsUnavailable] = useState(false);
   const [leadOptionsStatus, setLeadOptionsStatus] = useState<
-    "idle" | "loading" | "ready" | "error"
+    "idle" | "loading" | "ready" | "unavailable" | "error"
   >("idle");
   const titleId = useId();
   const router = useRouter();
@@ -76,6 +76,16 @@ export function ProjectCreateModal({
   }, [isOpen]);
 
   useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    setLeadOptions([]);
+    setLeadOptionsUnavailable(false);
+    setLeadOptionsStatus("idle");
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen || leadOptionsStatus !== "idle") {
       return;
     }
@@ -91,7 +101,7 @@ export function ProjectCreateModal({
 
         setLeadOptions(result.people);
         setLeadOptionsUnavailable(result.forbidden);
-        setLeadOptionsStatus("ready");
+        setLeadOptionsStatus(result.forbidden ? "unavailable" : "ready");
       })
       .catch(() => {
         if (isCancelled) {
@@ -148,8 +158,16 @@ export function ProjectCreateModal({
             </header>
 
             <ProjectCreateForm
+              leadFieldDisabled={leadOptionsStatus !== "ready"}
+              leadFieldPlaceholder={
+                leadOptionsStatus === "loading" || leadOptionsStatus === "idle"
+                  ? "Loading leads..."
+                  : "Lead options unavailable"
+              }
               hasLeadOptionGap={
-                leadOptionsUnavailable || leadOptionsStatus === "error"
+                leadOptionsUnavailable ||
+                leadOptionsStatus === "unavailable" ||
+                leadOptionsStatus === "error"
               }
               initialFormInput={initialFormInput}
               leadOptions={leadOptions}

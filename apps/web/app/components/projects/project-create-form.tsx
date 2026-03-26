@@ -23,6 +23,8 @@ import {
 interface ProjectCreateFormProps {
   hasLeadOptionGap: boolean;
   initialFormInput?: CreateProjectFormInput;
+  leadFieldDisabled?: boolean;
+  leadFieldPlaceholder?: string;
   leadOptions: ProjectCreateLeadOption[];
   mode?: ProjectCreateMode;
   officeOptions: ProjectCreateOfficeOption[];
@@ -63,6 +65,8 @@ function getInitialFormInput(
 export function ProjectCreateForm({
   hasLeadOptionGap,
   initialFormInput,
+  leadFieldDisabled = false,
+  leadFieldPlaceholder = "Select lead...",
   leadOptions,
   mode = "create",
   officeOptions,
@@ -72,11 +76,8 @@ export function ProjectCreateForm({
   const nameInputId = useId();
   const clientInputId = useId();
   const descriptionInputId = useId();
-  const officeInputId = useId();
-  const leadInputId = useId();
   const startDateInputId = useId();
   const completionDateInputId = useId();
-  const stageInputId = useId();
   const photoInputId = useId();
   const [form, setForm] = useState<CreateProjectFormInput>(() =>
     getInitialFormInput(officeOptions, initialFormInput),
@@ -211,7 +212,7 @@ export function ProjectCreateForm({
         />
       </label>
 
-      <label className="project-create-field" htmlFor={officeInputId}>
+      <div className="project-create-field">
         <span className="project-create-label">Office</span>
         <SelectDropdownField
           ariaLabel="Office"
@@ -220,18 +221,19 @@ export function ProjectCreateForm({
           value={form.officeId}
           onValueChange={(nextValue) => updateField("officeId", nextValue)}
         />
-      </label>
+      </div>
 
-      <label className="project-create-field" htmlFor={leadInputId}>
+      <div className="project-create-field">
         <span className="project-create-label">Lead</span>
         <SelectDropdownField
           ariaLabel="Lead"
+          disabled={leadFieldDisabled}
           options={leadSelectOptions}
-          placeholder="Select lead..."
+          placeholder={leadFieldPlaceholder}
           value={form.leadPersonId ?? ""}
           onValueChange={(nextValue) => updateField("leadPersonId", nextValue)}
         />
-      </label>
+      </div>
 
       <div className="project-create-dates-stage-row">
         <label className="project-create-field" htmlFor={startDateInputId}>
@@ -254,7 +256,7 @@ export function ProjectCreateForm({
           />
         </label>
 
-        <label className="project-create-field" htmlFor={stageInputId}>
+        <div className="project-create-field">
           <span className="project-create-label">Stage</span>
           <SelectDropdownField
             ariaLabel="Stage"
@@ -263,7 +265,7 @@ export function ProjectCreateForm({
             value={form.stage}
             onValueChange={(nextValue) => updateField("stage", nextValue as ProjectStage)}
           />
-        </label>
+        </div>
       </div>
 
       {requiredFieldMessage ? (

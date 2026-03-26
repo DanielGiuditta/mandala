@@ -15,7 +15,6 @@ interface EntityReturnButtonProps {
   icon?: ReactNode;
   iconSrc?: string;
   label?: string;
-  preferBack?: boolean;
   scope: EntityReturnScope;
 }
 
@@ -26,7 +25,6 @@ export function EntityReturnButton({
   icon,
   iconSrc,
   label,
-  preferBack = false,
   scope,
 }: EntityReturnButtonProps) {
   const router = useRouter();
@@ -37,11 +35,6 @@ export function EntityReturnButton({
   }, [returnUrl, router]);
 
   function handleClick() {
-    if (preferBack) {
-      router.back();
-      return;
-    }
-
     router.replace(returnUrl);
   }
 
