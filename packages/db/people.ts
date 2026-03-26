@@ -81,6 +81,20 @@ interface TimeEntryRow {
   source: string | null
 }
 
+interface PersonDetailContextResponse {
+  found: boolean
+  person: PersonRow | null
+  office: OfficeRow | null
+  supervisor: PersonRow | null
+  assignments: AssignmentRow[]
+  timeEntries: TimeEntryRow[]
+  checklistItems: ChecklistItemRow[]
+  projects: ProjectRow[]
+  managingOffices: OfficeRow[]
+  userAccount: UserAccountListRow | null
+  roleAssignments: RoleAssignmentListRow[]
+}
+
 interface CacheEntry<T> {
   expiresAt: number
   value: T
@@ -2466,23 +2480,21 @@ export async function getPersonDetail(
     }
   }
 
-  const { data: personRow, error: personError } = await trace.measure(
-    "fetchPerson",
+  const { data: detailContextData, error: detailContextError } = await trace.measure(
+    "rpc.get_person_detail_context",
     () =>
-      client
-        .from("people")
-        .select(
-          "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-        )
-        .eq("id", personId)
-        .maybeSingle(),
+      client.rpc("get_person_detail_context", {
+        target_person_id: personId,
+      }),
   )
 
-  if (personError) {
-    throw personError
+  if (detailContextError) {
+    throw detailContextError
   }
 
-  if (!personRow) {
+  const detailContext = (detailContextData ?? null) as PersonDetailContextResponse | null
+
+  if (!detailContext?.found || !detailContext.person) {
     trace.finish({
       hasViewer: true,
       personId,
@@ -2497,7 +2509,7 @@ export async function getPersonDetail(
     )
   }
 
-  const person = personRow as PersonRow
+  const person = detailContext.person
 
   if (
     !canViewPerson(viewerAccess.viewer, {
@@ -2520,105 +2532,22 @@ export async function getPersonDetail(
     )
   }
 
-  const [
-    offices,
-    supervisorRows,
-    assignmentResponse,
-    timeEntryResponse,
-    checklistResponse,
-    userAccountResponse,
-  ] = await trace.measure("detailBaseQueries", () =>
-    Promise.all([
-      fetchOfficeRows([person.office_id], { client }),
-      person.supervisor_person_id
-        ? fetchPeopleRows([person.supervisor_person_id], { client })
-        : Promise.resolve([]),
-      client
-        .from("assignments")
-        .select(
-          "id, person_id, project_id, assigned_hours_per_week, start_date, end_date, notes, active",
-        )
-        .eq("person_id", personId)
-        .order("active", { ascending: false })
-        .order("start_date", { ascending: true }),
-      client
-        .from("time_entries")
-        .select("id, person_id, project_id, assignment_id, date, hours, notes, source")
-        .eq("person_id", personId)
-        .order("date", { ascending: false }),
-      client
-        .from("checklist_items")
-        .select("id, project_id, title, completed, created_at, completed_at")
-        .eq("assigned_person_id", personId)
-        .order("completed", { ascending: true })
-        .order("created_at", { ascending: false }),
-      client
-        .from("user_accounts")
-        .select("id, person_id, email, active")
-        .eq("person_id", personId)
-        .maybeSingle(),
-    ]),
-  )
-
-  if (assignmentResponse.error) throw assignmentResponse.error
-  if (timeEntryResponse.error) throw timeEntryResponse.error
-  if (checklistResponse.error) throw checklistResponse.error
-  if (userAccountResponse.error) throw userAccountResponse.error
-
-  const assignmentRows = (assignmentResponse.data ?? []) as AssignmentRow[]
-  const timeEntryRows = (timeEntryResponse.data ?? []) as TimeEntryRow[]
-  const checklistRows = (checklistResponse.data ?? []) as ChecklistItemRow[]
-
-  const projectIds = [
-    ...new Set([
-      ...assignmentRows.map((assignment) => assignment.project_id),
-      ...timeEntryRows.map((entry) => entry.project_id),
-      ...checklistRows.map((item) => item.project_id),
-    ]),
-  ]
-  const userAccount = (userAccountResponse.data ?? null) as UserAccountListRow | null
-
-  const [
-    { data: projectsData, error: projectsError },
-    { data: roleAssignmentData, error: roleAssignmentError },
-  ] = await trace.measure("projectsAndRoleAssignments", () =>
-    Promise.all([
-      projectIds.length > 0
-        ? client
-            .from("projects")
-            .select("id, name, photo_url, stage, managing_office_id, active")
-            .in("id", projectIds)
-        : Promise.resolve({ data: [], error: null }),
-      userAccount
-        ? client
-            .from("role_assignments")
-            .select("user_account_id, role, active")
-            .eq("user_account_id", userAccount.id)
-        : Promise.resolve({ data: [], error: null }),
-    ]),
-  )
-
-  if (projectsError) {
-    throw projectsError
-  }
-
-  if (roleAssignmentError) {
-    throw roleAssignmentError
-  }
-
-  const projectRows = (projectsData ?? []) as ProjectRow[]
-  const managingOfficeIds = [
-    ...new Set(projectRows.map((project) => project.managing_office_id)),
-  ]
-  const managingOffices = await trace.measure("fetchManagingOffices", () =>
-    managingOfficeIds.length > 0
-      ? fetchOfficeRows(managingOfficeIds, { client })
-      : Promise.resolve([]),
-  )
+  const assignmentRows = detailContext.assignments ?? []
+  const timeEntryRows = detailContext.timeEntries ?? []
+  const checklistRows = detailContext.checklistItems ?? []
+  const projectRows = detailContext.projects ?? []
+  const userAccount = detailContext.userAccount ?? null
+  const managingOffices = detailContext.managingOffices ?? []
   const officesById = new Map(
-    [...offices, ...managingOffices].map((office) => [office.id, office]),
+    [detailContext.office, ...managingOffices]
+      .filter((office): office is OfficeRow => Boolean(office))
+      .map((office) => [office.id, office]),
   )
-  const peopleById = new Map([person, ...supervisorRows].map((row) => [row.id, row]))
+  const peopleById = new Map(
+    [person, detailContext.supervisor]
+      .filter((row): row is PersonRow => Boolean(row))
+      .map((row) => [row.id, row]),
+  )
   const projectsById = new Map(projectRows.map((project) => [project.id, project]))
   const assignmentsByPersonId = assignmentRows.reduce((totals, assignment) => {
     const currentTotal = totals.get(assignment.person_id) ?? 0
@@ -2668,7 +2597,7 @@ export async function getPersonDetail(
       }>
       >(),
   )
-  const roleAssignmentsForPerson = (roleAssignmentData ?? []) as RoleAssignmentListRow[]
+  const roleAssignmentsForPerson = detailContext.roleAssignments ?? []
 
   const permissionLabelByPersonId = new Map<string, string | null>([
     [personId, buildEffectivePermissionLabel(userAccount, roleAssignmentsForPerson)],
