@@ -1,6 +1,7 @@
 "use server"
 
 import { getDatabaseStatus } from "@mandala/db"
+import { createPerfTrace } from "@mandala/db"
 import { redirect } from "next/navigation"
 
 import { getSafeNextPath } from "../../lib/auth/paths"
@@ -41,8 +42,13 @@ export async function signInAction(formData: FormData): Promise<void> {
   const nextPath = getSafeNextPath(
     typeof formData.get("next") === "string" ? String(formData.get("next")) : null,
   )
+  const trace = createPerfTrace("auth.signInAction", {
+    hasEmail: Boolean(email),
+    nextPath,
+  })
 
   if (!email || !password) {
+    trace.finish({ result: "missing-credentials" })
     redirect(
       buildLoginRedirect({
         email,
@@ -55,6 +61,7 @@ export async function signInAction(formData: FormData): Promise<void> {
   const status = getDatabaseStatus()
 
   if (!status.configured) {
+    trace.finish({ result: "missing-config" })
     redirect(
       buildLoginRedirect({
         email,
@@ -64,9 +71,12 @@ export async function signInAction(formData: FormData): Promise<void> {
     )
   }
 
-  const supabase = await createWebServerSupabaseClient()
+  const supabase = await trace.measure("createWebServerSupabaseClient", () =>
+    createWebServerSupabaseClient(),
+  )
 
   if (!supabase) {
+    trace.finish({ result: "missing-supabase-client" })
     redirect(
       buildLoginRedirect({
         email,
@@ -76,12 +86,15 @@ export async function signInAction(formData: FormData): Promise<void> {
     )
   }
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
+  const { error } = await trace.measure("supabase.auth.signInWithPassword", () =>
+    supabase.auth.signInWithPassword({
+      email,
+      password,
+    }),
+  )
 
   if (error) {
+    trace.finish({ result: "invalid-credentials" })
     redirect(
       buildLoginRedirect({
         email,
@@ -91,6 +104,7 @@ export async function signInAction(formData: FormData): Promise<void> {
     )
   }
 
+  trace.finish({ result: "success" })
   redirect(nextPath)
 }
 

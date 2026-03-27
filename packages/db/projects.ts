@@ -114,6 +114,12 @@ interface TimeEntryRow {
   source: string | null;
 }
 
+interface ProjectListMetricRow {
+  planned_hours_per_week: number | string | null;
+  project_id: string;
+  rough_labor_cost: number | string | null;
+}
+
 interface CacheEntry<T> {
   expiresAt: number;
   value: T;
@@ -122,6 +128,7 @@ interface CacheEntry<T> {
 const projectListCache = new Map<string, CacheEntry<ProjectListData>>();
 const projectRailCache = new Map<string, CacheEntry<ProjectRailData>>();
 const projectDetailCache = new Map<string, CacheEntry<ProjectDetailData>>();
+let projectListMetricsFunctionAvailable: boolean | null = null;
 
 function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
   const entry = store.get(key);
@@ -644,6 +651,20 @@ function matchesFilters(row: ProjectRow, filters: ProjectListFilters): boolean {
   return true;
 }
 
+function isMissingProjectListMetricsFunction(error: {
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+  message?: string;
+}): boolean {
+  if (error.code === "PGRST202") {
+    return true;
+  }
+
+  const combined = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`;
+  return combined.includes("get_project_list_metrics");
+}
+
 function emptyTimeSummary(): ProjectTimeSummary {
   return {
     byPerson: [],
@@ -1140,14 +1161,46 @@ export async function listProjects(
     return cachedValue;
   }
 
-  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
-    getCurrentViewerAccess(context),
-  );
-  const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null;
+  const viewerAccessPromise = trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  );
+  const baseQueriesPromise = client
+    ? trace
+        .measure("baseQueries", async () => {
+          let projectQuery = client.from("projects").select(PROJECT_ROW_SELECT).order("name");
+
+          if (filters.stage) {
+            projectQuery = projectQuery.eq("stage", filters.stage);
+          }
+
+          if (filters.officeId) {
+            projectQuery = projectQuery.or(
+              `originating_office_id.eq.${filters.officeId},managing_office_id.eq.${filters.officeId}`,
+            );
+          }
+
+          const [projectResult, offices] = await Promise.all([
+            projectQuery,
+            fetchOfficeRows(undefined, { client }),
+          ]);
+
+          return {
+            offices,
+            projectData: (projectResult.data ?? []) as ProjectRow[],
+            projectError: projectResult.error,
+          };
+        })
+        .then(
+          (value) => ({ error: null as null, value }),
+          (error: unknown) => ({ error, value: null as null }),
+        )
+    : null;
+  const viewerAccess = await viewerAccessPromise;
+  const viewerLabel = getViewerLabel(viewerAccess.summary);
 
   if (!viewerAccess.viewer) {
     trace.finish({
@@ -1187,16 +1240,23 @@ export async function listProjects(
       : previewResult;
   }
 
-  const [{ data: projectData, error: projectError }, offices] =
-    await trace.measure("baseQueries", () =>
-      Promise.all([
-        client
-          .from("projects")
-          .select(PROJECT_ROW_SELECT)
-          .order("name"),
-        fetchOfficeRows(undefined, { client }),
-      ]),
-    );
+  const baseQueriesResult = baseQueriesPromise
+    ? await baseQueriesPromise
+    : { error: null as null, value: null as null };
+
+  if (baseQueriesResult.error) {
+    throw baseQueriesResult.error;
+  }
+
+  if (!baseQueriesResult.value) {
+    throw new Error("Project list base queries returned no data.");
+  }
+
+  const {
+    offices,
+    projectData,
+    projectError,
+  } = baseQueriesResult.value;
 
   if (projectError) {
     throw projectError;
@@ -1219,43 +1279,83 @@ export async function listProjects(
       ),
     )
     .map((row) => row.id);
-  const [
-    { data: assignmentData, error: assignmentError },
-    { data: timeEntryData, error: timeEntryError },
-  ] =
-    internalProjectIds.length > 0
-      ? await trace.measure("metricsQueries", () =>
-          Promise.all([
-            client
-              .from("assignments")
-              .select(ASSIGNMENT_ROW_SELECT)
-              .in("project_id", internalProjectIds)
-              .eq("active", true),
-            client
-              .from("time_entries")
-              .select(TIME_ENTRY_ROW_SELECT)
-              .in("project_id", internalProjectIds),
+  let metricPeopleIds: string[] = [];
+  let metricsByProjectId = new Map<
+    string,
+    { plannedHoursPerWeek: number; roughLaborCost: number }
+  >();
+  let fallbackMetrics:
+    | {
+        assignments: AssignmentRow[];
+        timeEntries: TimeEntryRow[];
+      }
+    | null = null;
+
+  if (internalProjectIds.length > 0) {
+    if (projectListMetricsFunctionAvailable !== false) {
+      const { data: metricsData, error: metricsError } = await trace.measure(
+        "metricsRpc",
+        () =>
+          client.rpc("get_project_list_metrics", {
+            input_project_ids: internalProjectIds,
+          }),
+      );
+
+      if (!metricsError) {
+        projectListMetricsFunctionAvailable = true;
+        metricsByProjectId = new Map(
+          ((metricsData ?? []) as ProjectListMetricRow[]).map((row) => [
+            row.project_id,
+            {
+              plannedHoursPerWeek: Number(row.planned_hours_per_week ?? 0),
+              roughLaborCost: Number(row.rough_labor_cost ?? 0),
+            },
           ]),
-        )
-      : [
-          { data: [], error: null },
-          { data: [], error: null },
-        ];
+        );
+      } else if (isMissingProjectListMetricsFunction(metricsError)) {
+        projectListMetricsFunctionAvailable = false;
+      } else {
+        throw metricsError;
+      }
+    }
 
-  if (assignmentError) {
-    throw assignmentError;
-  }
+    if (projectListMetricsFunctionAvailable === false) {
+      const [
+        { data: assignmentData, error: assignmentError },
+        { data: timeEntryData, error: timeEntryError },
+      ] = await trace.measure("metricsQueriesFallback", () =>
+        Promise.all([
+          client
+            .from("assignments")
+            .select(ASSIGNMENT_ROW_SELECT)
+            .in("project_id", internalProjectIds)
+            .eq("active", true),
+          client
+            .from("time_entries")
+            .select(TIME_ENTRY_ROW_SELECT)
+            .in("project_id", internalProjectIds),
+        ]),
+      );
 
-  if (timeEntryError) {
-    throw timeEntryError;
+      if (assignmentError) {
+        throw assignmentError;
+      }
+
+      if (timeEntryError) {
+        throw timeEntryError;
+      }
+
+      fallbackMetrics = {
+        assignments: (assignmentData ?? []) as AssignmentRow[],
+        timeEntries: (timeEntryData ?? []) as TimeEntryRow[],
+      };
+      metricPeopleIds = fallbackMetrics.timeEntries.map((entry) => entry.person_id);
+    }
   }
 
   const leadIds = visibleProjectRows
     .map((row) => row.lead_person_id)
     .filter((value): value is string => Boolean(value));
-  const metricPeopleIds = ((timeEntryData ?? []) as TimeEntryRow[]).map(
-    (entry) => entry.person_id,
-  );
   const people = await trace.measure("fetchPeopleRows", () =>
     fetchPeopleRows(
       [...new Set([...leadIds, ...metricPeopleIds])],
@@ -1264,11 +1364,14 @@ export async function listProjects(
   );
   const officesById = new Map(offices.map((office) => [office.id, office]));
   const peopleById = new Map(people.map((person) => [person.id, person]));
-  const metricsByProjectId = buildProjectMetrics(
-    (assignmentData ?? []) as AssignmentRow[],
-    (timeEntryData ?? []) as TimeEntryRow[],
-    peopleById,
-  );
+
+  if (fallbackMetrics) {
+    metricsByProjectId = buildProjectMetrics(
+      fallbackMetrics.assignments,
+      fallbackMetrics.timeEntries,
+      peopleById,
+    );
+  }
 
   const result = {
     accessMessage: viewerAccess.accessMessage,
