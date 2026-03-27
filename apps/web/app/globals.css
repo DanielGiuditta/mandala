@@ -832,6 +832,7 @@ a {
 
 .app-time-tracker-button-stop {
   background: var(--figma-color-text-primary);
+  color: var(--figma-color-background-base);
 }
 
 .app-time-tracker-today {
