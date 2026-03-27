@@ -1,7 +1,9 @@
 import type { Metadata } from "next"
 import { getCurrentViewerAccess } from "@mandala/db"
+import Script from "next/script"
 
 import { AppFrame } from "./components/app-frame"
+import { THEME_INIT_SCRIPT } from "./components/theme"
 import { getAppSessionState } from "../lib/auth/session"
 
 import "./globals.css"
@@ -23,8 +25,14 @@ export default async function RootLayout({
   })
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body>
+        <Script
+          id="mandala-theme-init"
+          strategy="beforeInteractive"
+        >
+          {THEME_INIT_SCRIPT}
+        </Script>
         <AppFrame
           shell={{
             accessMessage: viewerAccess.accessMessage,

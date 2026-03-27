@@ -1,5 +1,7 @@
 "use client";
 
+import { TokenIcon } from "../ui/token-icon";
+
 interface ProjectAddButtonProps {
   className?: string;
   onClick?: () => void;
@@ -13,9 +15,7 @@ export function ProjectAddButton({ className, onClick }: ProjectAddButtonProps) 
       onClick={onClick}
       type="button"
     >
-      <img
-        alt=""
-        aria-hidden
+      <TokenIcon
         className="projects-add-icon"
         src="/figma/projects/add-icon.svg"
       />

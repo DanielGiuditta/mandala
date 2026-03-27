@@ -1,5 +1,7 @@
 "use client";
 
+import { TokenIcon } from "../ui/token-icon";
+
 interface ProjectCardHeaderProps {
   addAriaLabel?: string;
   onAddClick?: () => void;
@@ -21,9 +23,7 @@ export function ProjectCardHeader({
           onClick={onAddClick}
           type="button"
         >
-          <img
-            alt=""
-            aria-hidden
+          <TokenIcon
             className="projects-add-icon"
             src="/figma/projects/add-icon.svg"
           />

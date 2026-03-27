@@ -10,6 +10,8 @@ import {
   getFallbackAvatarInitial,
   getPersonFallbackAvatarStyle,
 } from "./projects/project-avatar-utils"
+import type { AppTheme } from "./theme"
+import { TokenIcon } from "./ui/token-icon"
 import { SelectDropdownField } from "./ui/dropdown"
 
 export interface AppShellState {
@@ -60,9 +62,7 @@ const TRACKER_DEFER_TIMEOUT_MS = 2500
 
 function BrandMark() {
   return (
-    <img
-      alt=""
-      aria-hidden
+    <TokenIcon
       className="app-logo-icon app-logo-icon-open"
       src="/figma/nav/logo-icon.svg"
     />
@@ -71,9 +71,7 @@ function BrandMark() {
 
 function CollapseIcon({ expanded }: { expanded: boolean }) {
   return (
-    <img
-      alt=""
-      aria-hidden
+    <TokenIcon
       className={`app-logo-collapse-icon ${expanded ? "" : "app-logo-collapse-icon-flipped"}`}
       src="/figma/nav/close-icon.svg"
     />
@@ -215,7 +213,15 @@ function readTimeTrackerStorage(sessionEmail: string): {
   }
 }
 
-export function AppSidebar({ shell }: { shell: AppShellState }) {
+export function AppSidebar({
+  onThemeToggle,
+  shell,
+  theme,
+}: {
+  onThemeToggle: () => void
+  shell: AppShellState
+  theme: AppTheme
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const profilePanelId = useId()
@@ -687,6 +693,26 @@ export function AppSidebar({ shell }: { shell: AppShellState }) {
           >
             {isProfileExpanded ? (
               <div className="app-profile-panel-body" id={profilePanelId}>
+                <button
+                  aria-checked={theme === "dark"}
+                  className="app-profile-theme-toggle"
+                  onClick={onThemeToggle}
+                  role="switch"
+                  type="button"
+                >
+                  <span className="app-profile-theme-copy">
+                    <span className="app-profile-theme-label">Dark mode</span>
+                    <span className="app-profile-theme-value">
+                      {theme === "dark" ? "On" : "Off"}
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className={`app-profile-theme-track ${theme === "dark" ? "app-profile-theme-track-active" : ""}`}
+                  >
+                    <span className="app-profile-theme-thumb" />
+                  </span>
+                </button>
                 <button
                   className="ghost-button app-profile-panel-action"
                   onClick={() => signOutFormRef.current?.requestSubmit()}

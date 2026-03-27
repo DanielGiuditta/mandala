@@ -2,15 +2,11 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { TokenIcon } from "./components/ui/token-icon"
 
 function FigmaIcon({ src }: { src: string }) {
   return (
-    <img
-      alt=""
-      aria-hidden
-      className="app-sidebar-icon"
-      src={src}
-    />
+    <TokenIcon className="app-sidebar-icon" src={src} />
   )
 }
 

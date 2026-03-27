@@ -1,3 +1,5 @@
+import { TokenIcon } from "../ui/token-icon";
+
 interface PeopleAddButtonProps {
   disabled?: boolean;
   onClick?: () => void;
@@ -19,7 +21,7 @@ export function PeopleAddButton({
       title={title}
       type="button"
     >
-      <img alt="" aria-hidden className="people-add-icon" src="/figma/projects/add-icon.svg" />
+      <TokenIcon className="people-add-icon" src="/figma/projects/add-icon.svg" />
     </button>
   );
 }

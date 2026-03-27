@@ -5,6 +5,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import type { ProjectListItem, UpdateProjectInput } from "@mandala/db";
 
 import { EditableEntityPill } from "../editable-entity-pill";
+import { TokenIcon } from "../ui/token-icon";
 import {
   formatCurrency,
   formatHours,
@@ -118,9 +119,7 @@ export function ProjectListTable({
         type="button"
       >
         <span className="projects-column-label-text">{label}</span>
-        <img
-          alt=""
-          aria-hidden
+        <TokenIcon
           className={iconClassName}
           src="/figma/projects/sort-icon.svg"
         />

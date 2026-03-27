@@ -6,6 +6,7 @@ import type { PersonListItem, UpdatePersonInput } from "@mandala/db";
 
 import { PeopleListRow } from "./people-list-row";
 import type { PersonCreateOfficeOption, PersonCreateSupervisorOption } from "./person-create-types";
+import { TokenIcon } from "../ui/token-icon";
 
 interface PeopleListTableProps {
   configured: boolean;
@@ -91,9 +92,7 @@ export function PeopleListTable({
         type="button"
       >
         <span className="people-column-label">{label}</span>
-        <img
-          alt=""
-          aria-hidden
+        <TokenIcon
           className={iconClassName}
           src="/figma/projects/sort-icon.svg"
         />
