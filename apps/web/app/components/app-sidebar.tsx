@@ -45,21 +45,6 @@ interface TimeTrackerMutationResponse {
   todayHours: number | null
 }
 
-interface IdleDeadlineLike {
-  didTimeout: boolean
-  timeRemaining(): number
-}
-
-type WindowWithIdleCallback = Window & {
-  cancelIdleCallback?: (handle: number) => void
-  requestIdleCallback?: (
-    callback: (deadline: IdleDeadlineLike) => void,
-    options?: { timeout: number },
-  ) => number
-}
-
-const TRACKER_DEFER_TIMEOUT_MS = 2500
-
 function BrandMark() {
   return (
     <TokenIcon
@@ -316,6 +301,7 @@ export function AppSidebar({
 
   useEffect(() => {
     if (!isSidebarOpen || !trackerSessionEmail) {
+      trackerHydrationKeyRef.current = null
       setTrackerVisible(false)
       setTrackerProjects([])
       setTrackerSelectedProjectId("")
@@ -330,14 +316,27 @@ export function AppSidebar({
     const trackerEmail = trackerSessionEmail
     const trackerHydrationKey = `${trackerEmail}:${getLocalDateString(new Date())}`
     const persistedState = readTimeTrackerStorage(trackerEmail)
-    const prioritizeHydration = shouldHydrateTrackerImmediately(
+    const shouldShowTracker = shouldHydrateTrackerImmediately(
       pathname,
       persistedState.runningState,
     )
     let isCancelled = false
-    let idleCallbackHandle: number | null = null
-    let loadTimeoutHandle: number | null = null
-    let removeLoadListener: (() => void) | null = null
+
+    if (!shouldShowTracker) {
+      trackerHydrationKeyRef.current = null
+      setTrackerVisible(false)
+      setTrackerProjects([])
+      setTrackerSelectedProjectId("")
+      setTrackerRunningState(null)
+      setTrackerAccessMessage(null)
+      setTrackerError(null)
+      setTrackerLoading(false)
+      setTrackerSaving(false)
+
+      return () => {
+        isCancelled = true
+      }
+    }
 
     async function hydrateTracker() {
       try {
@@ -379,6 +378,10 @@ export function AppSidebar({
           setTrackerAccessMessage(
             response.accessMessage ?? response.configMessage ?? "Time tracker is unavailable.",
           )
+          if (pathname !== "/time-tracker") {
+            trackerHydrationKeyRef.current = null
+            setTrackerVisible(false)
+          }
           return
         }
 
@@ -406,6 +409,16 @@ export function AppSidebar({
         } else if (nextRunningState) {
           nextSelectedProjectId = nextRunningState.projectId
           localStorage.setItem(storageKeys.selectedProjectId, nextSelectedProjectId)
+        }
+
+        if (pathname !== "/time-tracker" && !nextRunningState) {
+          trackerHydrationKeyRef.current = null
+          setTrackerVisible(false)
+          setTrackerProjects([])
+          setTrackerSelectedProjectId("")
+          setTrackerRunningState(null)
+          setTrackerAccessMessage(null)
+          return
         }
 
         setTrackerProjects(response.projects)
@@ -453,47 +466,10 @@ export function AppSidebar({
       }
     }
 
-    if (prioritizeHydration) {
-      startHydrate()
-    } else {
-      const browserWindow = window as WindowWithIdleCallback
-      const scheduleBackgroundHydration = () => {
-        if (typeof browserWindow.requestIdleCallback === "function") {
-          idleCallbackHandle = browserWindow.requestIdleCallback(
-            () => {
-              startHydrate()
-            },
-            { timeout: TRACKER_DEFER_TIMEOUT_MS },
-          )
-          return
-        }
-
-        loadTimeoutHandle = window.setTimeout(startHydrate, 1200)
-      }
-
-      if (document.readyState === "complete") {
-        scheduleBackgroundHydration()
-      } else {
-        const onWindowLoad = () => {
-          scheduleBackgroundHydration()
-        }
-
-        window.addEventListener("load", onWindowLoad, { once: true })
-        removeLoadListener = () => window.removeEventListener("load", onWindowLoad)
-      }
-    }
+    startHydrate()
 
     return () => {
       isCancelled = true
-      removeLoadListener?.()
-
-      if (idleCallbackHandle !== null) {
-        ;(window as WindowWithIdleCallback).cancelIdleCallback?.(idleCallbackHandle)
-      }
-
-      if (loadTimeoutHandle !== null) {
-        window.clearTimeout(loadTimeoutHandle)
-      }
     }
   }, [isSidebarOpen, pathname, trackerSessionEmail])
 
@@ -552,6 +528,14 @@ export function AppSidebar({
             : project,
         ),
       )
+      if (pathname !== "/time-tracker") {
+        trackerHydrationKeyRef.current = null
+        setTrackerVisible(false)
+        setTrackerProjects([])
+        setTrackerSelectedProjectId("")
+        setTrackerAccessMessage(null)
+        setTrackerError(null)
+      }
       router.refresh()
     } catch (error) {
       setTrackerError(error instanceof Error ? error.message : "Unable to save tracked time.")
