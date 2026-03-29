@@ -75,7 +75,6 @@ export function SidebarNav({ isOpen }: SidebarNavProps) {
             }`}
             href={item.href}
             key={item.href}
-            prefetch={false}
           >
             {item.renderIcon()}
             <span className={`app-sidebar-nav-label ${isOpen ? "" : "app-sidebar-nav-label-hidden"}`}>

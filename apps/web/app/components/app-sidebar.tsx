@@ -275,6 +275,15 @@ export function AppSidebar({
     }
   }, [isSidebarOpen])
 
+  useEffect(() => {
+    if (!shell.isAuthenticated) {
+      return
+    }
+
+    router.prefetch("/projects")
+    router.prefetch("/people")
+  }, [router, shell.isAuthenticated])
+
   const trackerSelectedProject = trackerProjects.find(
     (project) => project.id === trackerSelectedProjectId,
   )
@@ -316,27 +325,13 @@ export function AppSidebar({
     const trackerEmail = trackerSessionEmail
     const trackerHydrationKey = `${trackerEmail}:${getLocalDateString(new Date())}`
     const persistedState = readTimeTrackerStorage(trackerEmail)
-    const shouldShowTracker = shouldHydrateTrackerImmediately(
+    const shouldHydrateTrackerImmediatelyValue = shouldHydrateTrackerImmediately(
       pathname,
       persistedState.runningState,
     )
     let isCancelled = false
-
-    if (!shouldShowTracker) {
-      trackerHydrationKeyRef.current = null
-      setTrackerVisible(false)
-      setTrackerProjects([])
-      setTrackerSelectedProjectId("")
-      setTrackerRunningState(null)
-      setTrackerAccessMessage(null)
-      setTrackerError(null)
-      setTrackerLoading(false)
-      setTrackerSaving(false)
-
-      return () => {
-        isCancelled = true
-      }
-    }
+    let idleCallbackId: number | null = null
+    let timeoutId: number | null = null
 
     async function hydrateTracker() {
       try {
@@ -378,10 +373,6 @@ export function AppSidebar({
           setTrackerAccessMessage(
             response.accessMessage ?? response.configMessage ?? "Time tracker is unavailable.",
           )
-          if (pathname !== "/time-tracker") {
-            trackerHydrationKeyRef.current = null
-            setTrackerVisible(false)
-          }
           return
         }
 
@@ -409,16 +400,6 @@ export function AppSidebar({
         } else if (nextRunningState) {
           nextSelectedProjectId = nextRunningState.projectId
           localStorage.setItem(storageKeys.selectedProjectId, nextSelectedProjectId)
-        }
-
-        if (pathname !== "/time-tracker" && !nextRunningState) {
-          trackerHydrationKeyRef.current = null
-          setTrackerVisible(false)
-          setTrackerProjects([])
-          setTrackerSelectedProjectId("")
-          setTrackerRunningState(null)
-          setTrackerAccessMessage(null)
-          return
         }
 
         setTrackerProjects(response.projects)
@@ -466,10 +447,29 @@ export function AppSidebar({
       }
     }
 
-    startHydrate()
+    if (shouldHydrateTrackerImmediatelyValue) {
+      startHydrate()
+    } else if (typeof window.requestIdleCallback === "function") {
+      idleCallbackId = window.requestIdleCallback(
+        () => {
+          startHydrate()
+        },
+        { timeout: 1500 },
+      )
+    } else {
+      timeoutId = window.setTimeout(() => {
+        startHydrate()
+      }, 800)
+    }
 
     return () => {
       isCancelled = true
+      if (idleCallbackId != null && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleCallbackId)
+      }
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId)
+      }
     }
   }, [isSidebarOpen, pathname, trackerSessionEmail])
 
@@ -528,14 +528,6 @@ export function AppSidebar({
             : project,
         ),
       )
-      if (pathname !== "/time-tracker") {
-        trackerHydrationKeyRef.current = null
-        setTrackerVisible(false)
-        setTrackerProjects([])
-        setTrackerSelectedProjectId("")
-        setTrackerAccessMessage(null)
-        setTrackerError(null)
-      }
       router.refresh()
     } catch (error) {
       setTrackerError(error instanceof Error ? error.message : "Unable to save tracked time.")
@@ -632,7 +624,7 @@ export function AppSidebar({
               ariaLabel="Tracked project"
               disabled={trackerLoading || trackerSaving || Boolean(trackerRunningState)}
               options={trackerProjects.map((project) => ({ label: project.name, value: project.id }))}
-              placeholder="Select project"
+              placeholder={trackerLoading ? "Loading projects..." : "Select project"}
               value={trackerSelectedProjectId}
               onValueChange={handleTrackerSelectionChange}
             />
