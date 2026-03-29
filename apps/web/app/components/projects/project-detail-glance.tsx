@@ -2,14 +2,14 @@
 
 import { type ReactNode, useMemo, useState } from "react";
 
-import type { ProjectListItem, ProjectTimeSummary, UpdateProjectInput } from "@mandala/db";
+import type { PeopleOptionRow, ProjectListItem, ProjectTimeSummary, UpdateProjectInput } from "@mandala/db";
 
+import { personPickToSelectOption } from "../people/person-pick-select-option";
 import { EditableEntityPill } from "../editable-entity-pill";
+import { EntityReturnLink } from "../entity-return-link";
 import type { ProjectCreateOfficeOption } from "./project-create-types";
-import {
-  formatProjectStageLabel,
-  PROJECT_CREATE_STAGE_OPTIONS,
-} from "./project-create-utils";
+import { PROJECT_CREATE_STAGE_OPTIONS } from "./project-create-utils";
+import { projectStageToSelectOption } from "./project-stage-select-option";
 import {
   Avatar,
   formatCostMetric,
@@ -23,7 +23,7 @@ import { stageIcon } from "./projects-formatters";
 interface ProjectDetailGlanceProps {
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   officeOptions: ProjectCreateOfficeOption[];
   onUpdateProjectAction: (
@@ -40,17 +40,13 @@ export function ProjectDetailGlance({
   project,
   timeSummary,
 }: ProjectDetailGlanceProps) {
-  const [leadOptions, setLeadOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [leadOptions, setLeadOptions] = useState<PeopleOptionRow[]>([]);
   const [leadOptionsStatus, setLeadOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
   >("idle");
 
   const stageOptions = useMemo(
-    () =>
-      PROJECT_CREATE_STAGE_OPTIONS.map((stage) => ({
-        label: formatProjectStageLabel(stage),
-        value: stage,
-      })),
+    () => PROJECT_CREATE_STAGE_OPTIONS.map((stage) => projectStageToSelectOption(stage)),
     [],
   );
   const officeSelectOptions = useMemo(
@@ -95,6 +91,45 @@ export function ProjectDetailGlance({
     );
   }
 
+  function renderLeadChip(toggleButton: ReactNode | null) {
+    if (!project.leadPersonId || !project.leadPersonName) {
+      return renderValueChip(
+        toggleButton ? "Add Lead" : "No lead assigned",
+        toggleButton,
+      );
+    }
+
+    const leadContent = (
+      <>
+        <Avatar
+          fallbackKey={project.leadPersonId ?? project.id}
+          label={project.leadPersonName ?? "Lead"}
+          photoUrl={project.leadPersonPhotoUrl}
+        />
+        <strong className="entity-content-link-label">
+          {project.leadPersonName ?? "No lead assigned"}
+        </strong>
+      </>
+    );
+
+    return (
+      <span className="pd-person-chip">
+        {project.leadPersonId ? (
+          <EntityReturnLink
+            className="entity-content-link entity-content-link-grow"
+            href={`/people/${project.leadPersonId}`}
+            scope="people"
+          >
+            {leadContent}
+          </EntityReturnLink>
+        ) : (
+          leadContent
+        )}
+        {toggleButton}
+      </span>
+    );
+  }
+
   return (
     <section className="pd-glance-card">
       <h3 className="pd-card-title">At a glance</h3>
@@ -111,7 +146,7 @@ export function ProjectDetailGlance({
           <span className="pd-glance-label">Office</span>
           {project.canEditProject ? (
             <EditableEntityPill
-              ariaLabel={`Change managing office for ${project.name}`}
+              ariaLabel={`Change office for ${project.name}`}
               onCommit={async (nextValue) => {
                 await onUpdateProjectAction(
                   buildProjectUpdateInput(project, {
@@ -122,11 +157,11 @@ export function ProjectDetailGlance({
               options={officeSelectOptions}
               value={project.managingOfficeId}
               renderTrigger={({ toggleButton }) =>
-                renderValueChip(project.managingOfficeName, toggleButton)
+                renderValueChip(project.managingOfficeName || "Add Office", toggleButton)
               }
             />
           ) : (
-            renderValueChip(project.managingOfficeName, null)
+            renderValueChip(project.managingOfficeName || "No office assigned", null)
           )}
         </div>
         <div className="pd-glance-pill">
@@ -144,33 +179,13 @@ export function ProjectDetailGlance({
               onOpenRequested={ensureLeadOptions}
               options={[
                 { label: "No lead", value: "" },
-                ...leadOptions.map((person) => ({
-                  label: person.fullName,
-                  value: person.id,
-                })),
+                ...leadOptions.map((person) => personPickToSelectOption(person)),
               ]}
               value={project.leadPersonId ?? ""}
-              renderTrigger={({ toggleButton }) => (
-                <span className="pd-person-chip">
-                  <Avatar
-                    fallbackKey={project.leadPersonId ?? project.id}
-                    label={project.leadPersonName ?? "Lead"}
-                    photoUrl={project.leadPersonPhotoUrl}
-                  />
-                  <strong>{project.leadPersonName ?? "No lead assigned"}</strong>
-                  {toggleButton}
-                </span>
-              )}
+              renderTrigger={({ toggleButton }) => renderLeadChip(toggleButton)}
             />
           ) : (
-            <span className="pd-person-chip">
-              <Avatar
-                fallbackKey={project.leadPersonId ?? project.id}
-                label={project.leadPersonName ?? "Lead"}
-                photoUrl={project.leadPersonPhotoUrl}
-              />
-              <strong>{project.leadPersonName ?? "No lead assigned"}</strong>
-            </span>
+            renderLeadChip(null)
           )}
         </div>
         <div className="pd-glance-pill">
@@ -214,28 +229,6 @@ export function ProjectDetailGlance({
           <span className="pd-glance-label">Cost</span>
           <strong>{formatCostMetric(timeSummary.totalLaborCost)}</strong>
         </div>
-      </div>
-      <div className="pd-glance-footnote pd-glance-footnote-inline">
-        <span>Originating office:</span>
-        {project.canEditProject ? (
-          <EditableEntityPill
-            ariaLabel={`Change originating office for ${project.name}`}
-            onCommit={async (nextValue) => {
-              await onUpdateProjectAction(
-                buildProjectUpdateInput(project, {
-                  originatingOfficeId: nextValue,
-                }),
-              );
-            }}
-            options={officeSelectOptions}
-            value={project.originatingOfficeId}
-            renderTrigger={({ toggleButton }) =>
-              renderValueChip(project.originatingOfficeName, toggleButton)
-            }
-          />
-        ) : (
-          renderValueChip(project.originatingOfficeName, null)
-        )}
       </div>
     </section>
   );

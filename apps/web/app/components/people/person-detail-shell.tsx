@@ -11,11 +11,18 @@ import type {
 interface PersonDetailShellProps {
   closeControl?: ReactNode;
   data: PersonDetailData;
+  loadProjectOptionsAction: () => Promise<{
+    forbidden: boolean;
+    projects: Array<{ id: string; name: string; photoUrl: string | null }>;
+  }>;
   loadSupervisorOptionsAction: () => Promise<{
     forbidden: boolean;
     people: PersonCreateSupervisorOption[];
   }>;
   officeOptions: PersonCreateOfficeOption[];
+  onAddProjectAction: (
+    input: { personId: string; projectId: string },
+  ) => Promise<{ error: string | null; ok: boolean }>;
   onResendPersonAccountEmailAction: (
     input: { personId: string },
   ) => Promise<{ message: string }>;
@@ -29,8 +36,10 @@ interface PersonDetailShellProps {
 export function PersonDetailShell({
   closeControl,
   data,
+  loadProjectOptionsAction,
   loadSupervisorOptionsAction,
   officeOptions,
+  onAddProjectAction,
   onResendPersonAccountEmailAction,
   onUpdatePersonAction,
   personId,
@@ -87,8 +96,10 @@ export function PersonDetailShell({
         <PersonDetailEntity
           closeControl={closeControl}
           data={data}
+          loadProjectOptionsAction={loadProjectOptionsAction}
           loadSupervisorOptionsAction={loadSupervisorOptionsAction}
           officeOptions={officeOptions}
+          onAddProjectAction={onAddProjectAction}
           onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
           onUpdatePersonAction={onUpdatePersonAction}
           titleSuggestions={titleSuggestions}

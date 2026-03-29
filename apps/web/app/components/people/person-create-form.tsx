@@ -12,6 +12,7 @@ import type {
   PersonCreatePayload,
   PersonCreateSupervisorOption,
 } from "./person-create-types";
+import { personPickToSelectOption } from "./person-pick-select-option";
 import {
   formatCreatePersonPermissionLabel,
   mapCreatePersonPayload,
@@ -101,7 +102,7 @@ export function PersonCreateForm({
     [],
   );
   const supervisorSelectOptions = useMemo(
-    () => supervisorOptions.map((supervisor) => ({ label: supervisor.fullName, value: supervisor.id })),
+    () => supervisorOptions.map((supervisor) => personPickToSelectOption(supervisor)),
     [supervisorOptions],
   );
   const officeSelectOptions = useMemo(

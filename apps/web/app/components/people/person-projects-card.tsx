@@ -1,5 +1,6 @@
 import type { PersonDetailData } from "@mandala/db";
 
+import { EntityReturnLink } from "../entity-return-link";
 import { ProjectCardHeader } from "../projects/project-card-header";
 import { Avatar, formatHoursWithUnit, formatInrMetric } from "./person-detail-utils";
 
@@ -39,15 +40,19 @@ export function PersonProjectsCard({ person, timeSummary }: PersonProjectsCardPr
           projects.map((project) => (
             <article className="pd-list-item" key={project.projectId}>
               <div className="pd-list-item-main">
-                <span className="pd-person-chip">
+                <EntityReturnLink
+                  className="pd-person-chip entity-content-link"
+                  href={`/projects/${project.projectId}`}
+                  scope="projects"
+                >
                   <Avatar
                     fallbackKey={project.projectId}
                     label={project.projectName}
                     photoUrl={project.projectPhotoUrl}
                     variant="project"
                   />
-                  <span>{project.projectName}</span>
-                </span>
+                  <span className="entity-content-link-label">{project.projectName}</span>
+                </EntityReturnLink>
               </div>
               <div className="pd-list-item-aside">
                 <span className="pd-meta-text">

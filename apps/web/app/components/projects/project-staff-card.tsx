@@ -3,8 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
-import type { ProjectStaffPerson } from "@mandala/db";
+import type { PeopleOptionRow, ProjectStaffPerson } from "@mandala/db";
 
+import { personPickToSelectOption } from "../people/person-pick-select-option";
+import { EntityReturnLink } from "../entity-return-link";
 import { SelectDropdownField } from "../ui/dropdown";
 import { Avatar } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
@@ -17,7 +19,7 @@ interface ProjectStaffCardProps {
   canAssignPeople: boolean;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   projectId: string;
   staffedPeople: ProjectStaffPerson[];
@@ -34,7 +36,7 @@ export function ProjectStaffCard({
   const [isPending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [peopleOptions, setPeopleOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [peopleOptions, setPeopleOptions] = useState<PeopleOptionRow[]>([]);
   const [peopleOptionsStatus, setPeopleOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
   >("idle");
@@ -122,7 +124,7 @@ export function ProjectStaffCard({
             ariaLabel="Person"
             disabled={peopleOptionsStatus !== "ready"}
             name="personId"
-            options={peopleOptions.map((person) => ({ label: person.fullName, value: person.id }))}
+            options={peopleOptions.map((person) => personPickToSelectOption(person))}
             placeholder="Select person"
           />
           <button
@@ -140,15 +142,20 @@ export function ProjectStaffCard({
       {sortedStaffedPeople.length === 0 ? <p className="pd-empty">No staffed people yet.</p> : null}
       <div className="pd-pill-wrap">
         {sortedStaffedPeople.map((staffedPerson) => (
-          <article className="pd-staff-pill" key={staffedPerson.personId}>
+          <EntityReturnLink
+            className="pd-staff-pill entity-content-link"
+            href={`/people/${staffedPerson.personId}`}
+            key={staffedPerson.personId}
+            scope="people"
+          >
             <Avatar
               fallbackKey={staffedPerson.personId}
               label={staffedPerson.personName}
               photoUrl={staffedPerson.personPhotoUrl}
             />
             <strong>{staffedPerson.personTitle ?? "Staff"}:</strong>
-            <span>{staffedPerson.personName}</span>
-          </article>
+            <span className="entity-content-link-label">{staffedPerson.personName}</span>
+          </EntityReturnLink>
         ))}
       </div>
     </section>

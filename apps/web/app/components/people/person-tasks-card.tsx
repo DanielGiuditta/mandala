@@ -1,5 +1,6 @@
 import type { PersonDetailChecklistItem } from "@mandala/db";
 
+import { EntityReturnLink } from "../entity-return-link";
 import { ProjectCardHeader } from "../projects/project-card-header";
 import { formatDate } from "./person-detail-utils";
 
@@ -19,7 +20,16 @@ export function PersonTasksCard({ checklistItems }: PersonTasksCardProps) {
             <article className="pd-list-item" key={item.id}>
               <div className="pd-list-item-main pd-list-item-main-column">
                 <h4 className={item.completed ? "pd-list-item-title-complete" : ""}>{item.title}</h4>
-                <p className="pd-meta-text">Project: {item.projectName}</p>
+                <p className="pd-meta-text">
+                  Project:{" "}
+                  <EntityReturnLink
+                    className="entity-inline-text-link"
+                    href={`/projects/${item.projectId}`}
+                    scope="projects"
+                  >
+                    {item.projectName}
+                  </EntityReturnLink>
+                </p>
               </div>
               <div className="pd-list-item-aside">
                 <span className="pd-meta-text">

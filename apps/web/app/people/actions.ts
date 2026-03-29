@@ -2,10 +2,12 @@
 
 import type {
   CreatePersonInput,
+  PeopleOptionRow,
   ResendPersonAccountEmailInput,
   UpdatePersonInput,
 } from "@mandala/db";
 import {
+  createProjectAssignment,
   createPerson,
   invalidatePeopleReadCaches,
   invalidateProjectReadCaches,
@@ -15,7 +17,7 @@ import {
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getViewerRequestContext } from "../../lib/auth/session";
-import { getProjectsTag } from "../projects/data-cache";
+import { getCachedProjectRailData, getProjectTag, getProjectsTag } from "../projects/data-cache";
 import {
   getCachedPeopleOptions,
   getPeopleOptionsTag,
@@ -73,8 +75,56 @@ export async function resendPersonAccountEmailAction(
 
 export async function loadPeopleOptionsAction(): Promise<{
   forbidden: boolean;
-  people: Array<{ fullName: string; id: string }>;
+  people: PeopleOptionRow[];
 }> {
   const viewerContext = await getViewerRequestContext();
   return getCachedPeopleOptions(viewerContext);
+}
+
+export async function loadProjectOptionsAction(): Promise<{
+  forbidden: boolean;
+  projects: Array<{ id: string; name: string; photoUrl: string | null }>;
+}> {
+  const viewerContext = await getViewerRequestContext();
+  const data = await getCachedProjectRailData(viewerContext);
+
+  return {
+    forbidden: data.forbidden,
+    projects: data.projects,
+  };
+}
+
+export async function addPersonProjectAction(input: {
+  personId: string;
+  projectId: string;
+}): Promise<{ error: string | null; ok: boolean }> {
+  try {
+    const viewerContext = await getViewerRequestContext();
+    await createProjectAssignment(
+      {
+        assignedHoursPerWeek: 1,
+        personId: input.personId,
+        projectId: input.projectId,
+      },
+      viewerContext,
+    );
+
+    invalidatePeopleReadCaches();
+    invalidateProjectReadCaches();
+    revalidateTag(getPeopleTag());
+    revalidateTag(getPeopleOptionsTag());
+    revalidateTag(getProjectsTag());
+    revalidateTag(getProjectTag(input.projectId));
+    revalidatePath("/people");
+    revalidatePath(`/people/${input.personId}`);
+    revalidatePath("/projects");
+    revalidatePath(`/projects/${input.projectId}`);
+
+    return { error: null, ok: true };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Unable to add project.",
+      ok: false,
+    };
+  }
 }

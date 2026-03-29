@@ -1,6 +1,7 @@
 import type {
   CreatePersonInput,
   PeopleListData,
+  PeopleOptionRow,
   UpdatePersonInput,
 } from "@mandala/db";
 
@@ -11,10 +12,17 @@ import { PeopleListTable } from "./people/people-list-table";
 
 interface PeopleDomainListProps {
   data: PeopleListData;
+  loadProjectOptionsAction: () => Promise<{
+    forbidden: boolean;
+    projects: Array<{ id: string; name: string; photoUrl: string | null }>;
+  }>;
   loadSupervisorOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
+  onAddProjectAction: (
+    input: { personId: string; projectId: string },
+  ) => Promise<{ error: string | null; ok: boolean }>;
   onCreatePersonAction: (
     input: CreatePersonInput,
   ) => Promise<{ personId: string }>;
@@ -25,7 +33,9 @@ interface PeopleDomainListProps {
 
 export function PeopleDomainList({
   data,
+  loadProjectOptionsAction,
   loadSupervisorOptionsAction,
+  onAddProjectAction,
   onCreatePersonAction,
   onUpdatePersonAction,
 }: PeopleDomainListProps) {
@@ -67,7 +77,9 @@ export function PeopleDomainList({
       <PeopleListTable
         configured={data.configured}
         forbidden={data.forbidden}
+        loadProjectOptionsAction={loadProjectOptionsAction}
         loadSupervisorOptionsAction={loadSupervisorOptionsAction}
+        onAddProjectAction={onAddProjectAction}
         officeOptions={data.offices}
         onUpdatePersonAction={onUpdatePersonAction}
         people={data.people}

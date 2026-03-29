@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import type { ProjectAssignmentItem, ProjectTimeSummary } from "@mandala/db";
 
+import { EntityReturnLink } from "../entity-return-link";
 import { SelectDropdownField } from "../ui/dropdown";
 import {
   Avatar,
@@ -166,14 +167,31 @@ export function ProjectWorklogCard({
                 ) : (
                   <>
                     <div className="pd-list-item-main">
-                      <span className="pd-person-chip">
-                        <Avatar
-                          fallbackKey={entry.personId}
-                          label={entry.personName ?? "Unknown person"}
-                          photoUrl={entry.personPhotoUrl}
-                        />
-                        <span>{entry.personName ?? "Unknown person"}</span>
-                      </span>
+                      {entry.personId ? (
+                        <EntityReturnLink
+                          className="pd-person-chip entity-content-link"
+                          href={`/people/${entry.personId}`}
+                          scope="people"
+                        >
+                          <Avatar
+                            fallbackKey={entry.personId}
+                            label={entry.personName ?? "Unknown person"}
+                            photoUrl={entry.personPhotoUrl}
+                          />
+                          <span className="entity-content-link-label">
+                            {entry.personName ?? "Unknown person"}
+                          </span>
+                        </EntityReturnLink>
+                      ) : (
+                        <span className="pd-person-chip">
+                          <Avatar
+                            fallbackKey={entry.personId}
+                            label={entry.personName ?? "Unknown person"}
+                            photoUrl={entry.personPhotoUrl}
+                          />
+                          <span>{entry.personName ?? "Unknown person"}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="pd-list-item-aside">
                       <p className="pd-meta-text">

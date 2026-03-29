@@ -1,4 +1,4 @@
-import type { ProjectDetailData, UpdateProjectInput } from "@mandala/db";
+import type { PeopleOptionRow, ProjectDetailData, UpdateProjectInput } from "@mandala/db";
 import type { ReactNode } from "react";
 import type { ProjectDetailActionResult } from "../../projects/[projectId]/project-detail-actions";
 import {
@@ -25,7 +25,7 @@ interface ProjectDetailEntityProps {
   data: ProjectDetailData;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   officeOptions: ProjectCreateOfficeOption[];
   onUpdateProjectAction: (
@@ -140,11 +140,7 @@ export function ProjectDetailEntity({
               mode="edit"
               officeOptions={officeOptions}
               onUpdateProjectAction={onUpdateProjectAction}
-              preservedOriginatingOfficeId={
-                data.project.originatingOfficeId !== data.project.managingOfficeId
-                  ? data.project.originatingOfficeId
-                  : undefined
-              }
+              preservedOriginatingOfficeId={data.project.originatingOfficeId}
               projectId={data.project.id}
               trigger="edit"
             />
@@ -177,8 +173,7 @@ export function ProjectDetailEntity({
               Internal task, staffing, resource, and worklog details are hidden for this viewer.
             </p>
             <p className="pd-meta-text">
-              Managing office: {data.project.managingOfficeName}. Originating office:{" "}
-              {data.project.originatingOfficeName}.
+              Office: {data.project.managingOfficeName}.
             </p>
           </section>
         ) : (

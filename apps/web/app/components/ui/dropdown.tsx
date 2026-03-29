@@ -15,7 +15,7 @@ import {
 import { createPortal } from "react-dom"
 
 type Align = "start" | "end"
-type VisualShape = "square" | "circle"
+type VisualShape = "square" | "circle" | "bare"
 
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ")
@@ -96,7 +96,11 @@ export function DropdownLeadingVisual({
       aria-hidden
       className={cx(
         "dropdown-leading-visual",
-        shape === "circle" ? "dropdown-leading-visual-circle" : "dropdown-leading-visual-square",
+        shape === "circle"
+          ? "dropdown-leading-visual-circle"
+          : shape === "bare"
+            ? "dropdown-leading-visual-bare"
+            : "dropdown-leading-visual-square",
       )}
     >
       {children}
@@ -185,6 +189,351 @@ interface SelectDropdownFieldProps {
   options: SelectDropdownOption[]
   placeholder: string
   value?: string
+}
+
+interface EntitySelectDropdownProps {
+  align?: Align
+  ariaLabel: string
+  className?: string
+  disabled?: boolean
+  emptyStateLabel?: string
+  error?: string | null
+  menuMaxHeight?: number
+  minMenuWidth?: number
+  onOpenRequested?: () => Promise<void> | void
+  onSelect: (nextValue: string) => Promise<void> | void
+  options: SelectDropdownOption[]
+  renderTrigger: (args: {
+    disabled: boolean
+    isOpen: boolean
+    isPreparing: boolean
+    selectedOption: SelectDropdownOption | null
+    toggleButton: ReactNode
+  }) => ReactNode
+  value: string
+}
+
+// Public API: selectable dropdown menu with custom trigger content for entity pills and chips.
+export function EntitySelectDropdown({
+  align = "start",
+  ariaLabel,
+  className,
+  disabled = false,
+  emptyStateLabel = "No options available.",
+  error = null,
+  menuMaxHeight = 280,
+  minMenuWidth = 314,
+  onOpenRequested,
+  onSelect,
+  options,
+  renderTrigger,
+  value,
+}: EntitySelectDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [isPreparing, setIsPreparing] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const [panelStyle, setPanelStyle] = useState<CSSProperties | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const listboxId = useId()
+
+  const selectedOption = useMemo(
+    () => options.find((option) => option.value === value) ?? null,
+    [options, value],
+  )
+  const enabledIndices = useMemo(
+    () =>
+      options
+        .map((option, index) => (option.disabled ? -1 : index))
+        .filter((index) => index >= 0),
+    [options],
+  )
+  const triggerDisabled = disabled || isPreparing
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    function updatePosition() {
+      const anchor = rootRef.current
+      if (!anchor) {
+        return
+      }
+
+      const rect = anchor.getBoundingClientRect()
+      const estimatedPanelHeight = 360
+      const gap = 10
+      const panelWidth = Math.max(rect.width, minMenuWidth)
+      const shouldOpenAbove =
+        window.innerHeight - rect.bottom < estimatedPanelHeight &&
+        rect.top > estimatedPanelHeight
+
+      setPanelStyle({
+        left: align === "end" ? rect.right - panelWidth : rect.left,
+        position: "fixed",
+        top: shouldOpenAbove ? rect.top - gap : rect.bottom + gap,
+        transform: shouldOpenAbove ? "translateY(-100%)" : undefined,
+        width: panelWidth,
+        zIndex: 120,
+      })
+    }
+
+    function handleOutsidePointer(event: MouseEvent) {
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return
+      }
+
+      setIsOpen(false)
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+
+    updatePosition()
+    window.addEventListener("mousedown", handleOutsidePointer)
+    window.addEventListener("keydown", handleEscape)
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+    return () => {
+      window.removeEventListener("mousedown", handleOutsidePointer)
+      window.removeEventListener("keydown", handleEscape)
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [align, isOpen, minMenuWidth])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveIndex(-1)
+      return
+    }
+
+    const selectedIndex = options.findIndex((option) => option.value === value && !option.disabled)
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : (enabledIndices[0] ?? -1))
+  }, [enabledIndices, isOpen, options, value])
+
+  useEffect(() => {
+    if (!isOpen || activeIndex < 0) {
+      return
+    }
+
+    optionRefs.current[activeIndex]?.focus()
+  }, [activeIndex, isOpen])
+
+  async function openMenu() {
+    if (triggerDisabled) {
+      return
+    }
+
+    setIsPreparing(true)
+
+    try {
+      await onOpenRequested?.()
+      setIsOpen(true)
+    } finally {
+      setIsPreparing(false)
+    }
+  }
+
+  function closeAndFocusTrigger() {
+    setIsOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  async function commitValue(nextValue: string) {
+    await onSelect(nextValue)
+    closeAndFocusTrigger()
+  }
+
+  function openFromKeyboard(preferred: "first" | "last") {
+    if (triggerDisabled) {
+      return
+    }
+
+    void openMenu()
+      .then(() => {
+        if (preferred === "last") {
+          setActiveIndex(enabledIndices[enabledIndices.length - 1] ?? -1)
+          return
+        }
+
+        const selectedIndex = options.findIndex((option) => option.value === value && !option.disabled)
+        setActiveIndex(selectedIndex >= 0 ? selectedIndex : (enabledIndices[0] ?? -1))
+      })
+      .catch(() => {})
+  }
+
+  function handleTriggerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (triggerDisabled) {
+      return
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      openFromKeyboard("first")
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      openFromKeyboard("last")
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      if (isOpen) {
+        setIsOpen(false)
+        return
+      }
+
+      void openMenu()
+    } else if (event.key === "Escape") {
+      setIsOpen(false)
+    }
+  }
+
+  function handleListboxKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!enabledIndices.length) {
+      return
+    }
+
+    const currentPos = enabledIndices.indexOf(activeIndex)
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      const nextPos = currentPos < 0 ? 0 : Math.min(enabledIndices.length - 1, currentPos + 1)
+      setActiveIndex(enabledIndices[nextPos] ?? -1)
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      const nextPos = currentPos < 0 ? enabledIndices.length - 1 : Math.max(0, currentPos - 1)
+      setActiveIndex(enabledIndices[nextPos] ?? -1)
+    } else if (event.key === "Home") {
+      event.preventDefault()
+      setActiveIndex(enabledIndices[0] ?? -1)
+    } else if (event.key === "End") {
+      event.preventDefault()
+      setActiveIndex(enabledIndices[enabledIndices.length - 1] ?? -1)
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      const option = options[activeIndex]
+      if (option && !option.disabled) {
+        void commitValue(option.value).catch(() => {})
+      }
+    } else if (event.key === "Tab") {
+      setIsOpen(false)
+    } else if (event.key === "Escape") {
+      event.preventDefault()
+      closeAndFocusTrigger()
+    }
+  }
+
+  const toggleButton = (
+    <button
+      aria-controls={listboxId}
+      aria-expanded={isOpen}
+      aria-haspopup="listbox"
+      aria-label={ariaLabel}
+      className="editable-entity-pill-toggle"
+      disabled={triggerDisabled}
+      onClick={() => {
+        if (isOpen) {
+          setIsOpen(false)
+          return
+        }
+
+        void openMenu()
+      }}
+      onKeyDown={handleTriggerKeyDown}
+      ref={triggerRef}
+      type="button"
+    >
+      <span className={cx("dropdown-trigger-chevron", isOpen ? "dropdown-trigger-chevron-open" : "")}>
+        <ChevronIcon />
+      </span>
+    </button>
+  )
+
+  return (
+    <div className={cx("editable-entity-pill", className)} ref={rootRef}>
+      {renderTrigger({
+        disabled: triggerDisabled,
+        isOpen,
+        isPreparing,
+        selectedOption,
+        toggleButton,
+      })}
+
+      {isOpen && panelStyle
+        ? createPortal(
+            <div
+              className={cx(
+                "dropdown-surface",
+                "dropdown-surface-entity",
+                align === "end" ? "dropdown-surface-align-end" : "",
+              )}
+              ref={panelRef}
+              style={panelStyle}
+            >
+              <div
+                className="dropdown-list dropdown-list-entity"
+                id={listboxId}
+                onKeyDown={handleListboxKeyDown}
+                role="listbox"
+                style={{ maxHeight: `${menuMaxHeight}px` }}
+                tabIndex={-1}
+              >
+                {options.length === 0 ? (
+                  <p className="editable-entity-pill-empty">{emptyStateLabel}</p>
+                ) : (
+                  options.map((option, index) => {
+                    const isActive = index === activeIndex
+                    const isSelected = option.value === value
+
+                    return (
+                      <DropdownRow
+                        aria-selected={isSelected}
+                        className={cx(
+                          "dropdown-row-entity",
+                          isActive ? "dropdown-row-active" : "",
+                          option.disabled ? "dropdown-row-disabled" : "",
+                        )}
+                        disabled={option.disabled}
+                        key={option.value}
+                        onClick={() => {
+                          if (!option.disabled) {
+                            void commitValue(option.value).catch(() => {})
+                          }
+                        }}
+                        onFocus={() => setActiveIndex(index)}
+                        ref={(element: HTMLButtonElement | null) => {
+                          optionRefs.current[index] = element
+                        }}
+                        role="option"
+                        tabIndex={isActive ? 0 : -1}
+                      >
+                        {option.leadingVisual ? (
+                          <DropdownLeadingVisual shape={option.leadingVisualShape}>
+                            {option.leadingVisual}
+                          </DropdownLeadingVisual>
+                        ) : null}
+                        <DropdownLabelStack description={option.description} label={option.label} />
+                        <DropdownSelectedIndicator visible={isSelected} />
+                      </DropdownRow>
+                    )
+                  })
+                )}
+
+                {error ? <p className="editable-entity-pill-error">{error}</p> : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  )
 }
 
 // Public API: listbox-style dropdown field for form selection.

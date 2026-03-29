@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { PersonDetailOverlay } from "../../../components/people/person-detail-overlay";
 import { getViewerRequestContext } from "../../../../lib/auth/session";
 import {
+  addPersonProjectAction,
+  loadProjectOptionsAction,
   loadPeopleOptionsAction,
   resendPersonAccountEmailAction,
   updatePersonAction,
@@ -52,8 +54,10 @@ export default async function PersonDetailModalPage({
   return (
     <PersonDetailOverlay
       data={data}
+      loadProjectOptionsAction={loadProjectOptionsAction}
       loadSupervisorOptionsAction={loadPeopleOptionsAction}
       officeOptions={officeData.offices}
+      onAddProjectAction={addPersonProjectAction}
       onResendPersonAccountEmailAction={resendPersonAccountEmailAction}
       onUpdatePersonAction={updatePersonAction}
       personId={personId}

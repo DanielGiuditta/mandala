@@ -1,6 +1,6 @@
 "use server";
 
-import type { CreateProjectInput, UpdateProjectInput } from "@mandala/db";
+import type { CreateProjectInput, PeopleOptionRow, UpdateProjectInput } from "@mandala/db";
 import {
   createProject,
   invalidatePeopleReadCaches,
@@ -53,7 +53,7 @@ export async function updateProjectAction(
 
 export async function loadPeopleOptionsAction(): Promise<{
   forbidden: boolean;
-  people: Array<{ fullName: string; id: string }>;
+  people: PeopleOptionRow[];
 }> {
   const viewerContext = await getViewerRequestContext();
   return getCachedPeopleOptions(viewerContext);

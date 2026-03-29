@@ -25,6 +25,8 @@ export interface PersonCreateOfficeOption {
 }
 
 export interface PersonCreateSupervisorOption {
-  id: string;
   fullName: string;
+  id: string;
+  photoUrl: string | null;
+  title: string | null;
 }

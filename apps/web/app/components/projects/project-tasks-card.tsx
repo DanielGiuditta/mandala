@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
-import type { ProjectChecklistItem } from "@mandala/db";
+import type { PeopleOptionRow, ProjectChecklistItem } from "@mandala/db";
 
+import { personPickToSelectOption } from "../people/person-pick-select-option";
 import { EditableEntityPill } from "../editable-entity-pill";
+import { EntityReturnLink } from "../entity-return-link";
 import { SelectDropdownField } from "../ui/dropdown";
 import { Avatar } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
@@ -20,7 +22,7 @@ interface ProjectTasksCardProps {
   checklistItems: ProjectChecklistItem[];
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   projectId: string;
   updateTaskAction: (input: {
@@ -46,7 +48,7 @@ export function ProjectTasksCard({
   const [showAdd, setShowAdd] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [peopleOptions, setPeopleOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [peopleOptions, setPeopleOptions] = useState<PeopleOptionRow[]>([]);
   const [peopleOptionsStatus, setPeopleOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
   >("idle");
@@ -147,7 +149,7 @@ export function ProjectTasksCard({
             name="assignedPersonId"
             options={[
               { label: "Unassigned", value: "" },
-              ...peopleOptions.map((person) => ({ label: person.fullName, value: person.id })),
+              ...peopleOptions.map((person) => personPickToSelectOption(person)),
             ]}
             placeholder="Unassigned"
           />
@@ -202,7 +204,7 @@ export function ProjectTasksCard({
                       name="assignedPersonId"
                       options={[
                         { label: "Unassigned", value: "" },
-                        ...peopleOptions.map((person) => ({ label: person.fullName, value: person.id })),
+                        ...peopleOptions.map((person) => personPickToSelectOption(person)),
                       ]}
                       placeholder="Unassigned"
                     />
@@ -246,7 +248,17 @@ export function ProjectTasksCard({
                       <div>
                         <h4 className={item.completed ? "pd-list-item-title-complete" : ""}>{item.title}</h4>
                         <p className="pd-meta-text">
-                          {item.assignedPersonName ?? "Unassigned"}
+                          {item.assignedPersonId && item.assignedPersonName ? (
+                            <EntityReturnLink
+                              className="entity-inline-text-link"
+                              href={`/people/${item.assignedPersonId}`}
+                              scope="people"
+                            >
+                              {item.assignedPersonName}
+                            </EntityReturnLink>
+                          ) : (
+                            "Unassigned"
+                          )}
                         </p>
                       </div>
                     </div>
@@ -268,33 +280,56 @@ export function ProjectTasksCard({
                           onOpenRequested={ensurePeopleOptions}
                           options={[
                             { label: "Unassigned", value: "" },
-                            ...peopleOptions.map((person) => ({
-                              label: person.fullName,
-                              value: person.id,
-                            })),
+                            ...peopleOptions.map((person) => personPickToSelectOption(person)),
                           ]}
                           value={item.assignedPersonId ?? ""}
-                          renderTrigger={({ toggleButton }) => (
-                            <span className="pd-person-chip">
-                              <Avatar
-                                fallbackKey={item.assignedPersonId ?? item.id}
-                                label={item.assignedPersonName ?? "Unassigned"}
-                                photoUrl={item.assignedPersonPhotoUrl}
-                              />
-                              <span>{item.assignedPersonName ?? "Unassigned"}</span>
-                              {toggleButton}
-                            </span>
-                          )}
+                          renderTrigger={({ toggleButton }) => {
+                            const assigneeContent = (
+                              <>
+                                <Avatar
+                                  fallbackKey={item.assignedPersonId ?? item.id}
+                                  label={item.assignedPersonName ?? "Unassigned"}
+                                  photoUrl={item.assignedPersonPhotoUrl}
+                                />
+                                <span className="entity-content-link-label">
+                                  {item.assignedPersonName ?? "Unassigned"}
+                                </span>
+                              </>
+                            );
+
+                            return (
+                              <span className="pd-person-chip">
+                                {item.assignedPersonId ? (
+                                  <EntityReturnLink
+                                    className="entity-content-link entity-content-link-grow"
+                                    href={`/people/${item.assignedPersonId}`}
+                                    scope="people"
+                                  >
+                                    {assigneeContent}
+                                  </EntityReturnLink>
+                                ) : (
+                                  assigneeContent
+                                )}
+                                {toggleButton}
+                              </span>
+                            );
+                          }}
                         />
-                      ) : item.assignedPersonName ? (
-                        <span className="pd-person-chip">
+                      ) : item.assignedPersonId && item.assignedPersonName ? (
+                        <EntityReturnLink
+                          className="pd-person-chip entity-content-link"
+                          href={`/people/${item.assignedPersonId}`}
+                          scope="people"
+                        >
                           <Avatar
                             fallbackKey={item.assignedPersonId ?? item.id}
                             label={item.assignedPersonName}
                             photoUrl={item.assignedPersonPhotoUrl}
                           />
-                          <span>{item.assignedPersonName}</span>
-                        </span>
+                          <span className="entity-content-link-label">
+                            {item.assignedPersonName}
+                          </span>
+                        </EntityReturnLink>
                       ) : null}
                       {canEditChecklistItems ? (
                         <button

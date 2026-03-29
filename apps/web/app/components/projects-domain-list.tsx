@@ -1,5 +1,6 @@
 import type {
   CreateProjectInput,
+  PeopleOptionRow,
   ProjectListData,
   UpdateProjectInput,
 } from "@mandala/db";
@@ -16,7 +17,7 @@ interface ProjectsDomainListProps {
   data: ProjectListData;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   onUpdateProjectAction: (
     input: UpdateProjectInput,

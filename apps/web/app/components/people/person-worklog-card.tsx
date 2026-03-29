@@ -1,5 +1,6 @@
 import type { PersonDetailData } from "@mandala/db";
 
+import { EntityReturnLink } from "../entity-return-link";
 import { ProjectCardHeader } from "../projects/project-card-header";
 import {
   Avatar,
@@ -39,10 +40,14 @@ export function PersonWorklogCard({ person, timeSummary }: PersonWorklogCardProp
             return (
               <article className="pd-list-item" key={entry.id}>
                 <div className="pd-list-item-main">
-                  <span className="pd-person-chip pd-person-chip-hug">
+                  <EntityReturnLink
+                    className="pd-person-chip pd-person-chip-hug entity-content-link"
+                    href={`/projects/${entry.projectId}`}
+                    scope="projects"
+                  >
                     <Avatar fallbackKey={entry.projectId} label={entry.projectName} variant="project" />
-                    <span>{entry.projectName}</span>
-                  </span>
+                    <span className="entity-content-link-label">{entry.projectName}</span>
+                  </EntityReturnLink>
                 </div>
                 <div className="pd-list-item-aside">
                   <p className="pd-meta-text">

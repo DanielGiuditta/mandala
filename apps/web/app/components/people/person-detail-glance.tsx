@@ -9,7 +9,9 @@ import type {
 } from "@mandala/db";
 
 import { EditableEntityPill } from "../editable-entity-pill";
+import { EntityReturnLink } from "../entity-return-link";
 import { buildPersonUpdateInput } from "./person-inline-edit-utils";
+import { personPickToSelectOption } from "./person-pick-select-option";
 import type {
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
@@ -21,10 +23,17 @@ import {
 import { Avatar, formatHoursWithUnit, formatInrMetric } from "./person-detail-utils";
 
 interface PersonDetailGlanceProps {
+  loadProjectOptionsAction: () => Promise<{
+    forbidden: boolean;
+    projects: Array<{ id: string; name: string; photoUrl: string | null }>;
+  }>;
   loadSupervisorOptionsAction: () => Promise<{
     forbidden: boolean;
     people: PersonCreateSupervisorOption[];
   }>;
+  onAddProjectAction: (
+    input: { personId: string; projectId: string },
+  ) => Promise<{ error: string | null; ok: boolean }>;
   officeOptions: PersonCreateOfficeOption[];
   onUpdatePersonAction: (
     input: UpdatePersonInput,
@@ -33,7 +42,9 @@ interface PersonDetailGlanceProps {
 }
 
 export function PersonDetailGlance({
+  loadProjectOptionsAction,
   loadSupervisorOptionsAction,
+  onAddProjectAction,
   officeOptions,
   onUpdatePersonAction,
   person,
@@ -44,6 +55,12 @@ export function PersonDetailGlance({
     person.staffedProjects.length - (sourcedProject ? 1 : 0),
   );
   const hoursThisWeek = person.hoursThisWeek;
+  const [projectOptions, setProjectOptions] = useState<
+    Array<{ id: string; name: string; photoUrl: string | null }>
+  >([]);
+  const [projectOptionsStatus, setProjectOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable" | "error"
+  >("idle");
   const [supervisorOptions, setSupervisorOptions] = useState<PersonCreateSupervisorOption[]>([]);
   const [supervisorOptionsStatus, setSupervisorOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
@@ -69,6 +86,50 @@ export function PersonDetailGlance({
       })),
     [person.isCurrentViewer],
   );
+  const projectSelectOptions = useMemo(
+    () =>
+      projectOptions.map((project) => ({
+        label: project.name,
+        leadingVisual: (
+          <Avatar
+            fallbackKey={project.id}
+            label={project.name}
+            photoUrl={project.photoUrl}
+            variant="project"
+          />
+        ),
+        value: project.id,
+      })),
+    [projectOptions],
+  );
+
+  async function ensureProjectOptions() {
+    if (projectOptionsStatus === "ready" || projectOptionsStatus === "loading") {
+      return;
+    }
+
+    setProjectOptionsStatus("loading");
+
+    try {
+      const result = await loadProjectOptionsAction();
+
+      if (result.forbidden) {
+        setProjectOptions([]);
+        setProjectOptionsStatus("unavailable");
+        throw new Error("Project options are unavailable for the current viewer.");
+      }
+
+      setProjectOptions(result.projects);
+      setProjectOptionsStatus("ready");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("unavailable")) {
+        throw error;
+      }
+
+      setProjectOptionsStatus("error");
+      throw new Error("Unable to load project options.");
+    }
+  }
 
   async function ensureSupervisorOptions() {
     if (supervisorOptionsStatus === "ready" || supervisorOptionsStatus === "loading") {
@@ -107,6 +168,46 @@ export function PersonDetailGlance({
     );
   }
 
+  function renderSupervisorChip(toggleButton: ReactNode | null) {
+    if (!person.supervisorPersonId || !person.supervisorName) {
+      return renderValueChip(
+        toggleButton ? "Add Supervisor" : "No supervisor assigned",
+        toggleButton,
+      );
+    }
+
+    const supervisorContent = (
+      <>
+        <Avatar
+          fallbackKey={person.supervisorPersonId ?? person.id}
+          label={person.supervisorName ?? "No supervisor"}
+          photoUrl={person.supervisorPhotoUrl}
+          variant="person"
+        />
+        <strong className="entity-content-link-label">
+          {person.supervisorName ?? "No supervisor assigned"}
+        </strong>
+      </>
+    );
+
+    return (
+      <span className="pd-person-chip">
+        {person.supervisorPersonId ? (
+          <EntityReturnLink
+            className="entity-content-link entity-content-link-grow"
+            href={`/people/${person.supervisorPersonId}`}
+            scope="people"
+          >
+            {supervisorContent}
+          </EntityReturnLink>
+        ) : (
+          supervisorContent
+        )}
+        {toggleButton}
+      </span>
+    );
+  }
+
   return (
     <section className="pd-glance-card">
       <h3 className="pd-card-title">At a glance</h3>
@@ -114,10 +215,37 @@ export function PersonDetailGlance({
         <div className="pd-glance-pill">
           <span className="pd-glance-label">Sourced to</span>
           {sourcedProject ? (
-            <strong title={sourcedProject.projectName}>
-              {sourcedProject.projectName}
-              {additionalProjectCount > 0 ? ` +${additionalProjectCount}` : ""}
-            </strong>
+            <EntityReturnLink
+              className="entity-inline-text-link"
+              href={`/projects/${sourcedProject.projectId}`}
+              scope="projects"
+            >
+              <strong title={sourcedProject.projectName}>
+                {sourcedProject.projectName}
+                {additionalProjectCount > 0 ? ` +${additionalProjectCount}` : ""}
+              </strong>
+            </EntityReturnLink>
+          ) : person.canEdit ? (
+            <EditableEntityPill
+              ariaLabel={`Add project for ${person.fullName}`}
+              emptyStateLabel="No projects available."
+              onCommit={async (nextValue) => {
+                const result = await onAddProjectAction({
+                  personId: person.id,
+                  projectId: nextValue,
+                });
+
+                if (!result.ok) {
+                  throw new Error(result.error ?? "Unable to add project.");
+                }
+              }}
+              onOpenRequested={ensureProjectOptions}
+              options={projectSelectOptions}
+              value=""
+              renderTrigger={({ toggleButton }) =>
+                renderValueChip("Add Project", toggleButton)
+              }
+            />
           ) : (
             <strong>No tracked projects</strong>
           )}
@@ -137,11 +265,11 @@ export function PersonDetailGlance({
               options={officeSelectOptions}
               value={person.officeId}
               renderTrigger={({ toggleButton }) =>
-                renderValueChip(person.officeName, toggleButton)
+                renderValueChip(person.officeName || "Add Office", toggleButton)
               }
             />
           ) : (
-            renderValueChip(person.officeName, null)
+            renderValueChip(person.officeName || "No office assigned", null)
           )}
         </div>
         <div className="pd-glance-pill">
@@ -159,35 +287,13 @@ export function PersonDetailGlance({
               onOpenRequested={ensureSupervisorOptions}
               options={[
                 { label: "No supervisor", value: "" },
-                ...supervisorOptions.map((supervisor) => ({
-                  label: supervisor.fullName,
-                  value: supervisor.id,
-                })),
+                ...supervisorOptions.map((supervisor) => personPickToSelectOption(supervisor)),
               ]}
               value={person.supervisorPersonId ?? ""}
-              renderTrigger={({ toggleButton }) => (
-                <span className="pd-person-chip">
-                  <Avatar
-                    fallbackKey={person.supervisorPersonId ?? person.id}
-                    label={person.supervisorName ?? "No supervisor"}
-                    photoUrl={person.supervisorPhotoUrl}
-                    variant="person"
-                  />
-                  <strong>{person.supervisorName ?? "No supervisor assigned"}</strong>
-                  {toggleButton}
-                </span>
-              )}
+              renderTrigger={({ toggleButton }) => renderSupervisorChip(toggleButton)}
             />
           ) : (
-            <span className="pd-person-chip">
-              <Avatar
-                fallbackKey={person.supervisorPersonId ?? person.id}
-                label={person.supervisorName ?? "No supervisor"}
-                photoUrl={person.supervisorPhotoUrl}
-                variant="person"
-              />
-              <strong>{person.supervisorName ?? "No supervisor assigned"}</strong>
-            </span>
+            renderSupervisorChip(null)
           )}
         </div>
         <div className="pd-glance-pill">

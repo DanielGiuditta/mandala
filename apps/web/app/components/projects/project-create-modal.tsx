@@ -183,8 +183,8 @@ export function ProjectCreateModal({
                   const nextPayload = preservedOriginatingOfficeId
                     ? {
                         ...payload,
-                        // The edit modal exposes one Office control, so preserve
-                        // split-office projects' originating office unless it is explicitly unified.
+                        // The edit modal's Office control now represents only the
+                        // managing office, so keep the hidden originating office stable.
                         originatingOfficeId: preservedOriginatingOfficeId,
                       }
                     : payload;

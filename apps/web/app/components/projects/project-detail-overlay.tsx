@@ -1,5 +1,6 @@
 import type {
   CreateProjectInput,
+  PeopleOptionRow,
   ProjectDetailData,
   ProjectRailItem,
   UpdateProjectInput,
@@ -17,7 +18,7 @@ interface ProjectDetailOverlayProps {
   data: ProjectDetailData;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   officeOptions: ProjectCreateOfficeOption[];
   onUpdateProjectAction: (

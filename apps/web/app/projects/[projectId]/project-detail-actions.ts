@@ -11,6 +11,7 @@ import {
   createProjectAssignment,
   createProjectChecklistItem,
   createProjectDocument,
+  invalidatePeopleReadCaches,
   invalidateProjectReadCaches,
   updateProjectChecklistItem,
   updateProjectTimeEntry,
@@ -18,6 +19,7 @@ import {
 import { revalidatePath, revalidateTag } from "next/cache";
 
 import { getViewerRequestContext } from "../../../lib/auth/session";
+import { getPeopleOptionsTag, getPeopleTag } from "../../people/data-cache";
 import { getProjectTag, getProjectsTag } from "../data-cache";
 
 export interface ProjectDetailActionResult {
@@ -34,8 +36,12 @@ function actionFailure(error: unknown): ProjectDetailActionResult {
 
 function actionSuccess(projectId: string): ProjectDetailActionResult {
   invalidateProjectReadCaches();
+  invalidatePeopleReadCaches();
+  revalidateTag(getPeopleTag());
+  revalidateTag(getPeopleOptionsTag());
   revalidateTag(getProjectsTag());
   revalidateTag(getProjectTag(projectId));
+  revalidatePath("/people");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
 

@@ -18,11 +18,18 @@ import { PersonWorklogCard } from "./person-worklog-card";
 interface PersonDetailEntityProps {
   closeControl?: ReactNode;
   data: PersonDetailData;
+  loadProjectOptionsAction: () => Promise<{
+    forbidden: boolean;
+    projects: Array<{ id: string; name: string; photoUrl: string | null }>;
+  }>;
   loadSupervisorOptionsAction: () => Promise<{
     forbidden: boolean;
     people: PersonCreateSupervisorOption[];
   }>;
   officeOptions: PersonCreateOfficeOption[];
+  onAddProjectAction: (
+    input: { personId: string; projectId: string },
+  ) => Promise<{ error: string | null; ok: boolean }>;
   onResendPersonAccountEmailAction: (
     input: { personId: string },
   ) => Promise<{ message: string }>;
@@ -35,8 +42,10 @@ interface PersonDetailEntityProps {
 export function PersonDetailEntity({
   closeControl,
   data,
+  loadProjectOptionsAction,
   loadSupervisorOptionsAction,
   officeOptions,
+  onAddProjectAction,
   onResendPersonAccountEmailAction,
   onUpdatePersonAction,
   titleSuggestions,
@@ -94,7 +103,9 @@ export function PersonDetailEntity({
       />
       <div className="pd-entity-content">
         <PersonDetailGlance
+          loadProjectOptionsAction={loadProjectOptionsAction}
           loadSupervisorOptionsAction={loadSupervisorOptionsAction}
+          onAddProjectAction={onAddProjectAction}
           officeOptions={officeOptions}
           onUpdatePersonAction={onUpdatePersonAction}
           person={data.person}

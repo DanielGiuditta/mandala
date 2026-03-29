@@ -2,9 +2,12 @@
 
 import { type ReactNode, useMemo, useState } from "react";
 
-import type { ProjectListItem, UpdateProjectInput } from "@mandala/db";
+import type { PeopleOptionRow, ProjectListItem, UpdateProjectInput } from "@mandala/db";
 
+import { personPickToSelectOption } from "../people/person-pick-select-option";
 import { EditableEntityPill } from "../editable-entity-pill";
+import { EntityPersonPill } from "../entity-person-pill";
+import { EntityReturnLink } from "../entity-return-link";
 import { TokenIcon } from "../ui/token-icon";
 import {
   formatCurrency,
@@ -14,17 +17,10 @@ import {
   formatStageLabel,
   stageIcon,
 } from "./projects-formatters";
-import {
-  getFallbackAvatarInitial,
-  getPersonFallbackAvatarStyle,
-  getProjectFallbackAvatarStyle,
-} from "./project-avatar-utils";
-import {
-  formatProjectStageLabel,
-  PROJECT_CREATE_STAGE_OPTIONS,
-} from "./project-create-utils";
+import { getFallbackAvatarInitial, getProjectFallbackAvatarStyle } from "./project-avatar-utils";
+import { PROJECT_CREATE_STAGE_OPTIONS } from "./project-create-utils";
+import { projectStageToSelectOption } from "./project-stage-select-option";
 import { buildProjectUpdateInput } from "./project-inline-edit-utils";
-import { EntityReturnLink } from "../entity-return-link";
 
 interface ProjectListTableProps {
   activeProjectId?: string;
@@ -32,7 +28,7 @@ interface ProjectListTableProps {
   forbidden: boolean;
   loadPeopleOptionsAction: () => Promise<{
     forbidden: boolean;
-    people: Array<{ fullName: string; id: string }>;
+    people: PeopleOptionRow[];
   }>;
   mode?: "collapsed" | "table";
   onUpdateProjectAction: (
@@ -82,7 +78,7 @@ export function ProjectListTable({
   const [sortKey, setSortKey] = useState<SortKey>("project");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [hasUserSorted, setHasUserSorted] = useState(false);
-  const [leadOptions, setLeadOptions] = useState<Array<{ fullName: string; id: string }>>([]);
+  const [leadOptions, setLeadOptions] = useState<PeopleOptionRow[]>([]);
   const [leadOptionsStatus, setLeadOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
   >("idle");
@@ -212,11 +208,7 @@ export function ProjectListTable({
   }, [projects, sortDirection, sortKey]);
 
   const stageOptions = useMemo(
-    () =>
-      PROJECT_CREATE_STAGE_OPTIONS.map((stage) => ({
-        label: formatProjectStageLabel(stage),
-        value: stage,
-      })),
+    () => PROJECT_CREATE_STAGE_OPTIONS.map((stage) => projectStageToSelectOption(stage)),
     [],
   );
 
@@ -256,31 +248,28 @@ export function ProjectListTable({
     project: ProjectListItem,
     toggleButton: ReactNode | null,
   ) {
+    if (!project.leadPersonId || !project.leadPersonName) {
+      return (
+        <EntityPersonPill
+          actionLabel="Add Lead"
+          readonlyLabel="No lead"
+          toggleButton={toggleButton}
+          variant="empty"
+        />
+      );
+    }
+
+    const leadLabel = formatLeadName(project);
+
     return (
-      <span className="projects-lead-pill">
-        {project.leadPersonPhotoUrl ? (
-          <img
-            alt=""
-            aria-hidden
-            className="projects-lead-avatar-image"
-            loading="lazy"
-            src={project.leadPersonPhotoUrl}
-          />
-        ) : (
-          <span
-            aria-hidden
-            className="projects-lead-avatar-fallback"
-            style={getPersonFallbackAvatarStyle(
-              formatLeadName(project),
-              project.leadPersonId ?? project.id,
-            )}
-          >
-            {getFallbackAvatarInitial(formatLeadName(project), "L")}
-          </span>
-        )}
-        <span className="projects-lead-pill-text">{formatLeadName(project)}</span>
-        {toggleButton}
-      </span>
+      <EntityPersonPill
+        avatarFallbackKey={project.leadPersonId ?? project.id}
+        displayName={leadLabel}
+        personId={project.leadPersonId}
+        photoUrl={project.leadPersonPhotoUrl}
+        toggleButton={toggleButton}
+        variant="person"
+      />
     );
   }
 
@@ -363,25 +352,31 @@ export function ProjectListTable({
             style={gridStyle}
           >
             <div className="projects-cell projects-cell-project">
-              {project.photoUrl ? (
-                <img
-                  alt=""
-                  aria-hidden
-                  className="projects-project-thumb-image"
-                  loading="lazy"
-                  src={project.photoUrl}
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className="projects-project-thumb-fallback"
-                  style={getProjectFallbackAvatarStyle(project.name, project.id)}
-                >
-                  {getFallbackAvatarInitial(project.name, "P")}
+              <EntityReturnLink
+                className="entity-content-link entity-content-link-grow"
+                href={`/projects/${project.id}`}
+                scope="projects"
+              >
+                {project.photoUrl ? (
+                  <img
+                    alt=""
+                    aria-hidden
+                    className="projects-project-thumb-image"
+                    loading="lazy"
+                    src={project.photoUrl}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="projects-project-thumb-fallback"
+                    style={getProjectFallbackAvatarStyle(project.name, project.id)}
+                  >
+                    {getFallbackAvatarInitial(project.name, "P")}
+                  </span>
+                )}
+                <span className="projects-cell-value entity-content-link-label">
+                  {project.name}
                 </span>
-              )}
-              <EntityReturnLink href={`/projects/${project.id}`} scope="projects">
-                {project.name}
               </EntityReturnLink>
             </div>
             <div className="projects-cell">
@@ -408,10 +403,7 @@ export function ProjectListTable({
                   onOpenRequested={ensureLeadOptions}
                   options={[
                     { label: "No lead", value: "" },
-                    ...leadOptions.map((person) => ({
-                      label: person.fullName,
-                      value: person.id,
-                    })),
+                    ...leadOptions.map((person) => personPickToSelectOption(person)),
                   ]}
                   value={project.leadPersonId ?? ""}
                   renderTrigger={({ toggleButton }) =>

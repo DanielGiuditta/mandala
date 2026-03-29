@@ -14,11 +14,11 @@ import type {
   ProjectCreateOfficeOption,
 } from "./project-create-types";
 import {
-  formatProjectStageLabel,
   mapCreateProjectPayload,
   PROJECT_CREATE_STAGE_OPTIONS,
   readFileAsDataUrl,
 } from "./project-create-utils";
+import { projectStageToSelectOption } from "./project-stage-select-option";
 
 interface ProjectCreateFormProps {
   hasLeadOptionGap: boolean;
@@ -93,11 +93,7 @@ export function ProjectCreateForm({
     [leadOptions],
   );
   const stageSelectOptions = useMemo(
-    () =>
-      PROJECT_CREATE_STAGE_OPTIONS.map((stage) => ({
-        label: formatProjectStageLabel(stage),
-        value: stage,
-      })),
+    () => PROJECT_CREATE_STAGE_OPTIONS.map((stage) => projectStageToSelectOption(stage)),
     [],
   );
 

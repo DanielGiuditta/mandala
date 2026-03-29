@@ -11,11 +11,18 @@ import { TokenIcon } from "../ui/token-icon";
 interface PeopleListTableProps {
   configured: boolean;
   forbidden: boolean;
+  loadProjectOptionsAction: () => Promise<{
+    forbidden: boolean;
+    projects: Array<{ id: string; name: string; photoUrl: string | null }>;
+  }>;
   loadSupervisorOptionsAction: () => Promise<{
     forbidden: boolean;
     people: PersonCreateSupervisorOption[];
   }>;
   officeOptions: PersonCreateOfficeOption[];
+  onAddProjectAction: (
+    input: { personId: string; projectId: string },
+  ) => Promise<{ error: string | null; ok: boolean }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
@@ -47,14 +54,22 @@ const PEOPLE_COLUMNS: Array<{ key: SortKey; label: string }> = [
 export function PeopleListTable({
   configured,
   forbidden,
+  loadProjectOptionsAction,
   loadSupervisorOptionsAction,
   officeOptions,
+  onAddProjectAction,
   onUpdatePersonAction,
   people,
 }: PeopleListTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [hasUserSorted, setHasUserSorted] = useState(false);
+  const [projectOptions, setProjectOptions] = useState<
+    Array<{ id: string; name: string; photoUrl: string | null }>
+  >([]);
+  const [projectOptionsStatus, setProjectOptionsStatus] = useState<
+    "idle" | "loading" | "ready" | "unavailable" | "error"
+  >("idle");
   const [supervisorOptions, setSupervisorOptions] = useState<PersonCreateSupervisorOption[]>([]);
   const [supervisorOptionsStatus, setSupervisorOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
@@ -158,6 +173,34 @@ export function PeopleListTable({
     return items;
   }, [people, sortDirection, sortKey]);
 
+  async function ensureProjectOptions() {
+    if (projectOptionsStatus === "ready" || projectOptionsStatus === "loading") {
+      return;
+    }
+
+    setProjectOptionsStatus("loading");
+
+    try {
+      const result = await loadProjectOptionsAction();
+
+      if (result.forbidden) {
+        setProjectOptions([]);
+        setProjectOptionsStatus("unavailable");
+        throw new Error("Project options are unavailable for the current viewer.");
+      }
+
+      setProjectOptions(result.projects);
+      setProjectOptionsStatus("ready");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("unavailable")) {
+        throw error;
+      }
+
+      setProjectOptionsStatus("error");
+      throw new Error("Unable to load project options.");
+    }
+  }
+
   async function ensureSupervisorOptions() {
     if (supervisorOptionsStatus === "ready" || supervisorOptionsStatus === "loading") {
       return;
@@ -211,11 +254,14 @@ export function PeopleListTable({
       ) : (
         sortedPeople.map((person, index) => (
           <PeopleListRow
+            ensureProjectOptions={ensureProjectOptions}
             ensureSupervisorOptions={ensureSupervisorOptions}
             key={person.id}
             officeOptions={officeOptions}
+            onAddProjectAction={onAddProjectAction}
             onUpdatePersonAction={onUpdatePersonAction}
             person={person}
+            projectOptions={projectOptions}
             rowIndex={index}
             supervisorOptions={supervisorOptions}
           />

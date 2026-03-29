@@ -3,8 +3,10 @@ import { createPerfTrace } from "@mandala/db"
 import { getViewerRequestContext } from "../../lib/auth/session"
 import { PeopleDomainList } from "../components/people-domain-list"
 import {
+  addPersonProjectAction,
   createPersonAction,
   loadPeopleOptionsAction,
+  loadProjectOptionsAction,
   updatePersonAction,
 } from "./actions"
 import { getCachedPeople } from "./data-cache"
@@ -44,7 +46,9 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
     <main className="stack">
       <PeopleDomainList
         data={data}
+        loadProjectOptionsAction={loadProjectOptionsAction}
         loadSupervisorOptionsAction={loadPeopleOptionsAction}
+        onAddProjectAction={addPersonProjectAction}
         onCreatePersonAction={createPersonAction}
         onUpdatePersonAction={updatePersonAction}
       />

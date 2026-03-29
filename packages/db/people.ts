@@ -219,15 +219,19 @@ export interface PeopleListData {
   viewerLabel: string | null
 }
 
+export interface PeopleOptionRow {
+  id: string
+  fullName: string
+  photoUrl: string | null
+  title: string | null
+}
+
 export interface PeopleOptionsData {
   accessMessage: string | null
   forbidden: boolean
   configMessage: string | null
   configured: boolean
-  people: Array<{
-    id: string
-    fullName: string
-  }>
+  people: PeopleOptionRow[]
   viewerLabel: string | null
 }
 
@@ -939,6 +943,8 @@ function listPreviewPeopleOptions(): PeopleOptionsData {
       .map((person) => ({
         fullName: person.full_name,
         id: person.id,
+        photoUrl: person.photo_url ?? null,
+        title: person.title ?? null,
       })),
     viewerLabel: null,
   }
@@ -1557,7 +1563,7 @@ export async function listPeopleOptions(
 
   const { data, error } = await client
     .from("people")
-    .select("id, full_name")
+    .select("id, full_name, title, photo_url")
     .eq("active", true)
     .order("full_name")
 
@@ -1570,9 +1576,18 @@ export async function listPeopleOptions(
     configMessage: status.message,
     configured: status.configured,
     forbidden: false,
-    people: ((data ?? []) as Array<{ id: string; full_name: string }>).map((person) => ({
+    people: (
+      (data ?? []) as Array<{
+        id: string
+        full_name: string
+        photo_url: string | null
+        title: string | null
+      }>
+    ).map((person) => ({
       fullName: person.full_name,
       id: person.id,
+      photoUrl: person.photo_url ?? null,
+      title: person.title ?? null,
     })),
     viewerLabel,
   }

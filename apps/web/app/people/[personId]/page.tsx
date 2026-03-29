@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getViewerRequestContext } from "../../../lib/auth/session";
 import { PersonDetailView } from "../../components/people/person-detail-view";
 import {
+  addPersonProjectAction,
+  loadProjectOptionsAction,
   loadPeopleOptionsAction,
   resendPersonAccountEmailAction,
   updatePersonAction,
@@ -49,8 +51,10 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
 
   return (
     <PersonDetailView
+      loadProjectOptionsAction={loadProjectOptionsAction}
       data={data}
       loadSupervisorOptionsAction={loadPeopleOptionsAction}
+      onAddProjectAction={addPersonProjectAction}
       officeOptions={officeData.offices}
       onResendPersonAccountEmailAction={resendPersonAccountEmailAction}
       onUpdatePersonAction={updatePersonAction}

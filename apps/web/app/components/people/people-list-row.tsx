@@ -2,6 +2,7 @@ import type { PersonListItem, UpdatePersonInput } from "@mandala/db";
 import type { ReactNode } from "react";
 
 import { EditableEntityPill } from "../editable-entity-pill";
+import { EntityPersonPill } from "../entity-person-pill";
 import { EntityReturnLink } from "../entity-return-link";
 import {
   getFallbackAvatarInitial,
@@ -9,6 +10,7 @@ import {
   getProjectFallbackAvatarStyle,
 } from "../projects/project-avatar-utils";
 import { buildPersonUpdateInput } from "./person-inline-edit-utils";
+import { personPickToSelectOption } from "./person-pick-select-option";
 import type {
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
@@ -16,7 +18,6 @@ import type {
 import {
   formatAnnualSalaryCompact,
   formatHoursThisWeek,
-  getInitialsFromName,
   getPersonInitials,
 } from "./people-list-formatters";
 import {
@@ -25,21 +26,29 @@ import {
 } from "./person-create-utils";
 
 interface PeopleListRowProps {
+  ensureProjectOptions: () => Promise<void>;
   ensureSupervisorOptions: () => Promise<void>;
   officeOptions: PersonCreateOfficeOption[];
+  onAddProjectAction: (
+    input: { personId: string; projectId: string },
+  ) => Promise<{ error: string | null; ok: boolean }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
   ) => Promise<{ personId: string }>;
   person: PersonListItem;
+  projectOptions: Array<{ id: string; name: string; photoUrl: string | null }>;
   rowIndex: number;
   supervisorOptions: PersonCreateSupervisorOption[];
 }
 
 export function PeopleListRow({
+  ensureProjectOptions,
   ensureSupervisorOptions,
   officeOptions,
+  onAddProjectAction,
   onUpdatePersonAction,
   person,
+  projectOptions,
   rowIndex,
   supervisorOptions,
 }: PeopleListRowProps) {
@@ -54,11 +63,29 @@ export function PeopleListRow({
   }));
   const supervisorSelectOptions = [
     { label: "No supervisor", value: "" },
-    ...supervisorOptions.map((supervisor) => ({
-      label: supervisor.fullName,
-      value: supervisor.id,
-    })),
+    ...supervisorOptions.map((supervisor) => personPickToSelectOption(supervisor)),
   ];
+  const projectSelectOptions = projectOptions.map((project) => ({
+    label: project.name,
+    leadingVisual: project.photoUrl ? (
+      <img
+        alt=""
+        aria-hidden
+        className="people-project-chip-avatar"
+        loading="lazy"
+        src={project.photoUrl}
+      />
+    ) : (
+      <span
+        aria-hidden
+        className="people-project-chip-fallback"
+        style={getProjectFallbackAvatarStyle(project.name, project.id)}
+      >
+        {getFallbackAvatarInitial(project.name)}
+      </span>
+    ),
+    value: project.id,
+  }));
   const permissionSelectOptions = PERSON_CREATE_PERMISSION_OPTIONS.map((permission) => ({
     description:
       person.isCurrentViewer &&
@@ -73,52 +100,86 @@ export function PeopleListRow({
   }));
 
   function renderSupervisorPill(toggleButton: ReactNode | null) {
+    if (!person.supervisorName) {
+      return (
+        <EntityPersonPill
+          actionLabel="Add Supervisor"
+          readonlyLabel="No supervisor"
+          toggleButton={toggleButton}
+          variant="empty"
+        />
+      );
+    }
+
     return (
-      <span className="people-reference-pill">
-        {person.supervisorName ? (
-          person.supervisorPhotoUrl ? (
-            <img
-              alt=""
-              aria-hidden
-              className="people-reference-avatar"
-              loading="lazy"
-              src={person.supervisorPhotoUrl}
-            />
-          ) : (
-            <span
-              aria-hidden
-              className="people-reference-fallback"
-              style={getPersonFallbackAvatarStyle(
-                person.supervisorName,
-                person.supervisorPersonId ?? person.id,
-              )}
-            >
-              {getInitialsFromName(person.supervisorName)}
-            </span>
-          )
-        ) : (
-          <span
-            aria-hidden
-            className="people-reference-fallback"
-            style={getPersonFallbackAvatarStyle("No supervisor", person.id)}
-          >
-            {getFallbackAvatarInitial("No supervisor", "S")}
-          </span>
-        )}
-        <span className="people-cell-value">
-          {person.supervisorName ?? "No supervisor"}
-        </span>
-        {toggleButton}
-      </span>
+      <EntityPersonPill
+        avatarFallbackKey={person.supervisorPersonId ?? person.id}
+        displayName={person.supervisorName}
+        personId={person.supervisorPersonId ?? null}
+        photoUrl={person.supervisorPhotoUrl}
+        toggleButton={toggleButton}
+        variant="person"
+      />
     );
   }
 
-  function renderValuePill(label: string, toggleButton: ReactNode | null) {
+  function renderProjectPickerPill() {
     return (
-      <span className="people-value-pill">
-        <span className="people-cell-value">{label}</span>
-        {toggleButton}
-      </span>
+      <EditableEntityPill
+        ariaLabel={`Add project for ${person.fullName}`}
+        emptyStateLabel="No projects available."
+        onCommit={async (nextValue) => {
+          const result = await onAddProjectAction({
+            personId: person.id,
+            projectId: nextValue,
+          });
+
+          if (!result.ok) {
+            throw new Error(result.error ?? "Unable to add project.");
+          }
+        }}
+        onOpenRequested={ensureProjectOptions}
+        options={projectSelectOptions}
+        value=""
+        renderTrigger={({ toggleButton }) => (
+          <span className="people-value-pill">
+            <span className="people-cell-value">Add Project</span>
+            {toggleButton}
+          </span>
+        )}
+      />
+    );
+  }
+
+  function renderStaffedProjectChip(project: PersonListItem["staffedProjects"][number]) {
+    return (
+      <EntityReturnLink
+        className="people-project-chip entity-content-link"
+        href={`/projects/${project.projectId}`}
+        key={project.projectId}
+        scope="projects"
+      >
+        {project.projectPhotoUrl ? (
+          <img
+            alt=""
+            aria-hidden
+            className="people-project-chip-avatar"
+            loading="lazy"
+            src={project.projectPhotoUrl}
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="people-project-chip-fallback"
+            style={getProjectFallbackAvatarStyle(project.projectName, project.projectId)}
+          >
+            {getFallbackAvatarInitial(project.projectName)}
+          </span>
+        )}
+        <span className="people-cell-value entity-content-link-label">
+          {project.projectName}
+        </span>
+      </EntityReturnLink>
     );
   }
 
@@ -127,29 +188,31 @@ export function PeopleListRow({
       className={`people-list-row ${rowIndex % 2 === 0 ? "people-list-row-light" : "people-list-row-base"}`}
     >
       <div className="people-cell people-cell-name">
-        {person.photoUrl ? (
-          <img
-            alt=""
-            aria-hidden
-            className="people-avatar-image"
-            loading="lazy"
-            src={person.photoUrl}
-          />
-        ) : (
-          <span
-            aria-hidden
-            className="people-avatar-fallback"
-            style={getPersonFallbackAvatarStyle(person.fullName, person.id)}
-          >
-            {getPersonInitials(person)}
-          </span>
-        )}
         <EntityReturnLink
-          className="people-name-link"
+          className="entity-content-link entity-content-link-grow"
           href={`/people/${person.id}`}
           scope="people"
         >
-          {person.fullName}
+          {person.photoUrl ? (
+            <img
+              alt=""
+              aria-hidden
+              className="people-avatar-image"
+              loading="lazy"
+              src={person.photoUrl}
+            />
+          ) : (
+            <span
+              aria-hidden
+              className="people-avatar-fallback"
+              style={getPersonFallbackAvatarStyle(person.fullName, person.id)}
+            >
+              {getPersonInitials(person)}
+            </span>
+          )}
+          <span className="people-name-link entity-content-link-label">
+            {person.fullName}
+          </span>
         </EntityReturnLink>
       </div>
 
@@ -159,32 +222,13 @@ export function PeopleListRow({
             className="people-project-chips"
             title={person.staffedProjects.map((project) => project.projectName).join(", ")}
           >
-            {visibleStaffedProjects.map((project) => (
-              <span className="people-project-chip" key={project.projectId}>
-                {project.projectPhotoUrl ? (
-                  <img
-                    alt=""
-                    aria-hidden
-                    className="people-project-chip-avatar"
-                    loading="lazy"
-                    src={project.projectPhotoUrl}
-                  />
-                ) : (
-                  <span
-                    aria-hidden
-                    className="people-project-chip-fallback"
-                    style={getProjectFallbackAvatarStyle(project.projectName, project.projectId)}
-                  >
-                    {getFallbackAvatarInitial(project.projectName)}
-                  </span>
-                )}
-                <span className="people-cell-value">{project.projectName}</span>
-              </span>
-            ))}
+            {visibleStaffedProjects.map((project) => renderStaffedProjectChip(project))}
             {remainingStaffedProjects > 0 ? (
               <span className="people-project-overflow">+{remainingStaffedProjects}</span>
             ) : null}
           </div>
+        ) : person.canEdit ? (
+          renderProjectPickerPill()
         ) : (
           <span className="people-reference-empty">No active projects</span>
         )}
@@ -203,9 +247,14 @@ export function PeopleListRow({
             }}
             options={officeSelectOptions}
             value={person.officeId}
-            renderTrigger={({ toggleButton }) =>
-              renderValuePill(person.officeName, toggleButton)
-            }
+            renderTrigger={({ toggleButton }) => (
+              <span className="people-value-pill">
+                <span className="people-cell-value">
+                  {person.officeName || "Add Office"}
+                </span>
+                {toggleButton}
+              </span>
+            )}
           />
         ) : (
           <span className="people-cell-value">{person.officeName}</span>
@@ -254,12 +303,14 @@ export function PeopleListRow({
             }}
             options={permissionSelectOptions}
             value={person.effectivePermission}
-            renderTrigger={({ toggleButton }) =>
-              renderValuePill(
-                formatCreatePersonPermissionLabel(person.effectivePermission),
-                toggleButton,
-              )
-            }
+            renderTrigger={({ toggleButton }) => (
+              <span className="people-value-pill">
+                <span className="people-cell-value">
+                  {formatCreatePersonPermissionLabel(person.effectivePermission)}
+                </span>
+                {toggleButton}
+              </span>
+            )}
           />
         ) : (
           <span className="people-cell-value">

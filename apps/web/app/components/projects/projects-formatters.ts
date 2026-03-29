@@ -53,9 +53,5 @@ export function formatLeadName(project: ProjectListItem): string {
 }
 
 export function formatOfficeRelationship(project: ProjectListItem): string {
-  if (project.originatingOfficeName === project.managingOfficeName) {
-    return project.managingOfficeName;
-  }
-
-  return `Origin: ${project.originatingOfficeName} · Managing: ${project.managingOfficeName}`;
+  return project.managingOfficeName;
 }
