@@ -295,14 +295,14 @@ export function AppSidebar({
       trackerNowTimestamp,
     )
   const canStartTracker =
-    trackerVisible &&
+    Boolean(trackerSessionEmail) &&
     !trackerLoading &&
     !trackerSaving &&
     !trackerAccessMessage &&
     !trackerRunningState &&
     Boolean(trackerSelectedProjectId)
   const canStopTracker =
-    trackerVisible &&
+    Boolean(trackerSessionEmail) &&
     !trackerLoading &&
     !trackerSaving &&
     !trackerAccessMessage &&
@@ -474,7 +474,7 @@ export function AppSidebar({
   }, [isSidebarOpen, pathname, trackerSessionEmail])
 
   useEffect(() => {
-    if (!isSidebarOpen || !trackerVisible || !trackerRunningState) {
+    if (!isSidebarOpen || !trackerRunningState) {
       return
     }
 
@@ -617,7 +617,7 @@ export function AppSidebar({
       </div>
 
       <div className={`app-sidebar-bottom ${isSidebarOpen ? "" : "app-sidebar-bottom-closed"}`}>
-        {isSidebarOpen && trackerVisible ? (
+        {isSidebarOpen && trackerSessionEmail ? (
           <section className="app-time-tracker" aria-label="Time tracker">
             <p className="app-time-tracker-title">Time tracker</p>
             <SelectDropdownField
