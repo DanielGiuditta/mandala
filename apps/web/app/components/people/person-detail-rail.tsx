@@ -1,8 +1,7 @@
-import Link from "next/link";
-
 import type { PersonRailItem } from "@mandala/db";
 
 import { EntityHeader } from "../entity-header";
+import { EntityReturnLink } from "../entity-return-link";
 import {
   getFallbackAvatarInitial,
   getPersonFallbackAvatarStyle,
@@ -35,11 +34,11 @@ export function PersonDetailRail({
           people.map((person) => {
             const isActive = person.id === activePersonId;
             return (
-              <Link
+              <EntityReturnLink
                 className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
                 href={`/people/${person.id}`}
                 key={person.id}
-                prefetch={false}
+                scope="people"
               >
                 {person.photoUrl ? (
                   <img alt="" aria-hidden className="people-avatar-image" loading="lazy" src={person.photoUrl} />
@@ -53,7 +52,7 @@ export function PersonDetailRail({
                   </span>
                 )}
                 <span className="projects-collapsed-row-text">{person.fullName}</span>
-              </Link>
+              </EntityReturnLink>
             );
           })
         )}

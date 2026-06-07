@@ -1,3 +1,4 @@
+import { createPerfTrace } from "@mandala/db";
 import { notFound } from "next/navigation";
 
 import { ProjectDetailOverlay } from "../../../components/projects/project-detail-overlay";
@@ -23,16 +24,28 @@ export const dynamic = "force-dynamic";
 export default async function ProjectDetailModalPage({
   params,
 }: ProjectDetailModalPageProps) {
-  const { projectId } = await params;
-  const viewerContext = await getViewerRequestContext();
-  const [data, railData] = await Promise.all([
-    getCachedProjectDetail(projectId, viewerContext),
-    getCachedProjectRailData(viewerContext),
-  ]);
+  const trace = createPerfTrace("app.projects.projectDetail.modal");
+  const { projectId } = await trace.measure("resolveParams", () => params);
+  const viewerContext = await trace.measure("getViewerRequestContext", () =>
+    getViewerRequestContext(),
+  );
+  const [data, railData] = await trace.measure("loadDetailShellData", () =>
+    Promise.all([
+      getCachedProjectDetail(projectId, viewerContext),
+      getCachedProjectRailData(viewerContext),
+    ]),
+  );
 
   if (data.configured && !data.project && !data.forbidden) {
     notFound();
   }
+
+  trace.finish({
+    forbidden: data.forbidden,
+    hasProject: Boolean(data.project),
+    railCount: railData.projects.length,
+    result: "ok",
+  });
 
   return (
     <ProjectDetailOverlay

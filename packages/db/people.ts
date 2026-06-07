@@ -1,6 +1,9 @@
 import type { Person } from "@mandala/domain"
 import {
+  EXACT_SUPER_USER_EMAIL,
   canCreateOrUpdatePeople,
+  canViewFinancialData,
+  canViewCompensation,
   canViewPeopleDirectory,
   canViewPerson,
   deriveAssignedHours,
@@ -8,7 +11,8 @@ import {
   derivePersonAllocationPercent,
   deriveRemainingCapacity,
   deriveUtilizationPercent,
-  hasPartnerRole,
+  hasExactSuperUserOverride,
+  hasPartnerPrivileges,
 } from "@mandala/domain"
 
 import {
@@ -18,7 +22,15 @@ import {
   type CurrentViewerAccess,
   type ViewerRequestContext,
 } from "./auth"
-import { fetchOfficeRows, fetchPeopleRows, type OfficeRow, type PersonRow } from "./lookups"
+import {
+  attachPeopleCompensation,
+  fetchOfficeRows,
+  fetchPeopleCompensationById,
+  fetchPeopleRows,
+  PERSON_PUBLIC_SELECT,
+  type OfficeRow,
+  type PersonRow,
+} from "./lookups"
 import {
   PREVIEW_CONFIG_MESSAGE,
   previewAssignments,
@@ -33,7 +45,7 @@ import {
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 import { createPerfTrace } from "./perf"
 
-const PEOPLE_READ_CACHE_TTL_MS = 15_000
+const PEOPLE_READ_CACHE_TTL_MS = 300_000
 const DEFAULT_PERSON_AVAILABILITY_HOURS_PER_WEEK = 40
 export const CREATE_PERSON_PERMISSIONS = ["noAccount", "employee", "admin", "partner"] as const
 
@@ -169,9 +181,10 @@ export interface PeopleListFilters {
 
 export interface PersonListItem {
   active: boolean
-  annualSalary: number
+  annualSalary: number | null
   canEdit: boolean
   canEditPermission: boolean
+  canViewCompensation: boolean
   email?: string | null
   effectivePermission: CreatePersonPermission
   effectivePermissionLabel: string | null
@@ -204,7 +217,7 @@ export interface PersonDetailPerson extends PersonListItem {
   allocationPercent: number
   assignedHours: number
   availabilityHoursPerWeek: number
-  hourlyCost: number
+  hourlyCost: number | null
   remainingCapacity: number
 }
 
@@ -288,7 +301,7 @@ export interface PersonDetailTimeEntry {
 
 export interface PersonDetailProjectTimeItem {
   hours: number
-  laborCost: number
+  laborCost: number | null
   projectId: string
   projectName: string
 }
@@ -310,6 +323,10 @@ export interface CreatePersonInput {
 }
 
 export interface UpdatePersonInput extends CreatePersonInput {
+  personId: string
+}
+
+export interface RemovePersonInput {
   personId: string
 }
 
@@ -336,10 +353,14 @@ export interface PersonDetailData {
     latestTrackedWeekUtilizationPercent: number
     recentEntries: PersonDetailTimeEntry[]
     totalHours: number
-    totalLaborCost: number
+    totalLaborCost: number | null
     byProject: PersonDetailProjectTimeItem[]
   }
   viewerLabel: string | null
+}
+
+function getAnnualSalary(row: Pick<PersonRow, "annual_salary">): number | null {
+  return row.annual_salary === null ? null : Number(row.annual_salary)
 }
 
 function toPerson(row: PersonRow): Person {
@@ -350,7 +371,7 @@ function toPerson(row: PersonRow): Person {
     photoUrl: row.photo_url,
     officeId: row.office_id,
     supervisorPersonId: row.supervisor_person_id,
-    annualSalary: Number(row.annual_salary),
+    annualSalary: getAnnualSalary(row) ?? 0,
     availabilityHoursPerWeek: Number(row.availability_hours_per_week),
     email: row.email,
     active: row.active,
@@ -454,12 +475,72 @@ function normalizeEmail(value?: string | null): string | null {
   return normalized
 }
 
+function normalizeStoredEmail(value?: string | null): string | null {
+  const normalized = value?.trim().toLowerCase()
+  return normalized ? normalized : null
+}
+
 function normalizeAnnualSalary(value: number): number {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error("Salary is invalid.")
   }
 
   return Number(value)
+}
+
+function getErrorMessage(error: unknown, fallback = "Unexpected error."): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim()
+  ) {
+    return error.message
+  }
+
+  return fallback
+}
+
+function toError(error: unknown, fallback = "Unexpected error."): Error {
+  return error instanceof Error ? error : new Error(getErrorMessage(error, fallback))
+}
+
+function isSupabaseApiKeyError(error: unknown): boolean {
+  return getErrorMessage(error).toLowerCase().includes("unregistered api key")
+}
+
+function isAuthUserAlreadyRegisteredError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase()
+  return message.includes("already registered")
+}
+
+function createTemporaryPassword(): string {
+  return `Mandala-${crypto.randomUUID()}-Aa1!`
+}
+
+async function isServiceRoleClientUsable(
+  serviceClient: NonNullable<ReturnType<typeof createServerSupabaseClient>> | null,
+): Promise<boolean> {
+  if (!serviceClient) {
+    return false
+  }
+
+  const { error } = await serviceClient.from("offices").select("id").limit(1)
+
+  if (!error) {
+    return true
+  }
+
+  if (isSupabaseApiKeyError(error)) {
+    return false
+  }
+
+  throw toError(error, "Unable to verify Supabase service-role access.")
 }
 
 async function inviteAuthUserByEmail(
@@ -480,6 +561,30 @@ async function inviteAuthUserByEmail(
   }
 
   return data.user?.id ?? null
+}
+
+async function ensureAuthUserByEmail(
+  email: string,
+  fullName: string,
+  redirectTo: string | null,
+  client: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<"created" | "existing"> {
+  const { error } = await client.auth.signUp({
+    email,
+    password: createTemporaryPassword(),
+    options: {
+      data: {
+        fullName,
+      },
+      emailRedirectTo: redirectTo ?? undefined,
+    },
+  })
+
+  if (error && !isAuthUserAlreadyRegisteredError(error)) {
+    throw toError(error, "Unable to create the auth user.")
+  }
+
+  return error ? "existing" : "created"
 }
 
 async function sendPasswordRecoveryEmail(
@@ -587,9 +692,11 @@ function buildPersonListItem(
   permissionValueByPersonId: Map<string, CreatePersonPermission>,
   canEdit: boolean,
   canEditPermission: boolean,
+  canViewCompensationValue: boolean,
   isCurrentViewer: boolean,
 ): PersonListItem {
   const person = toPerson(row)
+  const annualSalary = getAnnualSalary(row)
   const { supervisorName, supervisorPhotoUrl } = getSupervisorSummary(
     row.supervisor_person_id,
     peopleById,
@@ -597,9 +704,10 @@ function buildPersonListItem(
 
   return {
     active: person.active,
-    annualSalary: person.annualSalary,
+    annualSalary: canViewCompensationValue ? annualSalary : null,
     canEdit,
     canEditPermission,
+    canViewCompensation: canViewCompensationValue,
     email: person.email,
     effectivePermission: permissionValueByPersonId.get(person.id) ?? "noAccount",
     effectivePermissionLabel: permissionLabelByPersonId.get(person.id) ?? null,
@@ -647,6 +755,7 @@ function buildPersonDetailPerson(
   effectivePermission: CreatePersonPermission,
   canEdit: boolean,
   canEditPermission: boolean,
+  canViewCompensationValue: boolean,
   isCurrentViewer: boolean,
 ): PersonDetailPerson {
   const person = toPerson(row)
@@ -661,6 +770,7 @@ function buildPersonDetailPerson(
     new Map([[row.id, effectivePermission]]),
     canEdit,
     canEditPermission,
+    canViewCompensationValue,
     isCurrentViewer,
   )
 
@@ -673,7 +783,9 @@ function buildPersonDetailPerson(
     assignedHours,
     availabilityHoursPerWeek: person.availabilityHoursPerWeek,
     effectivePermission,
-    hourlyCost: deriveHourlyCost(person.annualSalary),
+    hourlyCost: canViewCompensationValue && getAnnualSalary(row) !== null
+      ? deriveHourlyCost(getAnnualSalary(row)!)
+      : null,
     remainingCapacity: deriveRemainingCapacity(
       person.availabilityHoursPerWeek,
       assignedHours,
@@ -687,9 +799,13 @@ function emptyPersonTimeSummary(): PersonDetailData["timeSummary"] {
     latestTrackedWeekUtilizationPercent: 0,
     recentEntries: [],
     totalHours: 0,
-    totalLaborCost: 0,
+    totalLaborCost: null,
     byProject: [],
   }
+}
+
+function isElevatedPermission(permission: CreatePersonPermission): boolean {
+  return permission === "admin" || permission === "partner"
 }
 
 function canEditPersonPermission(
@@ -802,7 +918,7 @@ function listPreviewPeople(
   filters: PeopleListFilters,
   viewer: NonNullable<CurrentViewerAccess["viewer"]>,
 ): PeopleListData {
-  const filteredPeople = previewPeople.filter((row) => matchesFilters(row, filters))
+  const filteredPeople = previewPeople.filter((row) => row.active && matchesFilters(row, filters))
   const officesById = new Map(previewOffices.map((office) => [office.id, office]))
   const peopleById = new Map(previewPeople.map((person) => [person.id, person]))
   const projectsById = new Map(previewProjects.map((project) => [project.id, project]))
@@ -924,6 +1040,10 @@ function listPreviewPeople(
         permissionValueByPersonId,
         canCreateOrUpdatePeople(viewer, row.office_id),
         canEditPersonPermission(viewer, row),
+        canViewCompensation(viewer, {
+          id: row.id,
+          officeId: row.office_id,
+        }),
         isCurrentViewerPerson(viewer, row.id),
       ),
     ),
@@ -975,10 +1095,13 @@ function listPreviewPeopleRailData(): PeopleRailData {
   }
 }
 
-function getPreviewPersonDetail(personId: string): PersonDetailData {
+function getPreviewPersonDetail(
+  personId: string,
+  viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+): PersonDetailData {
   const person = previewPeople.find((candidate) => candidate.id === personId)
 
-  if (!person) {
+  if (!person || !person.active) {
     return emptyPersonDetailData(false, PREVIEW_CONFIG_MESSAGE, null, null, false)
   }
 
@@ -1104,9 +1227,14 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
     effectivePermission,
     false,
     false,
+    canViewCompensation(viewer, {
+      id: person.id,
+      officeId: person.office_id,
+    }),
     false,
   )
-  const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
+  const canViewPersonCompensation = personListItem.canViewCompensation
+  const hourlyCost = personListItem.hourlyCost ?? 0
   const byProject = new Map<string, PersonDetailProjectTimeItem>()
   let totalHours = 0
   let totalLaborCost = 0
@@ -1122,12 +1250,14 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
 
   for (const entry of timeEntryRows) {
     const hours = Number(entry.hours)
-    const laborCost = hours * hourlyCost
+    const laborCost = canViewPersonCompensation ? hours * hourlyCost : null
     const projectName = projectsById.get(entry.project_id)?.name ?? "Unknown project"
     const existing = byProject.get(entry.project_id)
 
     totalHours += hours
-    totalLaborCost += laborCost
+    if (laborCost !== null) {
+      totalLaborCost += laborCost
+    }
 
     if (latestTrackedWeekStart) {
       const entryDate = new Date(`${entry.date}T00:00:00Z`)
@@ -1138,7 +1268,10 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
 
     if (existing) {
       existing.hours += hours
-      existing.laborCost += laborCost
+      existing.laborCost =
+        existing.laborCost !== null && laborCost !== null
+          ? existing.laborCost + laborCost
+          : null
     } else {
       byProject.set(entry.project_id, {
         hours,
@@ -1199,7 +1332,7 @@ function getPreviewPersonDetail(personId: string): PersonDetailData {
         source: entry.source,
       })),
       totalHours,
-      totalLaborCost,
+      totalLaborCost: canViewPersonCompensation ? totalLaborCost : null,
       byProject: Array.from(byProject.values()).sort((left, right) =>
         right.hours - left.hours || left.projectName.localeCompare(right.projectName),
       ),
@@ -1216,14 +1349,32 @@ export async function listPeople(
     hasOfficeFilter: Boolean(filters.officeId),
     hasQuery: Boolean(filters.query?.trim()),
   })
-  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
-    getCurrentViewerAccess(context),
-  )
-  const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null
+  const viewerAccessPromise = trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  )
+  const baseQueriesPromise = client
+    ? trace
+        .measure("baseQueries", () =>
+          Promise.all([
+            client
+              .from("people")
+              .select(PERSON_PUBLIC_SELECT)
+              .eq("active", true)
+              .order("full_name"),
+            fetchOfficeRows(undefined, { client }),
+          ]),
+        )
+        .then(
+          (value) => ({ error: null as null, value }),
+          (error: unknown) => ({ error, value: null as null }),
+        )
+    : null
+  const viewerAccess = await viewerAccessPromise
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
 
   if (!viewerAccess.viewer) {
     trace.finish({
@@ -1272,28 +1423,47 @@ export async function listPeople(
     }
   }
 
-  const [{ data: peopleData, error: peopleError }, offices] = await trace.measure(
-    "baseQueries",
-    () =>
-      Promise.all([
-        client
-          .from("people")
-          .select(
-            "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-          )
-          .order("full_name"),
-        fetchOfficeRows(undefined, { client }),
-      ]),
-  )
+  const baseQueriesResult = baseQueriesPromise
+    ? await baseQueriesPromise
+    : { error: null as null, value: null as null }
+
+  if (baseQueriesResult.error) {
+    throw baseQueriesResult.error
+  }
+
+  if (!baseQueriesResult.value) {
+    throw new Error("People list base queries returned no data.")
+  }
+
+  const [{ data: peopleData, error: peopleError }, offices] = baseQueriesResult.value
 
   if (peopleError) {
     throw peopleError
   }
 
-  const filteredPeople = ((peopleData ?? []) as PersonRow[]).filter((row) =>
+  const peopleRows = ((peopleData ?? []) as Array<Omit<PersonRow, "annual_salary">>).map(
+    (row) => ({
+      ...row,
+      annual_salary: null,
+    }),
+  )
+  const filteredPeople = peopleRows.filter((row) =>
     matchesFilters(row, filters),
   )
-  const peopleById = new Map(((peopleData ?? []) as PersonRow[]).map((row) => [row.id, row]))
+  const canViewPeopleCompensation = canViewFinancialData(viewerAccess.viewer)
+  const compensationByPersonId = canViewPeopleCompensation
+    ? await trace.measure("fetchPeopleCompensation", () =>
+        fetchPeopleCompensationById(
+          filteredPeople.map((row) => row.id),
+          { client },
+        ),
+      )
+    : new Map<string, number>()
+  const filteredPeopleWithCompensation = attachPeopleCompensation(
+    filteredPeople,
+    compensationByPersonId,
+  )
+  const peopleById = new Map(peopleRows.map((row) => [row.id, row]))
   const officesById = new Map(offices.map((office) => [office.id, office]))
   const peopleIds = filteredPeople.map((person) => person.id)
 
@@ -1494,7 +1664,7 @@ export async function listPeople(
     filters,
     forbidden: false,
     offices: offices.map((office) => ({ id: office.id, name: office.name })),
-    people: filteredPeople.map((row) =>
+    people: filteredPeopleWithCompensation.map((row) =>
       buildPersonListItem(
         row,
         officesById,
@@ -1505,6 +1675,10 @@ export async function listPeople(
         permissionValueByPersonId,
         canCreateOrUpdatePeople(viewerAccess.viewer!, row.office_id),
         canEditPersonPermission(viewerAccess.viewer!, row),
+        canViewCompensation(viewerAccess.viewer!, {
+          id: row.id,
+          officeId: row.office_id,
+        }),
         isCurrentViewerPerson(viewerAccess.viewer!, row.id),
       ),
     ),
@@ -1522,12 +1696,25 @@ export async function listPeopleOptions(
     return cachedValue
   }
 
-  const viewerAccess = await getCurrentViewerAccess(context)
-  const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null
+  const viewerAccessPromise = getCurrentViewerAccess(context)
+  const peopleOptionsPromise = client
+    ? (async () =>
+        await client
+          .from("people")
+          .select("id, full_name, title, photo_url")
+          .eq("active", true)
+          .order("full_name"))()
+        .then(
+          (value) => ({ error: null as null, value }),
+          (error: unknown) => ({ error, value: null as null }),
+        )
+    : null
+  const viewerAccess = await viewerAccessPromise
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
 
   if (!viewerAccess.viewer) {
     return emptyPeopleOptionsData(
@@ -1561,11 +1748,19 @@ export async function listPeopleOptions(
     return cacheKey ? setCachedValue(peopleOptionsCache, cacheKey, previewResult) : previewResult
   }
 
-  const { data, error } = await client
-    .from("people")
-    .select("id, full_name, title, photo_url")
-    .eq("active", true)
-    .order("full_name")
+  const peopleOptionsResult = peopleOptionsPromise
+    ? await peopleOptionsPromise
+    : { error: null as null, value: null as null }
+
+  if (peopleOptionsResult.error) {
+    throw peopleOptionsResult.error
+  }
+
+  if (!peopleOptionsResult.value) {
+    throw new Error("People options query returned no data.")
+  }
+
+  const { data, error } = peopleOptionsResult.value
 
   if (error) {
     throw error
@@ -1607,12 +1802,19 @@ export async function listPeopleOfficeOptions(
     return cachedValue
   }
 
-  const viewerAccess = await getCurrentViewerAccess(context)
-  const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null
+  const viewerAccessPromise = getCurrentViewerAccess(context)
+  const officesPromise = client
+    ? fetchOfficeRows(undefined, { client }).then(
+        (value) => ({ error: null as null, value }),
+        (error: unknown) => ({ error, value: null as null }),
+      )
+    : null
+  const viewerAccess = await viewerAccessPromise
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
 
   if (!viewerAccess.viewer) {
     return emptyPeopleOfficeOptionsData(
@@ -1647,7 +1849,19 @@ export async function listPeopleOfficeOptions(
       : previewResult
   }
 
-  const offices = await fetchOfficeRows(undefined, { client })
+  const officesResult = officesPromise
+    ? await officesPromise
+    : { error: null as null, value: null as null }
+
+  if (officesResult.error) {
+    throw officesResult.error
+  }
+
+  if (!officesResult.value) {
+    throw new Error("People office options query returned no data.")
+  }
+
+  const offices = officesResult.value
   const result = {
     accessMessage: viewerAccess.accessMessage,
     configMessage: status.message,
@@ -1673,14 +1887,29 @@ export async function listPeopleRailData(
   }
 
   const trace = createPerfTrace("listPeopleRailData")
-  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
-    getCurrentViewerAccess(context),
-  )
-  const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null
+  const viewerAccessPromise = trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  )
+  const activePeoplePromise = client
+    ? trace
+        .measure("fetchActivePeople", async () =>
+          await client
+            .from("people")
+            .select("id, full_name, photo_url, title")
+            .eq("active", true)
+            .order("full_name"),
+        )
+        .then(
+          (value) => ({ error: null as null, value }),
+          (error: unknown) => ({ error, value: null as null }),
+        )
+    : null
+  const viewerAccess = await viewerAccessPromise
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
 
   if (!viewerAccess.viewer) {
     trace.finish({
@@ -1729,13 +1958,19 @@ export async function listPeopleRailData(
     return cacheKey ? setCachedValue(peopleRailCache, cacheKey, previewResult) : previewResult
   }
 
-  const { data, error } = await trace.measure("fetchActivePeople", () =>
-    client
-      .from("people")
-      .select("id, full_name, photo_url, title")
-      .eq("active", true)
-      .order("full_name"),
-  )
+  const activePeopleResult = activePeoplePromise
+    ? await activePeoplePromise
+    : { error: null as null, value: null as null }
+
+  if (activePeopleResult.error) {
+    throw activePeopleResult.error
+  }
+
+  if (!activePeopleResult.value) {
+    throw new Error("People rail query returned no data.")
+  }
+
+  const { data, error } = activePeopleResult.value
 
   if (error) {
     throw error
@@ -1797,7 +2032,7 @@ export async function createPerson(
     throw new Error("You do not have permission to create people for this office.")
   }
 
-  if ((input.permission === "admin" || input.permission === "partner") && !hasPartnerRole(viewerAccess.viewer)) {
+  if (isElevatedPermission(input.permission) && !hasPartnerPrivileges(viewerAccess.viewer)) {
     throw new Error("Only partners can assign elevated permissions.")
   }
 
@@ -1834,12 +2069,17 @@ export async function createPerson(
     }
   }
 
-  const serviceClient =
+  const rawServiceClient =
     input.permission === "noAccount" ? null : createServerSupabaseClient({ useServiceRole: true })
+  const recoveryClient =
+    input.permission === "noAccount" ? null : createServerSupabaseClient()
+  const serviceClient = (await isServiceRoleClientUsable(rawServiceClient))
+    ? rawServiceClient
+    : null
 
-  if (input.permission !== "noAccount" && !serviceClient) {
+  if (input.permission !== "noAccount" && !serviceClient && !recoveryClient) {
     throw new Error(
-      "Account-backed people creation requires SUPABASE_SERVICE_ROLE_KEY.",
+      "Account-backed people creation requires a working Supabase auth configuration.",
     )
   }
 
@@ -1851,7 +2091,7 @@ export async function createPerson(
       .maybeSingle()
 
     if (existingAccountError) {
-      throw existingAccountError
+      throw toError(existingAccountError)
     }
 
     if (existingAccount) {
@@ -1885,23 +2125,25 @@ export async function createPerson(
         supervisor_person_id: supervisorPersonId,
         title,
       })
-      .select(
-        "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-      )
+      .select(PERSON_PUBLIC_SELECT)
       .single()
 
     if (personError) {
-      throw personError
+      throw toError(personError)
     }
 
-    const createdPerson = personData as PersonRow
+    const createdPerson = {
+      ...(personData as Omit<PersonRow, "annual_salary">),
+      annual_salary: annualSalary,
+    }
     createdPersonId = createdPerson.id
 
-    if (!serviceClient || !email) {
+    if (input.permission === "noAccount" || !email) {
       return toPerson(createdPerson)
     }
 
-    const { data: userAccountData, error: userAccountError } = await serviceClient
+    const accountClient = serviceClient ?? client
+    const { data: userAccountData, error: userAccountError } = await accountClient
       .from("user_accounts")
       .insert({
         active: true,
@@ -1912,22 +2154,39 @@ export async function createPerson(
       .single()
 
     if (userAccountError) {
-      throw userAccountError
+      throw toError(userAccountError)
     }
 
     if (input.permission === "admin" || input.permission === "partner") {
-      const { error: roleAssignmentError } = await serviceClient
+      const { error: roleAssignmentError } = await accountClient
         .from("role_assignments")
         .insert({
           active: true,
           assigned_by_user_account_id: viewerAccess.viewer.userAccountId,
-          office_id: input.permission === "admin" ? officeId : null,
+          office_id: null,
           role: input.permission,
           user_account_id: (userAccountData as { id: string }).id,
         })
 
       if (roleAssignmentError) {
-        throw roleAssignmentError
+        throw toError(roleAssignmentError)
+      }
+    }
+
+    if (!serviceClient && recoveryClient) {
+      const authUserState = await ensureAuthUserByEmail(
+        email,
+        fullName,
+        inviteRedirectTo,
+        recoveryClient,
+      )
+
+      try {
+        await sendPasswordRecoveryEmail(email, inviteRedirectTo, recoveryClient)
+      } catch (error) {
+        if (authUserState === "existing") {
+          throw error
+        }
       }
     }
 
@@ -1945,7 +2204,7 @@ export async function createPerson(
       await serviceClient.auth.admin.deleteUser(createdAuthUserId)
     }
 
-    throw error
+    throw toError(error, "Unable to create person.")
   }
 }
 
@@ -1990,9 +2249,7 @@ export async function updatePerson(
 
   const { data: existingPersonData, error: existingPersonError } = await client
     .from("people")
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
+    .select(PERSON_PUBLIC_SELECT)
     .eq("id", personId)
     .maybeSingle()
 
@@ -2057,6 +2314,33 @@ export async function updatePerson(
   }
 
   const currentUserAccount = (userAccountResponse.data ?? null) as UserAccountListRow | null
+  const currentRoleAssignmentsResponse = currentUserAccount
+    ? await client
+        .from("role_assignments")
+        .select("user_account_id, role, active")
+        .eq("user_account_id", currentUserAccount.id)
+    : null
+
+  if (currentRoleAssignmentsResponse?.error) {
+    throw currentRoleAssignmentsResponse.error
+  }
+
+  const currentRoleAssignments = currentUserAccount
+    ? ((currentRoleAssignmentsResponse?.data ?? []) as RoleAssignmentListRow[])
+    : []
+  const currentPermission = buildEffectivePermissionValue(
+    currentUserAccount,
+    currentRoleAssignments,
+  )
+  const isPermissionChange = input.permission !== currentPermission
+
+  if (
+    isPermissionChange &&
+    (isElevatedPermission(currentPermission) || isElevatedPermission(input.permission)) &&
+    !hasPartnerPrivileges(viewerAccess.viewer)
+  ) {
+    throw new Error("Only partners can change elevated permissions.")
+  }
   const requiresServiceRole = Boolean(currentUserAccount) || input.permission !== "noAccount"
   const serviceClient = requiresServiceRole
     ? createServerSupabaseClient({ useServiceRole: true })
@@ -2094,9 +2378,7 @@ export async function updatePerson(
       title,
     })
     .eq("id", personId)
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
+    .select(PERSON_PUBLIC_SELECT)
     .single()
 
   if (updatedPersonError) {
@@ -2225,7 +2507,7 @@ export async function updatePerson(
             .insert({
               active: true,
               assigned_by_user_account_id: viewerAccess.viewer.userAccountId,
-              office_id: input.permission === "admin" ? officeId : null,
+              office_id: null,
               role: input.permission,
               user_account_id: userAccountId,
             })
@@ -2245,7 +2527,227 @@ export async function updatePerson(
   if (email) {
     invalidateViewerAccessCache(email)
   }
-  return toPerson(updatedPersonData as PersonRow)
+  return toPerson({
+    ...(updatedPersonData as Omit<PersonRow, "annual_salary">),
+    annual_salary: annualSalary,
+  })
+}
+
+export async function removePerson(
+  input: RemovePersonInput,
+  context: ViewerRequestContext = {},
+): Promise<Person> {
+  const status = getDatabaseStatus()
+
+  if (!status.configured) {
+    throw new Error("Person removal requires a configured database connection.")
+  }
+
+  const viewerAccess = await getCurrentViewerAccess(context)
+
+  if (!viewerAccess.viewer) {
+    throw new Error(viewerAccess.accessMessage ?? "Sign in to continue.")
+  }
+
+  const personId = normalizeRequiredText(input.personId, "Person")
+  const client = createServerSupabaseClient({ accessToken: context.accessToken })
+
+  if (!client) {
+    throw new Error("Person removal requires a configured database connection.")
+  }
+
+  const [{ data: personData, error: personError }, { data: userAccountData, error: userAccountError }] =
+    await Promise.all([
+      client
+        .from("people")
+        .select(PERSON_PUBLIC_SELECT)
+        .eq("id", personId)
+        .maybeSingle(),
+      client
+        .from("user_accounts")
+        .select("id, person_id, email, active")
+        .eq("person_id", personId)
+        .maybeSingle(),
+    ])
+
+  if (personError) {
+    throw personError
+  }
+
+  if (userAccountError) {
+    throw userAccountError
+  }
+
+  if (!personData) {
+    throw new Error("Selected person is unavailable.")
+  }
+
+  const existingPerson = personData as PersonRow
+
+  if (!existingPerson.active) {
+    throw new Error("Selected person has already been removed.")
+  }
+
+  if (!canCreateOrUpdatePeople(viewerAccess.viewer, existingPerson.office_id)) {
+    throw new Error("You do not have permission to remove this person.")
+  }
+
+  if (viewerAccess.viewer.personId === personId) {
+    throw new Error("Ask another partner or admin to remove your own person record.")
+  }
+
+  const currentUserAccount = (userAccountData ?? null) as UserAccountListRow | null
+  const currentRoleAssignmentsResponse = currentUserAccount
+    ? await client
+        .from("role_assignments")
+        .select("user_account_id, role, active")
+        .eq("user_account_id", currentUserAccount.id)
+    : null
+
+  if (currentRoleAssignmentsResponse?.error) {
+    throw currentRoleAssignmentsResponse.error
+  }
+
+  const currentRoleAssignments = currentUserAccount
+    ? ((currentRoleAssignmentsResponse?.data ?? []) as RoleAssignmentListRow[])
+    : []
+  const currentPermission = buildEffectivePermissionValue(
+    currentUserAccount,
+    currentRoleAssignments,
+  )
+
+  if (isElevatedPermission(currentPermission) && !hasPartnerPrivileges(viewerAccess.viewer)) {
+    throw new Error("Only partners can remove people with elevated permissions.")
+  }
+
+  const targetEmail =
+    normalizeStoredEmail(currentUserAccount?.email) ?? normalizeStoredEmail(existingPerson.email)
+
+  if (
+    targetEmail === EXACT_SUPER_USER_EMAIL &&
+    !hasExactSuperUserOverride(viewerAccess.viewer)
+  ) {
+    throw new Error("Only the bootstrap super user can remove that bootstrap account.")
+  }
+
+  const rawServiceClient = createServerSupabaseClient({ useServiceRole: true })
+  const serviceClient = (await isServiceRoleClientUsable(rawServiceClient))
+    ? rawServiceClient
+    : null
+
+  if (!serviceClient) {
+    throw new Error("Person removal requires SUPABASE_SERVICE_ROLE_KEY.")
+  }
+
+  const authUser = currentUserAccount?.email
+    ? await findAuthUserByEmail(currentUserAccount.email.trim().toLowerCase(), serviceClient)
+    : null
+
+  if (currentUserAccount) {
+    const { error: deactivateRoleAssignmentsError } = await serviceClient
+      .from("role_assignments")
+      .update({ active: false })
+      .eq("user_account_id", currentUserAccount.id)
+
+    if (deactivateRoleAssignmentsError) {
+      throw deactivateRoleAssignmentsError
+    }
+
+    const { error: deactivateClientAccessError } = await serviceClient
+      .from("client_project_access")
+      .update({ active: false })
+      .eq("user_account_id", currentUserAccount.id)
+
+    if (deactivateClientAccessError) {
+      throw deactivateClientAccessError
+    }
+
+    const { error: deactivateAccountError } = await serviceClient
+      .from("user_accounts")
+      .update({ active: false })
+      .eq("id", currentUserAccount.id)
+
+    if (deactivateAccountError) {
+      throw deactivateAccountError
+    }
+  }
+
+  const [
+    deactivateAssignmentsResponse,
+    clearProjectLeadsResponse,
+    clearOfficePartnersResponse,
+    clearSupervisorsResponse,
+    clearChecklistAssignmentsResponse,
+  ] = await Promise.all([
+    serviceClient
+      .from("assignments")
+      .update({ active: false })
+      .eq("person_id", personId)
+      .eq("active", true),
+    serviceClient
+      .from("projects")
+      .update({ lead_person_id: null })
+      .eq("lead_person_id", personId),
+    serviceClient
+      .from("offices")
+      .update({ partner_person_id: null })
+      .eq("partner_person_id", personId),
+    serviceClient
+      .from("people")
+      .update({ supervisor_person_id: null })
+      .eq("supervisor_person_id", personId),
+    serviceClient
+      .from("checklist_items")
+      .update({ assigned_person_id: null })
+      .eq("assigned_person_id", personId),
+  ])
+
+  const cleanupError =
+    deactivateAssignmentsResponse.error ??
+    clearProjectLeadsResponse.error ??
+    clearOfficePartnersResponse.error ??
+    clearSupervisorsResponse.error ??
+    clearChecklistAssignmentsResponse.error
+
+  if (cleanupError) {
+    throw cleanupError
+  }
+
+  const { data: updatedPersonData, error: updatePersonError } = await serviceClient
+    .from("people")
+    .update({
+      active: false,
+    })
+    .eq("id", personId)
+    .select(PERSON_PUBLIC_SELECT)
+    .single()
+
+  if (updatePersonError) {
+    throw updatePersonError
+  }
+
+  if (authUser) {
+    const { error: deleteAuthUserError } = await serviceClient.auth.admin.deleteUser(authUser.id)
+
+    if (deleteAuthUserError) {
+      throw new Error(deleteAuthUserError.message)
+    }
+  }
+
+  invalidatePeopleReadCaches()
+
+  if (existingPerson.email) {
+    invalidateViewerAccessCache(existingPerson.email)
+  }
+
+  if (currentUserAccount?.email) {
+    invalidateViewerAccessCache(currentUserAccount.email)
+  }
+
+  return toPerson({
+    ...(updatedPersonData as Omit<PersonRow, "annual_salary">),
+    annual_salary: null,
+  })
 }
 
 export async function resendPersonAccountEmail(
@@ -2266,20 +2768,22 @@ export async function resendPersonAccountEmail(
 
   const personId = normalizeRequiredText(input.personId, "Person")
   const client = createServerSupabaseClient({ accessToken: context.accessToken })
-  const serviceClient = createServerSupabaseClient({ useServiceRole: true })
+  const rawServiceClient = createServerSupabaseClient({ useServiceRole: true })
   const recoveryClient = createServerSupabaseClient()
 
-  if (!client || !serviceClient || !recoveryClient) {
+  if (!client || !recoveryClient) {
     throw new Error("Resending account emails requires live Supabase auth to be configured.")
   }
+
+  const serviceClient = (await isServiceRoleClientUsable(rawServiceClient))
+    ? rawServiceClient
+    : null
 
   const [{ data: personData, error: personError }, { data: userAccountData, error: userAccountError }] =
     await Promise.all([
       client
         .from("people")
-        .select(
-          "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-        )
+        .select(PERSON_PUBLIC_SELECT)
         .eq("id", personId)
         .maybeSingle(),
       client
@@ -2290,11 +2794,11 @@ export async function resendPersonAccountEmail(
     ])
 
   if (personError) {
-    throw personError
+    throw toError(personError)
   }
 
   if (userAccountError) {
-    throw userAccountError
+    throw toError(userAccountError)
   }
 
   if (!personData) {
@@ -2320,6 +2824,16 @@ export async function resendPersonAccountEmail(
   }
 
   const redirectTo = context.appOrigin ? `${context.appOrigin}/join` : null
+
+  if (!serviceClient) {
+    await sendPasswordRecoveryEmail(email, redirectTo, recoveryClient)
+
+    return {
+      delivery: "passwordReset",
+      email,
+    }
+  }
+
   const authUser = await findAuthUserByEmail(email, serviceClient)
 
   if (authUser) {
@@ -2389,9 +2903,7 @@ export async function updatePersonPhoto(
 
   const { data: personRow, error: personError } = await client
     .from("people")
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
+    .select(PERSON_PUBLIC_SELECT)
     .eq("id", personId)
     .maybeSingle()
 
@@ -2417,16 +2929,26 @@ export async function updatePersonPhoto(
       photo_url: photoUrl ? photoUrl : null,
     })
     .eq("id", personId)
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
+    .select(PERSON_PUBLIC_SELECT)
     .single()
 
   if (error) {
     throw error
   }
 
-  return toPerson(data as PersonRow)
+  const compensationByPersonId = await fetchPeopleCompensationById([personId], { client })
+
+  return toPerson(
+    attachPeopleCompensation(
+      [
+        {
+          ...(data as Omit<PersonRow, "annual_salary">),
+          annual_salary: null,
+        },
+      ],
+      compensationByPersonId,
+    )[0],
+  )
 }
 
 export async function getPersonDetail(
@@ -2434,14 +2956,27 @@ export async function getPersonDetail(
   context: ViewerRequestContext = {},
 ): Promise<PersonDetailData> {
   const trace = createPerfTrace("getPersonDetail")
-  const viewerAccess = await trace.measure("getCurrentViewerAccess", () =>
-    getCurrentViewerAccess(context),
-  )
-  const viewerLabel = getViewerLabel(viewerAccess.summary)
   const status = getDatabaseStatus()
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null
+  const viewerAccessPromise = trace.measure("getCurrentViewerAccess", () =>
+    getCurrentViewerAccess(context),
+  )
+  const detailContextPromise = client
+    ? trace
+        .measure("rpc.get_person_detail_context", async () =>
+          await client.rpc("get_person_detail_context", {
+            target_person_id: personId,
+          }),
+        )
+        .then(
+          (value) => ({ error: null as null, value }),
+          (error: unknown) => ({ error, value: null as null }),
+        )
+    : null
+  const viewerAccess = await viewerAccessPromise
+  const viewerLabel = getViewerLabel(viewerAccess.summary)
 
   if (!viewerAccess.viewer) {
     trace.finish({
@@ -2459,7 +2994,7 @@ export async function getPersonDetail(
   }
 
   if (!client) {
-    const previewData = getPreviewPersonDetail(personId)
+    const previewData = getPreviewPersonDetail(personId, viewerAccess.viewer)
 
     if (
       previewData.person &&
@@ -2495,13 +3030,19 @@ export async function getPersonDetail(
     }
   }
 
-  const { data: detailContextData, error: detailContextError } = await trace.measure(
-    "rpc.get_person_detail_context",
-    () =>
-      client.rpc("get_person_detail_context", {
-        target_person_id: personId,
-      }),
-  )
+  const detailContextResult = detailContextPromise
+    ? await detailContextPromise
+    : { error: null as null, value: null as null }
+
+  if (detailContextResult.error) {
+    throw detailContextResult.error
+  }
+
+  if (!detailContextResult.value) {
+    throw new Error("Person detail query returned no data.")
+  }
+
+  const { data: detailContextData, error: detailContextError } = detailContextResult.value
 
   if (detailContextError) {
     throw detailContextError
@@ -2526,6 +3067,21 @@ export async function getPersonDetail(
 
   const person = detailContext.person
 
+  if (!person.active) {
+    trace.finish({
+      hasViewer: true,
+      personId,
+      result: "removed-person",
+    })
+    return emptyPersonDetailData(
+      status.configured,
+      status.message,
+      viewerAccess.accessMessage,
+      viewerLabel,
+      false,
+    )
+  }
+
   if (
     !canViewPerson(viewerAccess.viewer, {
       id: person.id,
@@ -2547,6 +3103,20 @@ export async function getPersonDetail(
     )
   }
 
+  const canViewPersonCompensation = canViewCompensation(viewerAccess.viewer, {
+    id: person.id,
+    officeId: person.office_id,
+  })
+  const compensationByPersonId = canViewPersonCompensation
+    ? await trace.measure("fetchPersonCompensation", () =>
+        fetchPeopleCompensationById([person.id], { client }),
+      )
+    : new Map<string, number>()
+  const personWithCompensation =
+    attachPeopleCompensation([person], compensationByPersonId)[0] ?? person
+  const supervisorWithCompensation = detailContext.supervisor
+    ? attachPeopleCompensation([detailContext.supervisor], compensationByPersonId)[0]
+    : null
   const assignmentRows = detailContext.assignments ?? []
   const timeEntryRows = detailContext.timeEntries ?? []
   const checklistRows = detailContext.checklistItems ?? []
@@ -2559,7 +3129,7 @@ export async function getPersonDetail(
       .map((office) => [office.id, office]),
   )
   const peopleById = new Map(
-    [person, detailContext.supervisor]
+    [personWithCompensation, supervisorWithCompensation]
       .filter((row): row is PersonRow => Boolean(row))
       .map((row) => [row.id, row]),
   )
@@ -2623,7 +3193,7 @@ export async function getPersonDetail(
   )
 
   const personListItem = buildPersonDetailPerson(
-    person,
+    personWithCompensation,
     assignmentsByPersonId,
     officesById,
     peopleById,
@@ -2633,9 +3203,10 @@ export async function getPersonDetail(
     effectivePermission,
     canCreateOrUpdatePeople(viewerAccess.viewer, person.office_id),
     canEditPersonPermission(viewerAccess.viewer, person),
+    canViewPersonCompensation,
     isCurrentViewerPerson(viewerAccess.viewer, person.id),
   )
-  const hourlyCost = deriveHourlyCost(personListItem.annualSalary)
+  const hourlyCost = personListItem.hourlyCost ?? 0
 
   const assignments = assignmentRows.map((assignment) => {
     const project = projectsById.get(assignment.project_id)
@@ -2692,12 +3263,14 @@ export async function getPersonDetail(
 
   for (const entry of timeEntryRows) {
     const hours = Number(entry.hours)
-    const laborCost = hours * hourlyCost
+    const laborCost = canViewPersonCompensation ? hours * hourlyCost : null
     const projectName = projectsById.get(entry.project_id)?.name ?? "Unknown project"
     const existing = byProject.get(entry.project_id)
 
     totalHours += hours
-    totalLaborCost += laborCost
+    if (laborCost !== null) {
+      totalLaborCost += laborCost
+    }
 
     if (latestTrackedWeekStart) {
       const entryDate = new Date(`${entry.date}T00:00:00Z`)
@@ -2708,7 +3281,10 @@ export async function getPersonDetail(
 
     if (existing) {
       existing.hours += hours
-      existing.laborCost += laborCost
+      existing.laborCost =
+        existing.laborCost !== null && laborCost !== null
+          ? existing.laborCost + laborCost
+          : null
     } else {
       byProject.set(entry.project_id, {
         hours,
@@ -2746,7 +3322,7 @@ export async function getPersonDetail(
       ),
       recentEntries,
       totalHours,
-      totalLaborCost,
+      totalLaborCost: canViewPersonCompensation ? totalLaborCost : null,
       byProject: Array.from(byProject.values()).sort((left, right) =>
         right.hours - left.hours || left.projectName.localeCompare(right.projectName),
       ),

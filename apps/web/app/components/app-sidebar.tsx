@@ -213,9 +213,11 @@ export function AppSidebar({
   const signOutFormRef = useRef<HTMLFormElement | null>(null)
   const trackerHydrationKeyRef = useRef<string | null>(null)
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
+  const [isDetailWorkspaceNavExpanded, setIsDetailWorkspaceNavExpanded] = useState(false)
   const [isProfileExpanded, setIsProfileExpanded] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
   const [trackerVisible, setTrackerVisible] = useState(false)
+  const [trackerHydrationRequested, setTrackerHydrationRequested] = useState(false)
   const [trackerLoading, setTrackerLoading] = useState(false)
   const [trackerSaving, setTrackerSaving] = useState(false)
   const [trackerAccessMessage, setTrackerAccessMessage] = useState<string | null>(null)
@@ -228,10 +230,16 @@ export function AppSidebar({
   const profileInitial = getFallbackAvatarInitial(profileName, "K")
   const profileAvatarStyle = getPersonFallbackAvatarStyle(profileName, "app-shell")
   const trackerSessionEmail = shell.sessionEmail ?? shell.viewerEmail
+  const canSeeSidebarTimeTracker = shell.primaryTier === "partner" ||
+    shell.primaryTier === "admin" ||
+    shell.primaryTier === "projectLead" ||
+    shell.primaryTier === "employee"
   const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
   const isDetailWorkspaceOpen = isDetailWorkspacePath(pathname)
   const isSidebarOpen =
-    !isForcedCollapsed && !isDetailWorkspaceOpen && !isManuallyCollapsed
+    !isForcedCollapsed &&
+    !isManuallyCollapsed &&
+    (!isDetailWorkspaceOpen || isDetailWorkspaceNavExpanded)
   const profileAvatar = shell.photoUrl ? (
     <img
       alt=""
@@ -276,6 +284,12 @@ export function AppSidebar({
   }, [isSidebarOpen])
 
   useEffect(() => {
+    if (!isDetailWorkspaceOpen) {
+      setIsDetailWorkspaceNavExpanded(false)
+    }
+  }, [isDetailWorkspaceOpen])
+
+  useEffect(() => {
     if (!shell.isAuthenticated) {
       return
     }
@@ -295,6 +309,7 @@ export function AppSidebar({
       trackerNowTimestamp,
     )
   const canStartTracker =
+    canSeeSidebarTimeTracker &&
     Boolean(trackerSessionEmail) &&
     !trackerLoading &&
     !trackerSaving &&
@@ -302,6 +317,7 @@ export function AppSidebar({
     !trackerRunningState &&
     Boolean(trackerSelectedProjectId)
   const canStopTracker =
+    canSeeSidebarTimeTracker &&
     Boolean(trackerSessionEmail) &&
     !trackerLoading &&
     !trackerSaving &&
@@ -309,7 +325,11 @@ export function AppSidebar({
     Boolean(trackerRunningState)
 
   useEffect(() => {
-    if (!isSidebarOpen || !trackerSessionEmail) {
+    setTrackerHydrationRequested(false)
+  }, [pathname, trackerSessionEmail])
+
+  useEffect(() => {
+    if (!isSidebarOpen || !canSeeSidebarTimeTracker || !trackerSessionEmail) {
       trackerHydrationKeyRef.current = null
       setTrackerVisible(false)
       setTrackerProjects([])
@@ -330,8 +350,6 @@ export function AppSidebar({
       persistedState.runningState,
     )
     let isCancelled = false
-    let idleCallbackId: number | null = null
-    let timeoutId: number | null = null
 
     async function hydrateTracker() {
       try {
@@ -447,31 +465,20 @@ export function AppSidebar({
       }
     }
 
-    if (shouldHydrateTrackerImmediatelyValue) {
+    if (shouldHydrateTrackerImmediatelyValue || trackerHydrationRequested) {
       startHydrate()
-    } else if (typeof window.requestIdleCallback === "function") {
-      idleCallbackId = window.requestIdleCallback(
-        () => {
-          startHydrate()
-        },
-        { timeout: 1500 },
-      )
-    } else {
-      timeoutId = window.setTimeout(() => {
-        startHydrate()
-      }, 800)
     }
 
     return () => {
       isCancelled = true
-      if (idleCallbackId != null && typeof window.cancelIdleCallback === "function") {
-        window.cancelIdleCallback(idleCallbackId)
-      }
-      if (timeoutId != null) {
-        window.clearTimeout(timeoutId)
-      }
     }
-  }, [isSidebarOpen, pathname, trackerSessionEmail])
+  }, [
+    canSeeSidebarTimeTracker,
+    isSidebarOpen,
+    pathname,
+    trackerHydrationRequested,
+    trackerSessionEmail,
+  ])
 
   useEffect(() => {
     if (!isSidebarOpen || !trackerRunningState) {
@@ -571,6 +578,12 @@ export function AppSidebar({
     setTrackerSelectedProjectId(nextProjectId)
   }
 
+  function requestTrackerHydration() {
+    if (!trackerHydrationRequested) {
+      setTrackerHydrationRequested(true)
+    }
+  }
+
   return (
     <aside className={`app-sidebar ${isSidebarOpen ? "app-sidebar-open" : "app-sidebar-closed"}`}>
       <div className="app-sidebar-top">
@@ -594,7 +607,7 @@ export function AppSidebar({
           </button>
         </div>
 
-        <SidebarNav isOpen={isSidebarOpen} />
+        <SidebarNav isOpen={isSidebarOpen} primaryTier={shell.primaryTier} />
 
         <div className={`app-pinned-divider ${isSidebarOpen ? "" : "app-pinned-divider-closed"}`} />
 
@@ -606,6 +619,9 @@ export function AppSidebar({
             event.preventDefault()
             if (!isForcedCollapsed) {
               setIsManuallyCollapsed(false)
+              if (isDetailWorkspaceOpen) {
+                setIsDetailWorkspaceNavExpanded(true)
+              }
             }
           }}
           tabIndex={isSidebarOpen ? -1 : 0}
@@ -617,8 +633,13 @@ export function AppSidebar({
       </div>
 
       <div className={`app-sidebar-bottom ${isSidebarOpen ? "" : "app-sidebar-bottom-closed"}`}>
-        {isSidebarOpen && trackerSessionEmail ? (
-          <section className="app-time-tracker" aria-label="Time tracker">
+        {isSidebarOpen && canSeeSidebarTimeTracker && trackerSessionEmail ? (
+          <section
+            className="app-time-tracker"
+            aria-label="Time tracker"
+            onFocusCapture={requestTrackerHydration}
+            onMouseEnter={requestTrackerHydration}
+          >
             <p className="app-time-tracker-title">Time tracker</p>
             <SelectDropdownField
               ariaLabel="Tracked project"

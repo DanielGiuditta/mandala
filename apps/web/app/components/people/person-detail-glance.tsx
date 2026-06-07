@@ -11,6 +11,10 @@ import type {
 import { EditableEntityPill } from "../editable-entity-pill";
 import { EntityReturnLink } from "../entity-return-link";
 import { buildPersonUpdateInput } from "./person-inline-edit-utils";
+import {
+  assertPersonMutationSucceeded,
+  type PersonMutationActionResult,
+} from "./person-action-results";
 import { personPickToSelectOption } from "./person-pick-select-option";
 import type {
   PersonCreateOfficeOption,
@@ -37,7 +41,7 @@ interface PersonDetailGlanceProps {
   officeOptions: PersonCreateOfficeOption[];
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   person: NonNullable<PersonDetailData["person"]>;
 }
 
@@ -256,10 +260,13 @@ export function PersonDetailGlance({
             <EditableEntityPill
               ariaLabel={`Change office for ${person.fullName}`}
               onCommit={async (nextValue) => {
-                await onUpdatePersonAction(
-                  buildPersonUpdateInput(person, {
-                    officeId: nextValue,
-                  }),
+                assertPersonMutationSucceeded(
+                  await onUpdatePersonAction(
+                    buildPersonUpdateInput(person, {
+                      officeId: nextValue,
+                    }),
+                  ),
+                  "Unable to update person.",
                 );
               }}
               options={officeSelectOptions}
@@ -278,10 +285,13 @@ export function PersonDetailGlance({
             <EditableEntityPill
               ariaLabel={`Change supervisor for ${person.fullName}`}
               onCommit={async (nextValue) => {
-                await onUpdatePersonAction(
-                  buildPersonUpdateInput(person, {
-                    supervisorPersonId: nextValue || null,
-                  }),
+                assertPersonMutationSucceeded(
+                  await onUpdatePersonAction(
+                    buildPersonUpdateInput(person, {
+                      supervisorPersonId: nextValue || null,
+                    }),
+                  ),
+                  "Unable to update person.",
                 );
               }}
               onOpenRequested={ensureSupervisorOptions}
@@ -306,10 +316,13 @@ export function PersonDetailGlance({
             <EditableEntityPill
               ariaLabel={`Change permission for ${person.fullName}`}
               onCommit={async (nextValue) => {
-                await onUpdatePersonAction(
-                  buildPersonUpdateInput(person, {
-                    permission: nextValue as CreatePersonPermission,
-                  }),
+                assertPersonMutationSucceeded(
+                  await onUpdatePersonAction(
+                    buildPersonUpdateInput(person, {
+                      permission: nextValue as CreatePersonPermission,
+                    }),
+                  ),
+                  "Unable to update person.",
                 );
               }}
               options={permissionOptions}

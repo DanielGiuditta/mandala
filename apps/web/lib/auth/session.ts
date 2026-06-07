@@ -1,9 +1,19 @@
-import type { ViewerRequestContext } from "@mandala/db"
-import { createPerfTrace, getDatabaseStatus } from "@mandala/db"
+import type {
+  CurrentViewerAccess,
+  ViewerRequestContext,
+} from "@mandala/db"
+import {
+  createPerfTrace,
+  getCurrentViewerAccess,
+  getDatabaseStatus,
+} from "@mandala/db"
+import { unstable_cache } from "next/cache"
 import { headers } from "next/headers"
 import { cache } from "react"
 
 import { createWebServerSupabaseClient } from "../supabase/server"
+
+const VIEWER_ACCESS_REVALIDATE_SECONDS = 300
 
 export interface AppSessionState {
   accessToken: string | null
@@ -91,14 +101,36 @@ export const getAppSessionState = cache(async (): Promise<AppSessionState> => {
   return result
 })
 
+async function getCachedViewerAccess(
+  context: ViewerRequestContext,
+): Promise<CurrentViewerAccess | null> {
+  if (!context.accessToken || !context.sessionEmail) {
+    return null
+  }
+
+  return unstable_cache(
+    async () => getCurrentViewerAccess(context),
+    ["viewer-access", context.sessionEmail],
+    {
+      revalidate: VIEWER_ACCESS_REVALIDATE_SECONDS,
+      tags: ["viewer-access"],
+    },
+  )()
+}
+
 export const getViewerRequestContext = cache(
   async (): Promise<ViewerRequestContext> => {
     const session = await getAppSessionState()
-
-    return {
+    const context = {
       accessToken: session.accessToken,
       appOrigin: session.appOrigin,
       sessionEmail: session.sessionEmail,
+    }
+    const viewerAccess = await getCachedViewerAccess(context)
+
+    return {
+      ...context,
+      viewerAccess,
     }
   },
 )

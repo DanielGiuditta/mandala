@@ -35,7 +35,8 @@ export function PersonWorklogCard({ person, timeSummary }: PersonWorklogCardProp
           <p className="pd-empty">No worklog entries yet.</p>
         ) : (
           timeSummary.recentEntries.map((entry) => {
-            const entryCost = entry.hours * person.hourlyCost;
+            const entryCost =
+              person.hourlyCost !== null ? entry.hours * person.hourlyCost : null;
 
             return (
               <article className="pd-list-item" key={entry.id}>

@@ -14,7 +14,7 @@ import { unstable_cache } from "next/cache";
 
 const PROJECTS_TAG = "projects";
 const PEOPLE_OPTIONS_TAG = "people-options";
-const PROJECTS_REVALIDATE_SECONDS = 15;
+const PROJECTS_REVALIDATE_SECONDS = 300;
 
 function normalizeFilterValue(value?: string | null): string {
   return value?.trim().toLowerCase() ?? "";

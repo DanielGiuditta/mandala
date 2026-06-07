@@ -17,6 +17,10 @@ export function buildPersonUpdateInput(
   person: InlineEditablePerson,
   overrides: Partial<UpdatePersonInput> = {},
 ): UpdatePersonInput {
+  if (person.annualSalary === null) {
+    throw new Error("Salary is unavailable for this viewer.");
+  }
+
   return {
     annualSalary: person.annualSalary,
     email: person.email ?? null,

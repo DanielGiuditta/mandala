@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import { PersonDetailEntity } from "./person-detail-entity";
 import { PersonDetailRail } from "./person-detail-rail";
 import type {
+  PersonAccountEmailActionResult,
+  PersonMutationActionResult,
+} from "./person-action-results";
+import type {
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
 } from "./person-create-types";
@@ -25,10 +29,13 @@ interface PersonDetailShellProps {
   ) => Promise<{ error: string | null; ok: boolean }>;
   onResendPersonAccountEmailAction: (
     input: { personId: string },
-  ) => Promise<{ message: string }>;
+  ) => Promise<PersonAccountEmailActionResult>;
+  onRemovePersonAction: (
+    input: { personId: string },
+  ) => Promise<PersonMutationActionResult>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   personId: string;
   railPeople: PersonRailItem[];
 }
@@ -41,6 +48,7 @@ export function PersonDetailShell({
   officeOptions,
   onAddProjectAction,
   onResendPersonAccountEmailAction,
+  onRemovePersonAction,
   onUpdatePersonAction,
   personId,
   railPeople,
@@ -101,6 +109,7 @@ export function PersonDetailShell({
           officeOptions={officeOptions}
           onAddProjectAction={onAddProjectAction}
           onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
+          onRemovePersonAction={onRemovePersonAction}
           onUpdatePersonAction={onUpdatePersonAction}
           titleSuggestions={titleSuggestions}
         />

@@ -9,6 +9,7 @@ import { EntityHeader } from "./entity-header";
 import { PersonCreateModal } from "./people/person-create-modal";
 import { PeopleListFilters } from "./people/people-list-filters";
 import { PeopleListTable } from "./people/people-list-table";
+import type { PersonMutationActionResult } from "./people/person-action-results";
 
 interface PeopleDomainListProps {
   data: PeopleListData;
@@ -25,10 +26,10 @@ interface PeopleDomainListProps {
   ) => Promise<{ error: string | null; ok: boolean }>;
   onCreatePersonAction: (
     input: CreatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
 }
 
 export function PeopleDomainList({
@@ -39,6 +40,7 @@ export function PeopleDomainList({
   onCreatePersonAction,
   onUpdatePersonAction,
 }: PeopleDomainListProps) {
+  const hasNotice = (!data.configured && Boolean(data.configMessage)) || Boolean(data.accessMessage);
   const titleSuggestions = Array.from(
     new Set(
       data.people
@@ -53,7 +55,7 @@ export function PeopleDomainList({
       : undefined;
 
   return (
-    <section className="people-domain">
+    <section className={`people-domain${hasNotice ? " people-domain-with-notice" : ""}`}>
       <EntityHeader
         action={
           <PersonCreateModal

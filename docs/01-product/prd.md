@@ -70,7 +70,9 @@ At machine login or session start, the person selects the current project from a
 
 The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
 
-That tracker may let the person pick any active project, start or stop a timer, and write a single manual time entry when the timer stops. The signed-in email resolves to the person's backing record for storage.
+That tracker may let the person pick any project they are allowed to track against, start or stop a timer, and write a single manual time entry when the timer stops. The signed-in email resolves to the person's backing record for storage.
+
+The standalone web time-tracker workspace remains limited to partners, admins, and project leads. Employees use the sidebar tracker instead.
 
 Once a person has recorded time on a project, the web app should treat that person as staffed to the project for project and people visibility across the system, even if no planned assignment exists yet.
 
@@ -110,7 +112,7 @@ The V1 stage set is fixed across the instance.
 
 Partners can change stage on any project.
 
-Scoped admins can change stage on projects managed by their scoped offices.
+Admins can change stage on any project.
 
 Project leads can change stage on projects they lead.
 
@@ -146,10 +148,12 @@ Authorization is separate from job titles, office partner designation, and clien
 V1 should support these effective user tiers:
 
 - `partner` — instance-wide operational control and admin assignment
-- `admin` — office-scoped operational control for one or more offices
-- `projectLead` — project-scoped control derived from project lead assignment
-- `employee` — internal contributor on staffed or led projects
+- `admin` — instance-wide operational control
+- `projectLead` — system-wide project/people read plus project-scoped write derived from project lead assignment
+- `employee` — internal contributor limited to assigned projects
 - `client` — read-only access to explicitly assigned projects
+
+One exact internal email, `danielgiuditta@gmail.com`, also holds a non-persisted bootstrap override above partner access.
 
 Client access is explicit per project and must not be inferred from `clientName`.
 

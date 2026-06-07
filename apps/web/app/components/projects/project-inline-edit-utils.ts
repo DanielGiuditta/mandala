@@ -4,7 +4,7 @@ export function buildProjectUpdateInput(
   project: ProjectListItem,
   overrides: Partial<UpdateProjectInput> = {},
 ): UpdateProjectInput {
-  return {
+  const nextInput: UpdateProjectInput = {
     clientName: project.clientName ?? null,
     description: project.description ?? null,
     leadPersonId: project.leadPersonId ?? null,
@@ -18,4 +18,13 @@ export function buildProjectUpdateInput(
     targetCompletionDate: project.targetCompletionDate ?? null,
     ...overrides,
   };
+
+  if (
+    overrides.managingOfficeId !== undefined &&
+    overrides.originatingOfficeId === undefined
+  ) {
+    nextInput.originatingOfficeId = overrides.managingOfficeId;
+  }
+
+  return nextInput;
 }

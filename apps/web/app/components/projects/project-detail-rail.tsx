@@ -1,7 +1,7 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { EntityHeader } from "../entity-header";
+import { EntityReturnLink } from "../entity-return-link";
 import type { ProjectRailItem } from "@mandala/db";
 import {
   getFallbackAvatarInitial,
@@ -46,11 +46,12 @@ export function ProjectDetailRail({
             const isActive = project.id === activeProjectId;
 
             return (
-              <Link
+              <EntityReturnLink
                 className={`projects-collapsed-row ${isActive ? "projects-collapsed-row-active" : ""}`}
                 href={`/projects/${project.id}`}
                 key={project.id}
-                prefetch={false}
+                scope="projects"
+                style={{ minWidth: 0 }}
               >
                 {project.photoUrl ? (
                   <img
@@ -69,8 +70,13 @@ export function ProjectDetailRail({
                     {getFallbackAvatarInitial(project.name, "P")}
                   </span>
                 )}
-                <span className="projects-collapsed-row-text">{project.name}</span>
-              </Link>
+                <span
+                  className="projects-collapsed-row-text entity-content-link-grow entity-content-link-label"
+                  title={project.name}
+                >
+                  {project.name}
+                </span>
+              </EntityReturnLink>
             );
           })
         )}

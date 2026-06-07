@@ -19,7 +19,7 @@ export function PersonProjectsCard({ person, timeSummary }: PersonProjectsCardPr
 
         return {
           hours: trackedProject?.hours ?? 0,
-          laborCost: trackedProject?.laborCost ?? 0,
+          laborCost: trackedProject?.laborCost ?? null,
           projectId: project.projectId,
           projectName: project.projectName,
           projectPhotoUrl: project.projectPhotoUrl,
@@ -57,7 +57,7 @@ export function PersonProjectsCard({ person, timeSummary }: PersonProjectsCardPr
               <div className="pd-list-item-aside">
                 <span className="pd-meta-text">
                   {formatHoursWithUnit(project.hours)}
-                  {project.laborCost > 0 ? ` · ${formatInrMetric(project.laborCost)}` : ""}
+                  {project.laborCost !== null ? ` · ${formatInrMetric(project.laborCost)}` : ""}
                 </span>
               </div>
             </article>

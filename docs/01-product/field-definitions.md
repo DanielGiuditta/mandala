@@ -95,6 +95,11 @@ If present, the document belongs to a project. If null, it belongs to the shared
 ### `category`
 Document grouping label such as drawing, brief, template, or reference.
 
+### `fileUrl`
+HTTPS URL for the document or library asset.
+
+The URL must not include embedded credentials.
+
 ## ChecklistItem
 
 ### `assignedPersonId`
@@ -114,6 +119,8 @@ Optional link to the internal person record for staff users.
 ### `email`
 Login email for the user account.
 
+The exact value `danielgiuditta@gmail.com` is reserved for the bootstrap authorization override documented in access control.
+
 ## RoleAssignment
 
 ### `role`
@@ -122,7 +129,7 @@ Elevated authorization role such as `partner` or `admin`.
 ### `officeId`
 Optional office scope for the role assignment.
 
-In V1, admin scope uses this field and partner scope leaves it null.
+In the current V1 contract, partner and admin access are both instance-scoped, so new elevated rows should leave this field null. Legacy non-null admin values do not narrow current admin scope.
 
 ### `assignedByUserAccountId`
 User who granted the elevated role assignment.

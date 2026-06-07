@@ -4,6 +4,7 @@ import {
   type ButtonHTMLAttributes,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
   type ReactNode,
   forwardRef,
   useEffect,
@@ -19,6 +20,90 @@ type VisualShape = "square" | "circle" | "bare"
 
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ")
+}
+
+function usePortaledDropdownSurface({
+  align,
+  isOpen,
+  menuMaxHeight,
+  minWidth = 0,
+  rootRef,
+}: {
+  align: Align
+  isOpen: boolean
+  menuMaxHeight: number
+  minWidth?: number
+  rootRef: RefObject<HTMLElement | null>
+}) {
+  const [listMaxHeight, setListMaxHeight] = useState(menuMaxHeight)
+  const [panelStyle, setPanelStyle] = useState<CSSProperties | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPanelStyle(null)
+      setListMaxHeight(menuMaxHeight)
+      return
+    }
+
+    let frameId = 0
+
+    function updatePosition() {
+      const anchor = rootRef.current
+      if (!anchor) {
+        return
+      }
+
+      const rect = anchor.getBoundingClientRect()
+      const viewportPadding = 12
+      const gap = 8
+      const panelPadding = 16
+      const panelWidth = Math.max(rect.width, minWidth)
+      const estimatedPanelHeight =
+        panelRef.current?.offsetHeight ?? Math.min(menuMaxHeight + panelPadding, 360)
+      const availableBelow = window.innerHeight - rect.bottom - gap - viewportPadding
+      const availableAbove = rect.top - gap - viewportPadding
+      const shouldOpenAbove =
+        availableBelow < estimatedPanelHeight && availableAbove > availableBelow
+      const availableSpace = shouldOpenAbove ? availableAbove : availableBelow
+      const clampedLeft = Math.min(
+        Math.max(
+          viewportPadding,
+          align === "end" ? rect.right - panelWidth : rect.left,
+        ),
+        Math.max(viewportPadding, window.innerWidth - panelWidth - viewportPadding),
+      )
+
+      setPanelStyle({
+        left: clampedLeft,
+        position: "fixed",
+        top: shouldOpenAbove ? rect.top - gap : rect.bottom + gap,
+        transform: shouldOpenAbove ? "translateY(-100%)" : undefined,
+        width: panelWidth,
+        zIndex: 120,
+      })
+      setListMaxHeight(
+        Math.min(menuMaxHeight, Math.max(80, availableSpace - panelPadding)),
+      )
+    }
+
+    updatePosition()
+    frameId = window.requestAnimationFrame(updatePosition)
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [align, isOpen, menuMaxHeight, minWidth, rootRef])
+
+  return {
+    listMaxHeight,
+    panelRef,
+    panelStyle,
+  }
 }
 
 function useControllableState<T>({
@@ -180,6 +265,7 @@ interface SelectDropdownFieldProps {
   defaultOpen?: boolean
   defaultValue?: string
   disabled?: boolean
+  id?: string
   menuClassName?: string
   menuMaxHeight?: number
   name?: string
@@ -544,6 +630,7 @@ export function SelectDropdownField({
   defaultOpen = false,
   defaultValue = "",
   disabled = false,
+  id,
   menuClassName,
   menuMaxHeight = 240,
   name,
@@ -569,6 +656,12 @@ export function SelectDropdownField({
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const listboxId = useId()
+  const { listMaxHeight, panelRef, panelStyle } = usePortaledDropdownSurface({
+    align,
+    isOpen,
+    menuMaxHeight,
+    rootRef,
+  })
 
   const selectedOption = useMemo(
     () => options.find((option) => option.value === selectedValue) ?? null,
@@ -586,9 +679,12 @@ export function SelectDropdownField({
     }
 
     function handleOutsidePointer(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return
       }
+
+      setIsOpen(false)
     }
 
     function handleEscape(event: KeyboardEvent) {
@@ -604,7 +700,7 @@ export function SelectDropdownField({
       window.removeEventListener("mousedown", handleOutsidePointer)
       window.removeEventListener("keydown", handleEscape)
     }
-  }, [disabled, isOpen, setIsOpen])
+  }, [disabled, isOpen, panelRef, setIsOpen])
 
   useEffect(() => {
     if (!isOpen) {
@@ -718,6 +814,7 @@ export function SelectDropdownField({
         aria-label={ariaLabel}
         className={cx("dropdown-trigger", disabled ? "dropdown-trigger-disabled" : "")}
         disabled={disabled}
+        id={id}
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleTriggerKeyDown}
         ref={triggerRef}
@@ -733,54 +830,61 @@ export function SelectDropdownField({
         </span>
       </button>
 
-      {isOpen ? (
-        <DropdownSurface align={align} className={menuClassName} matchTriggerWidth>
-          <div
-            className="dropdown-list"
-            id={listboxId}
-            onKeyDown={handleListboxKeyDown}
-            role="listbox"
-            style={{ maxHeight: `${menuMaxHeight}px` }}
-            tabIndex={-1}
-          >
-            {options.map((option, index) => {
-              const isActive = index === activeIndex
-              const isSelected = option.value === selectedValue
+      {isOpen && panelStyle
+        ? createPortal(
+            <div
+              className={cx("dropdown-surface", "dropdown-surface-portaled", menuClassName)}
+              ref={panelRef}
+              style={panelStyle}
+            >
+              <div
+                className="dropdown-list"
+                id={listboxId}
+                onKeyDown={handleListboxKeyDown}
+                role="listbox"
+                style={{ maxHeight: `${listMaxHeight}px` }}
+                tabIndex={-1}
+              >
+                {options.map((option, index) => {
+                  const isActive = index === activeIndex
+                  const isSelected = option.value === selectedValue
 
-              return (
-                <DropdownRow
-                  aria-selected={isSelected}
-                  className={cx(
-                    isActive ? "dropdown-row-active" : "",
-                    option.disabled ? "dropdown-row-disabled" : "",
-                  )}
-                  disabled={option.disabled}
-                  key={option.value}
-                  onClick={() => {
-                    if (!option.disabled) {
-                      commitValue(option.value)
-                    }
-                  }}
-                  onFocus={() => setActiveIndex(index)}
-                  ref={(element: HTMLButtonElement | null) => {
-                    optionRefs.current[index] = element
-                  }}
-                  role="option"
-                  tabIndex={isActive ? 0 : -1}
-                >
-                  {option.leadingVisual ? (
-                    <DropdownLeadingVisual shape={option.leadingVisualShape}>
-                      {option.leadingVisual}
-                    </DropdownLeadingVisual>
-                  ) : null}
-                  <DropdownLabelStack description={option.description} label={option.label} />
-                  <DropdownSelectedIndicator visible={isSelected} />
-                </DropdownRow>
-              )
-            })}
-          </div>
-        </DropdownSurface>
-      ) : null}
+                  return (
+                    <DropdownRow
+                      aria-selected={isSelected}
+                      className={cx(
+                        isActive ? "dropdown-row-active" : "",
+                        option.disabled ? "dropdown-row-disabled" : "",
+                      )}
+                      disabled={option.disabled}
+                      key={option.value}
+                      onClick={() => {
+                        if (!option.disabled) {
+                          commitValue(option.value)
+                        }
+                      }}
+                      onFocus={() => setActiveIndex(index)}
+                      ref={(element: HTMLButtonElement | null) => {
+                        optionRefs.current[index] = element
+                      }}
+                      role="option"
+                      tabIndex={isActive ? 0 : -1}
+                    >
+                      {option.leadingVisual ? (
+                        <DropdownLeadingVisual shape={option.leadingVisualShape}>
+                          {option.leadingVisual}
+                        </DropdownLeadingVisual>
+                      ) : null}
+                      <DropdownLabelStack description={option.description} label={option.label} />
+                      <DropdownSelectedIndicator visible={isSelected} />
+                    </DropdownRow>
+                  )
+                })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }
@@ -837,6 +941,12 @@ export function SuggestionDropdownField({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listboxId = useId()
+  const { listMaxHeight, panelRef, panelStyle } = usePortaledDropdownSurface({
+    align,
+    isOpen,
+    menuMaxHeight,
+    rootRef,
+  })
 
   const filteredOptions = useMemo(() => {
     const query = inputValue.trim().toLowerCase()
@@ -865,9 +975,12 @@ export function SuggestionDropdownField({
     }
 
     function handleOutsidePointer(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) {
+        return
       }
+
+      setIsOpen(false)
     }
 
     function handleEscape(event: KeyboardEvent) {
@@ -883,7 +996,7 @@ export function SuggestionDropdownField({
       window.removeEventListener("mousedown", handleOutsidePointer)
       window.removeEventListener("keydown", handleEscape)
     }
-  }, [disabled, isOpen, setIsOpen])
+  }, [disabled, isOpen, panelRef, setIsOpen])
 
   useEffect(() => {
     if (!isOpen) {
@@ -1031,50 +1144,57 @@ export function SuggestionDropdownField({
         </button>
       </div>
 
-      {isOpen && filteredOptions.length > 0 ? (
-        <DropdownSurface align={align} className={menuClassName} matchTriggerWidth>
-          <div
-            className="dropdown-list"
-            id={listboxId}
-            role="listbox"
-            style={{ maxHeight: `${menuMaxHeight}px` }}
-          >
-            {filteredOptions.map((option, index) => {
-              const isActive = index === activeIndex
-              const isSelected = option.value === inputValue
+      {isOpen && filteredOptions.length > 0 && panelStyle
+        ? createPortal(
+            <div
+              className={cx("dropdown-surface", "dropdown-surface-portaled", menuClassName)}
+              ref={panelRef}
+              style={panelStyle}
+            >
+              <div
+                className="dropdown-list"
+                id={listboxId}
+                role="listbox"
+                style={{ maxHeight: `${listMaxHeight}px` }}
+              >
+                {filteredOptions.map((option, index) => {
+                  const isActive = index === activeIndex
+                  const isSelected = option.value === inputValue
 
-              return (
-                <DropdownRow
-                  aria-selected={isSelected}
-                  className={cx(
-                    isActive ? "dropdown-row-active" : "",
-                    option.disabled ? "dropdown-row-disabled" : "",
-                  )}
-                  disabled={option.disabled}
-                  id={optionId(index)}
-                  key={`${option.value}-${index}`}
-                  onClick={() => {
-                    if (!option.disabled) {
-                      commitValue(option.value)
-                    }
-                  }}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  role="option"
-                  tabIndex={-1}
-                >
-                  {option.leadingVisual ? (
-                    <DropdownLeadingVisual shape={option.leadingVisualShape}>
-                      {option.leadingVisual}
-                    </DropdownLeadingVisual>
-                  ) : null}
-                  <DropdownLabelStack description={option.description} label={option.label} />
-                  <DropdownSelectedIndicator visible={isSelected} />
-                </DropdownRow>
-              )
-            })}
-          </div>
-        </DropdownSurface>
-      ) : null}
+                  return (
+                    <DropdownRow
+                      aria-selected={isSelected}
+                      className={cx(
+                        isActive ? "dropdown-row-active" : "",
+                        option.disabled ? "dropdown-row-disabled" : "",
+                      )}
+                      disabled={option.disabled}
+                      id={optionId(index)}
+                      key={`${option.value}-${index}`}
+                      onClick={() => {
+                        if (!option.disabled) {
+                          commitValue(option.value)
+                        }
+                      }}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      role="option"
+                      tabIndex={-1}
+                    >
+                      {option.leadingVisual ? (
+                        <DropdownLeadingVisual shape={option.leadingVisualShape}>
+                          {option.leadingVisual}
+                        </DropdownLeadingVisual>
+                      ) : null}
+                      <DropdownLabelStack description={option.description} label={option.label} />
+                      <DropdownSelectedIndicator visible={isSelected} />
+                    </DropdownRow>
+                  )
+                })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

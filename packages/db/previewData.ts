@@ -208,7 +208,7 @@ export const previewOffices: PreviewOfficeRow[] = [
 export const previewPeople: PreviewPersonRow[] = [
   {
     active: true,
-    annual_salary: 185000,
+    annual_salary: 2400000,
     availability_hours_per_week: 40,
     email: "anjali.menon@kolam.local",
     full_name: "Anjali Menon",
@@ -220,7 +220,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 182000,
+    annual_salary: 2340000,
     availability_hours_per_week: 40,
     email: "vikram.rao@kolam.local",
     full_name: "Vikram Rao",
@@ -232,7 +232,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 178000,
+    annual_salary: 2280000,
     availability_hours_per_week: 40,
     email: "meera.joseph@kolam.local",
     full_name: "Meera Joseph",
@@ -244,7 +244,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 180000,
+    annual_salary: 2360000,
     availability_hours_per_week: 40,
     email: "sanjay.iyer@kolam.local",
     full_name: "Sanjay Iyer",
@@ -256,7 +256,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 118000,
+    annual_salary: 1140000,
     availability_hours_per_week: 40,
     email: "arjun.thomas@kolam.local",
     full_name: "Arjun Thomas",
@@ -268,7 +268,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 96000,
+    annual_salary: 900000,
     availability_hours_per_week: 40,
     email: "nisha.varghese@kolam.local",
     full_name: "Nisha Varghese",
@@ -280,7 +280,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 78000,
+    annual_salary: 600000,
     availability_hours_per_week: 35,
     email: "devika.paul@kolam.local",
     full_name: "Devika Paul",
@@ -292,7 +292,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 102000,
+    annual_salary: 960000,
     availability_hours_per_week: 40,
     email: "farah.khan@kolam.local",
     full_name: "Farah Khan",
@@ -304,7 +304,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 91000,
+    annual_salary: 840000,
     availability_hours_per_week: 40,
     email: "rahul.nair@kolam.local",
     full_name: "Rahul Nair",
@@ -316,7 +316,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 86000,
+    annual_salary: 720000,
     availability_hours_per_week: 40,
     email: "kavya.pillai@kolam.local",
     full_name: "Kavya Pillai",
@@ -328,7 +328,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 74000,
+    annual_salary: 660000,
     availability_hours_per_week: 40,
     email: "joel.mathew@kolam.local",
     full_name: "Joel Mathew",
@@ -340,7 +340,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 88000,
+    annual_salary: 480000,
     availability_hours_per_week: 40,
     email: "tara.krishnan@kolam.local",
     full_name: "Tara Krishnan",
@@ -352,7 +352,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: false,
-    annual_salary: 62000,
+    annual_salary: 420000,
     availability_hours_per_week: 40,
     email: "leena.das@kolam.local",
     full_name: "Leena Das",
@@ -364,7 +364,7 @@ export const previewPeople: PreviewPersonRow[] = [
   },
   {
     active: true,
-    annual_salary: 68000,
+    annual_salary: 450000,
     availability_hours_per_week: 30,
     email: "noor.azeez@kolam.local",
     full_name: "Noor Azeez",
@@ -661,7 +661,7 @@ export const previewProjects: PreviewProjectRow[] = [
 export const previewAssignments: PreviewAssignmentRow[] = [
   {
     active: true,
-    assigned_hours_per_week: 22,
+    assigned_hours_per_week: 24,
     end_date: "2026-08-31",
     id: ASSIGNMENT_IDS.arjunArtsCenter,
     notes: "Lead project architect for consultant coordination and client reviews.",
@@ -671,7 +671,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 12,
+    assigned_hours_per_week: 10,
     end_date: "2026-06-30",
     id: ASSIGNMENT_IDS.rahulArtsCenter,
     notes: "Landscape concept and public realm package for the arts center campus.",
@@ -681,7 +681,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 6,
+    assigned_hours_per_week: 5,
     end_date: "2026-05-15",
     id: ASSIGNMENT_IDS.kavyaArtsCenter,
     notes: "Interior graphics and exhibit integration support.",
@@ -691,7 +691,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 18,
+    assigned_hours_per_week: 20,
     end_date: "2026-09-30",
     id: ASSIGNMENT_IDS.joelCivicHub,
     notes: "Primary building layout lead for the civic hub planning package.",
@@ -701,7 +701,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 20,
+    assigned_hours_per_week: 16,
     end_date: "2026-12-31",
     id: ASSIGNMENT_IDS.devikaCivicHub,
     notes: "Meeting coordination, schedule tracking, and stakeholder follow-up.",
@@ -711,7 +711,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 6,
+    assigned_hours_per_week: 8,
     end_date: "2026-06-30",
     id: ASSIGNMENT_IDS.arjunCivicHub,
     notes: "Cross-office advisory support during early planning.",
@@ -721,7 +721,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 16,
+    assigned_hours_per_week: 18,
     end_date: "2026-08-31",
     id: ASSIGNMENT_IDS.nishaWaterfront,
     notes: "Housing massing, client presentations, and early unit planning.",
@@ -731,7 +731,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 10,
+    assigned_hours_per_week: 8,
     end_date: "2026-07-31",
     id: ASSIGNMENT_IDS.kavyaWaterfront,
     notes: "Interior palette and amenity concept development.",
@@ -741,7 +741,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 24,
+    assigned_hours_per_week: 22,
     end_date: "2026-10-31",
     id: ASSIGNMENT_IDS.farahLearningCommons,
     notes: "BIM coordination lead through construction-stage deliverables.",
@@ -761,7 +761,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: false,
-    assigned_hours_per_week: 14,
+    assigned_hours_per_week: 12,
     end_date: "2026-02-20",
     id: ASSIGNMENT_IDS.nishaRetreat,
     notes: "Closeout and final presentation package for the completed retreat project.",
@@ -771,7 +771,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: false,
-    assigned_hours_per_week: 20,
+    assigned_hours_per_week: 16,
     end_date: "2026-02-10",
     id: ASSIGNMENT_IDS.leenaRetreat,
     notes: "Past documentation support retained to exercise inactive record handling.",
@@ -781,7 +781,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 8,
+    assigned_hours_per_week: 4,
     end_date: "2026-06-01",
     id: ASSIGNMENT_IDS.arjunResearchLab,
     notes: "Lead architect coverage while the project remains on hold.",
@@ -791,7 +791,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 14,
+    assigned_hours_per_week: 6,
     end_date: "2026-06-01",
     id: ASSIGNMENT_IDS.rahulResearchLab,
     notes: "Site and landscape response options for hold-period review.",
@@ -801,7 +801,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 18,
+    assigned_hours_per_week: 20,
     end_date: "2026-09-15",
     id: ASSIGNMENT_IDS.kavyaStudioFitOut,
     notes: "Client-facing fit-out lead with furniture, material, and signage scope.",
@@ -811,7 +811,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 10,
+    assigned_hours_per_week: 8,
     end_date: "2026-06-30",
     id: ASSIGNMENT_IDS.nishaStudioFitOut,
     notes: "Design review and client presentation support.",
@@ -821,7 +821,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 10,
+    assigned_hours_per_week: 12,
     end_date: "2026-07-31",
     id: ASSIGNMENT_IDS.farahTransitTerminal,
     notes: "Terminal planning lead for model coordination and phasing logic.",
@@ -841,7 +841,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 12,
+    assigned_hours_per_week: 8,
     end_date: "2026-07-15",
     id: ASSIGNMENT_IDS.joelTransitTerminal,
     notes: "Space planning and gatehouse study support.",
@@ -851,7 +851,7 @@ export const previewAssignments: PreviewAssignmentRow[] = [
   },
   {
     active: true,
-    assigned_hours_per_week: 8,
+    assigned_hours_per_week: 6,
     end_date: "2026-05-30",
     id: ASSIGNMENT_IDS.noorArtsCenter,
     notes: "Exhibit graphics and presentation board production for the arts center.",

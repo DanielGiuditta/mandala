@@ -1,14 +1,21 @@
 import type { TimeEntry } from "@mandala/domain";
-import { canTrackOwnTimeForProject } from "@mandala/domain";
+import {
+  canAccessTimeTracker,
+  canTrackOwnTimeForProject,
+  canViewFinancialData,
+  deriveHourlyCost,
+} from "@mandala/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   getCurrentViewerAccess,
   type ViewerRequestContext,
 } from "./auth";
+import { fetchPeopleCompensationById } from "./lookups";
 import {
   PREVIEW_CONFIG_MESSAGE,
   previewAssignments,
+  previewPeople,
   previewProjects,
   previewTimeEntries,
 } from "./previewData";
@@ -49,7 +56,7 @@ interface TrackerIdRow {
   id: string;
 }
 
-interface TodayHoursRow {
+interface ProjectHoursRow {
   hours: number | string;
   project_id: string;
 }
@@ -59,6 +66,8 @@ export interface SelfTimeTrackerProjectOption {
   name: string;
   photoUrl: string | null;
   todayHours: number;
+  totalCost: number | null;
+  totalHours: number;
 }
 
 export interface SelfTimeTrackerData {
@@ -180,10 +189,7 @@ function toProjectPermissionSubject(project: TrackerProjectRow) {
 function createTrackerDatabaseClient(
   context: ViewerRequestContext,
 ): SupabaseClient | null {
-  return (
-    createServiceRoleSupabaseClient() ??
-    createServerSupabaseClient({ accessToken: context.accessToken })
-  );
+  return createServerSupabaseClient({ accessToken: context.accessToken });
 }
 
 async function resolveTrackerPersonId(
@@ -276,35 +282,55 @@ async function listTrackableProjectRows(
   );
 }
 
-async function getTodayHoursByProjectId(
+async function getTrackedHoursByProjectId(
   client: SupabaseClient,
   personId: string,
-  localDate: string,
   projectIds: string[],
+  localDate?: string,
 ): Promise<Map<string, number>> {
   if (projectIds.length === 0) {
     return new Map();
   }
 
-  const trackerClient = createServiceRoleSupabaseClient() ?? client;
-  const { data, error } = await trackerClient
+  let query = client
     .from("time_entries")
     .select("project_id, hours")
     .eq("person_id", personId)
-    .eq("date", localDate)
     .in("project_id", projectIds);
+
+  if (localDate) {
+    query = query.eq("date", localDate);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
   }
 
-  return ((data ?? []) as TodayHoursRow[]).reduce((hoursByProjectId, row) => {
+  return ((data ?? []) as ProjectHoursRow[]).reduce((hoursByProjectId, row) => {
     hoursByProjectId.set(
       row.project_id,
       (hoursByProjectId.get(row.project_id) ?? 0) + Number(row.hours),
     );
     return hoursByProjectId;
   }, new Map<string, number>());
+}
+
+async function getTrackerHourlyCost(
+  client: SupabaseClient,
+  personId: string | null,
+): Promise<number> {
+  if (!personId) {
+    return 0;
+  }
+
+  const compensationByPersonId = await fetchPeopleCompensationById([personId], {
+    client,
+  });
+  const annualSalary = compensationByPersonId.get(personId);
+
+  return annualSalary === undefined ? 0 : deriveHourlyCost(annualSalary);
 }
 
 async function resolveTrackableProject(
@@ -351,8 +377,7 @@ async function resolveAssignmentId(
   projectId: string,
   entryDate: string,
 ): Promise<string | null> {
-  const trackerClient = createServiceRoleSupabaseClient() ?? client;
-  const { data, error } = await trackerClient
+  const { data, error } = await client
     .from("assignments")
     .select("id, start_date, end_date")
     .eq("active", true)
@@ -385,10 +410,10 @@ function listPreviewTrackableProjectRows(
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function getPreviewTodayHoursByProjectId(
+function getPreviewTrackedHoursByProjectId(
   personId: string,
-  localDate: string,
   projectIds: string[],
+  localDate?: string,
 ): Map<string, number> {
   if (projectIds.length === 0) {
     return new Map();
@@ -399,7 +424,7 @@ function getPreviewTodayHoursByProjectId(
   return previewTimeEntries.reduce((hoursByProjectId, row) => {
     if (
       row.person_id !== personId ||
-      row.date !== localDate ||
+      (localDate ? row.date !== localDate : false) ||
       !projectIdSet.has(row.project_id)
     ) {
       return hoursByProjectId;
@@ -411,6 +436,15 @@ function getPreviewTodayHoursByProjectId(
     );
     return hoursByProjectId;
   }, new Map<string, number>());
+}
+
+function getPreviewTrackerHourlyCost(personId: string | null): number {
+  if (!personId) {
+    return 0;
+  }
+
+  const person = previewPeople.find((candidate) => candidate.id === personId);
+  return person ? deriveHourlyCost(Number(person.annual_salary)) : 0;
 }
 
 function resolvePreviewTrackableProject(
@@ -482,20 +516,52 @@ export async function getSelfTimeTrackerData(
     const trackerViewer = personId
       ? { ...viewerAccess.viewer, personId }
       : viewerAccess.viewer;
+
+    if (!canAccessTimeTracker(trackerViewer)) {
+      trace.finish({
+        hasPersonId: Boolean(personId),
+        hasViewer: true,
+        projectCount: 0,
+        result: "preview-forbidden",
+      });
+      return emptyTrackerData(
+        false,
+        PREVIEW_CONFIG_MESSAGE,
+        "Current viewer cannot access the time tracker.",
+        true,
+      );
+    }
+
     const projects = await trace.measure("listPreviewTrackableProjectRows", () =>
       Promise.resolve(listPreviewTrackableProjectRows(trackerViewer)),
     );
     const todayHoursByProjectId = personId
       ? await trace.measure("getPreviewTodayHoursByProjectId", () =>
           Promise.resolve(
-            getPreviewTodayHoursByProjectId(
+            getPreviewTrackedHoursByProjectId(
               personId,
+              projects.map((project) => project.id),
               input.localDate,
+            ),
+          ),
+        )
+      : new Map<string, number>();
+    const totalHoursByProjectId = personId
+      ? await trace.measure("getPreviewTotalHoursByProjectId", () =>
+          Promise.resolve(
+            getPreviewTrackedHoursByProjectId(
+              personId,
               projects.map((project) => project.id),
             ),
           ),
         )
       : new Map<string, number>();
+    const hourlyCost = personId
+      ? await trace.measure("getPreviewTrackerHourlyCost", () =>
+          Promise.resolve(getPreviewTrackerHourlyCost(personId)),
+        )
+      : 0;
+    const canViewTrackerCosts = canViewFinancialData(trackerViewer);
 
     trace.finish({
       hasPersonId: Boolean(personId),
@@ -514,6 +580,10 @@ export async function getSelfTimeTrackerData(
         name: project.name,
         photoUrl: project.photo_url ?? null,
         todayHours: todayHoursByProjectId.get(project.id) ?? 0,
+        totalCost: canViewTrackerCosts
+          ? (totalHoursByProjectId.get(project.id) ?? 0) * hourlyCost
+          : null,
+        totalHours: totalHoursByProjectId.get(project.id) ?? 0,
       })),
     };
   }
@@ -554,19 +624,50 @@ export async function getSelfTimeTrackerData(
   const trackerViewer = personId
     ? { ...viewerAccess.viewer, personId }
     : viewerAccess.viewer;
+
+  if (!canAccessTimeTracker(trackerViewer)) {
+    trace.finish({
+      hasPersonId: Boolean(personId),
+      hasViewer: true,
+      projectCount: 0,
+      result: "forbidden",
+    });
+    return emptyTrackerData(
+      true,
+      status.message,
+      "Current viewer cannot access the time tracker.",
+      true,
+    );
+  }
+
   const projects = await trace.measure("listTrackableProjectRows", () =>
     listTrackableProjectRows(client, trackerViewer),
   );
   const todayHoursByProjectId = personId
     ? await trace.measure("getTodayHoursByProjectId", () =>
-        getTodayHoursByProjectId(
+        getTrackedHoursByProjectId(
           client,
           personId,
+          projects.map((project) => project.id),
           input.localDate,
+        ),
+      )
+    : new Map<string, number>();
+  const totalHoursByProjectId = personId
+    ? await trace.measure("getTotalHoursByProjectId", () =>
+        getTrackedHoursByProjectId(
+          client,
+          personId,
           projects.map((project) => project.id),
         ),
       )
     : new Map<string, number>();
+  const canViewTrackerCosts = canViewFinancialData(trackerViewer);
+  const hourlyCost = personId && canViewTrackerCosts
+    ? await trace.measure("getTrackerHourlyCost", () =>
+        getTrackerHourlyCost(client, personId),
+      )
+    : 0;
 
   trace.finish({
     hasPersonId: Boolean(personId),
@@ -587,6 +688,10 @@ export async function getSelfTimeTrackerData(
       name: project.name,
       photoUrl: project.photo_url ?? null,
       todayHours: todayHoursByProjectId.get(project.id) ?? 0,
+      totalCost: canViewTrackerCosts
+        ? (totalHoursByProjectId.get(project.id) ?? 0) * hourlyCost
+        : null,
+      totalHours: totalHoursByProjectId.get(project.id) ?? 0,
     })),
   };
 }
@@ -650,7 +755,7 @@ export async function recordSelfTimeTrackerEntry(
     return {
       entry: toTimeEntry(row),
       todayHours:
-        getPreviewTodayHoursByProjectId(personId, entryDate, [projectId]).get(projectId) ?? 0,
+        getPreviewTrackedHoursByProjectId(personId, [projectId], entryDate).get(projectId) ?? 0,
     };
   }
 
@@ -677,11 +782,11 @@ export async function recordSelfTimeTrackerEntry(
     throw error;
   }
 
-  const todayHoursByProjectId = await getTodayHoursByProjectId(
+  const todayHoursByProjectId = await getTrackedHoursByProjectId(
     client,
     personId,
-    entryDate,
     [projectId],
+    entryDate,
   );
 
   return {

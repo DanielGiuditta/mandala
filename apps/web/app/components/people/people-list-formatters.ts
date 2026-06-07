@@ -17,7 +17,11 @@ function formatCompactLakh(value: number): string {
   return `₹${formatCompactNumber(lakh)} Lakh`;
 }
 
-export function formatAnnualSalaryCompact(value: number): string {
+export function formatAnnualSalaryCompact(value: number | null): string {
+  if (value === null) {
+    return "Restricted";
+  }
+
   if (value >= 10_000_000) {
     return formatCompactCrore(value);
   }

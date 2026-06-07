@@ -25,7 +25,11 @@ export function formatHoursWithUnit(value: number): string {
   return `${formatHoursMetric(value)}h`;
 }
 
-export function formatInrMetric(value: number): string {
+export function formatInrMetric(value: number | null): string {
+  if (value === null) {
+    return "Restricted";
+  }
+
   return formatAnnualSalaryCompact(value);
 }
 

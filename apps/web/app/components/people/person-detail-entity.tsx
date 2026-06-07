@@ -6,6 +6,10 @@ import { EntityPhoto } from "../projects/project-detail-utils";
 import { PersonDetailCloseButton } from "./person-detail-close-button";
 import { PersonCreateModal } from "./person-create-modal";
 import type {
+  PersonAccountEmailActionResult,
+  PersonMutationActionResult,
+} from "./person-action-results";
+import type {
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
 } from "./person-create-types";
@@ -32,10 +36,13 @@ interface PersonDetailEntityProps {
   ) => Promise<{ error: string | null; ok: boolean }>;
   onResendPersonAccountEmailAction: (
     input: { personId: string },
-  ) => Promise<{ message: string }>;
+  ) => Promise<PersonAccountEmailActionResult>;
+  onRemovePersonAction: (
+    input: { personId: string },
+  ) => Promise<PersonMutationActionResult>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   titleSuggestions: string[];
 }
 
@@ -47,6 +54,7 @@ export function PersonDetailEntity({
   officeOptions,
   onAddProjectAction,
   onResendPersonAccountEmailAction,
+  onRemovePersonAction,
   onUpdatePersonAction,
   titleSuggestions,
 }: PersonDetailEntityProps) {
@@ -68,7 +76,8 @@ export function PersonDetailEntity({
               disabled={!data.canEdit}
               disabledReason={!data.canEdit ? "Only admins and partners can edit this person." : undefined}
               initialFormInput={{
-                annualSalary: String(data.person.annualSalary),
+                annualSalary:
+                  data.person.annualSalary !== null ? String(data.person.annualSalary) : "",
                 email: data.person.email ?? "",
                 fullName: data.person.fullName,
                 officeId: data.person.officeId,
@@ -82,8 +91,14 @@ export function PersonDetailEntity({
               mode="edit"
               officeOptions={officeOptions}
               onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
+              onRemovePersonAction={onRemovePersonAction}
               onUpdatePersonAction={onUpdatePersonAction}
               personId={data.person.id}
+              removeDisabledReason={
+                data.person.isCurrentViewer
+                  ? "Ask another partner or admin to remove your own person record."
+                  : undefined
+              }
               titleSuggestions={titleSuggestions}
               trigger="edit"
             />

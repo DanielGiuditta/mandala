@@ -7,6 +7,7 @@ import {
   addPersonProjectAction,
   loadProjectOptionsAction,
   loadPeopleOptionsAction,
+  removePersonAction,
   resendPersonAccountEmailAction,
   updatePersonAction,
 } from "../actions";
@@ -57,6 +58,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
       onAddProjectAction={addPersonProjectAction}
       officeOptions={officeData.offices}
       onResendPersonAccountEmailAction={resendPersonAccountEmailAction}
+      onRemovePersonAction={removePersonAction}
       onUpdatePersonAction={updatePersonAction}
       personId={personId}
       railPeople={railData.people}

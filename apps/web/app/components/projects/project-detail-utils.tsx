@@ -60,7 +60,11 @@ export function formatHoursMetric(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-export function formatCostMetric(value: number): string {
+export function formatCostMetric(value: number | null): string {
+  if (value === null) {
+    return "Restricted";
+  }
+
   if (!Number.isFinite(value)) {
     return "₹0";
   }

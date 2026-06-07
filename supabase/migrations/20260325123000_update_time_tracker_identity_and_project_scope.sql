@@ -14,7 +14,10 @@ as $$
   ),
   matched_person as (
     select
-      case when count(*) = 1 then min(p.id) else null end as person_id
+      case
+        when count(*) = 1 then (array_agg(p.id order by p.id))[1]
+        else null
+      end as person_id
     from public.people p
     where lower(coalesce(p.email, '')) = public.current_user_email()
       and p.active = true

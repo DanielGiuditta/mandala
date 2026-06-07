@@ -185,14 +185,14 @@ export function ProjectListTable({
           break;
         case "hours":
           result = compareNumber(
-            left.plannedHoursPerWeek ?? -1,
-            right.plannedHoursPerWeek ?? -1,
+            left.totalHours ?? -1,
+            right.totalHours ?? -1,
           );
           break;
         case "cost":
           result = compareNumber(
-            left.roughLaborCost ?? -1,
-            right.roughLaborCost ?? -1,
+            left.totalLaborCost ?? -1,
+            right.totalLaborCost ?? -1,
           );
           break;
       }
@@ -390,7 +390,7 @@ export function ProjectListTable({
               </span>
             </div>
             <div className="projects-cell">
-              {project.canEditProject ? (
+              {project.canEditLead ? (
                 <EditableEntityPill
                   ariaLabel={`Change lead for ${project.name}`}
                   onCommit={async (nextValue) => {
@@ -443,7 +443,7 @@ export function ProjectListTable({
                     : ""
                 }
               >
-                {formatHours(project.plannedHoursPerWeek)}
+                {formatHours(project.totalHours)}
               </span>
             </div>
             <div className="projects-cell projects-cell-metric">
@@ -454,7 +454,7 @@ export function ProjectListTable({
                     : ""
                 }
               >
-                {formatCurrency(project.roughLaborCost)}
+                {formatCurrency(project.totalLaborCost)}
               </span>
             </div>
           </article>

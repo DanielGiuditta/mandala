@@ -8,6 +8,12 @@ import type { CreatePersonInput, UpdatePersonInput } from "@mandala/db";
 import { CloseButtonIcon } from "../close-button-icon";
 import { EntityEditButton } from "../entity-edit-button";
 import { PeopleAddButton } from "./people-add-button";
+import {
+  assertPersonAccountEmailSucceeded,
+  assertPersonMutationSucceeded,
+  type PersonAccountEmailActionResult,
+  type PersonMutationActionResult,
+} from "./person-action-results";
 import { PersonCreateForm } from "./person-create-form";
 import type {
   PersonCreateFormInput,
@@ -28,14 +34,18 @@ interface PersonCreateModalProps {
   officeOptions: PersonCreateOfficeOption[];
   onCreatePersonAction?: (
     input: CreatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   onResendPersonAccountEmailAction?: (
     input: { personId: string },
-  ) => Promise<{ message: string }>;
+  ) => Promise<PersonAccountEmailActionResult>;
+  onRemovePersonAction?: (
+    input: { personId: string },
+  ) => Promise<PersonMutationActionResult>;
   onUpdatePersonAction?: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   personId?: string;
+  removeDisabledReason?: string;
   titleSuggestions: string[];
   trigger?: "add" | "edit";
 }
@@ -49,8 +59,10 @@ export function PersonCreateModal({
   officeOptions,
   onCreatePersonAction,
   onResendPersonAccountEmailAction,
+  onRemovePersonAction,
   onUpdatePersonAction,
   personId,
+  removeDisabledReason,
   titleSuggestions,
   trigger = "add",
 }: PersonCreateModalProps) {
@@ -167,9 +179,31 @@ export function PersonCreateModal({
               mode={mode}
               officeOptions={officeOptions}
               onCancel={() => setIsOpen(false)}
+              onRemove={
+                isEditMode && personId && onRemovePersonAction
+                  ? async () => {
+                      assertPersonMutationSucceeded(
+                        await onRemovePersonAction({ personId }),
+                        "Unable to remove person.",
+                      );
+                      setIsOpen(false);
+                      router.replace("/people");
+                      router.refresh();
+                    }
+                  : undefined
+              }
               onResendAccountEmail={
                 isEditMode && personId && onResendPersonAccountEmailAction
-                  ? async () => onResendPersonAccountEmailAction({ personId })
+                  ? async () => {
+                      const result = await onResendPersonAccountEmailAction({ personId });
+
+                      return {
+                        message: assertPersonAccountEmailSucceeded(
+                          result,
+                          "Unable to resend the account email.",
+                        ),
+                      };
+                    }
                   : undefined
               }
               onSave={async ({ payload }) => {
@@ -178,21 +212,28 @@ export function PersonCreateModal({
                     throw new Error("Person edit is unavailable on this route.");
                   }
 
-                  await onUpdatePersonAction({
-                    personId,
-                    ...payload,
-                  });
+                  assertPersonMutationSucceeded(
+                    await onUpdatePersonAction({
+                      personId,
+                      ...payload,
+                    }),
+                    "Unable to update person.",
+                  );
                 } else {
                   if (!onCreatePersonAction) {
                     throw new Error("Person create is unavailable on this route.");
                   }
 
-                  await onCreatePersonAction(payload);
+                  assertPersonMutationSucceeded(
+                    await onCreatePersonAction(payload),
+                    "Unable to create person.",
+                  );
                 }
 
                 setIsOpen(false);
                 router.refresh();
               }}
+              removeDisabledReason={removeDisabledReason}
               supervisorOptions={supervisorOptions}
               titleSuggestions={titleSuggestions}
             />

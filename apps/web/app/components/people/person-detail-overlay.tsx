@@ -4,6 +4,10 @@ import { EntityModal } from "../entity-modal";
 import { PersonDetailCloseButton } from "./person-detail-close-button";
 import { PersonDetailShell } from "./person-detail-shell";
 import type {
+  PersonAccountEmailActionResult,
+  PersonMutationActionResult,
+} from "./person-action-results";
+import type {
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
 } from "./person-create-types";
@@ -24,10 +28,13 @@ interface PersonDetailOverlayProps {
   ) => Promise<{ error: string | null; ok: boolean }>;
   onResendPersonAccountEmailAction: (
     input: { personId: string },
-  ) => Promise<{ message: string }>;
+  ) => Promise<PersonAccountEmailActionResult>;
+  onRemovePersonAction: (
+    input: { personId: string },
+  ) => Promise<PersonMutationActionResult>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   personId: string;
   railPeople: PersonRailItem[];
 }
@@ -39,6 +46,7 @@ export function PersonDetailOverlay({
   officeOptions,
   onAddProjectAction,
   onResendPersonAccountEmailAction,
+  onRemovePersonAction,
   onUpdatePersonAction,
   personId,
   railPeople,
@@ -56,6 +64,7 @@ export function PersonDetailOverlay({
         officeOptions={officeOptions}
         onAddProjectAction={onAddProjectAction}
         onResendPersonAccountEmailAction={onResendPersonAccountEmailAction}
+        onRemovePersonAction={onRemovePersonAction}
         onUpdatePersonAction={onUpdatePersonAction}
         personId={personId}
         railPeople={railPeople}

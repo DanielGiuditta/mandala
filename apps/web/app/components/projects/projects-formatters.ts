@@ -53,5 +53,5 @@ export function formatLeadName(project: ProjectListItem): string {
 }
 
 export function formatOfficeRelationship(project: ProjectListItem): string {
-  return project.managingOfficeName;
+  return project.managingOfficeName || project.originatingOfficeName || "Unassigned";
 }

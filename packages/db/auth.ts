@@ -18,6 +18,7 @@ import {
   previewClientProjectAccess,
   previewOffices,
   previewPeople,
+  previewProjects,
   previewRoleAssignments,
   previewUserAccounts,
 } from "./previewData"
@@ -32,7 +33,7 @@ const DEFAULT_PREVIEW_VIEWER_EMAIL = "anjali.menon@kolam.local"
 const PREVIEW_VIEWER_MESSAGE =
   "Set KOLAM_VIEWER_EMAIL or KOLAM_VIEWER_USER_ACCOUNT_ID to evaluate permissions in preview mode."
 const SIGN_IN_REQUIRED_MESSAGE = "Sign in to continue."
-const LIVE_VIEWER_CACHE_TTL_MS = 15_000
+const LIVE_VIEWER_CACHE_TTL_MS = 300_000
 
 interface UserAccountRow {
   id: string
@@ -87,7 +88,7 @@ interface ViewerAccessContextResponse {
     photoUrl: string | null
     officeId: string
     supervisorPersonId?: string | null
-    annualSalary: number | string
+    annualSalary?: number | string | null
     availabilityHoursPerWeek: number | string
     email: string | null
     active: boolean
@@ -97,6 +98,7 @@ interface ViewerAccessContextResponse {
     name: string
   }
   activeAssignedProjectIds?: string[]
+  leadProjectIds?: string[]
 }
 
 export interface ViewerSummary {
@@ -117,6 +119,7 @@ export interface ViewerRequestContext {
   accessToken?: string | null
   appOrigin?: string | null
   sessionEmail?: string | null
+  viewerAccess?: CurrentViewerAccess | null
 }
 
 interface ViewerSelection {
@@ -219,6 +222,7 @@ function buildAuthorizationViewer(
   roleAssignments: RoleAssignment[],
   clientProjectAccess: ClientProjectAccess[],
   activeAssignedProjectIds: string[],
+  leadProjectIds: string[],
 ): AuthorizationViewer {
   return {
     active: userAccount.active,
@@ -230,6 +234,8 @@ function buildAuthorizationViewer(
           .map((access) => access.projectId),
       ),
     ],
+    email: userAccount.email,
+    leadProjectIds: [...new Set(leadProjectIds)],
     personId: userAccount.personId,
     roleAssignments: roleAssignments.filter((assignment) => assignment.active),
     userAccountId: userAccount.id,
@@ -253,12 +259,35 @@ function buildViewerSummary(
 
 interface ViewerIdentityFallback {
   activeAssignedProjectIds: string[]
+  leadProjectIds: string[]
   office: OfficeRow | null
   person: PersonRow
 }
 
+async function fetchLeadProjectIds(
+  personId: string,
+  client: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<string[]> {
+  const { data, error } = await client
+    .from("projects")
+    .select("id")
+    .eq("lead_person_id", personId)
+    .eq("active", true)
+
+  if (error) {
+    return []
+  }
+
+  return [
+    ...new Set(
+      ((data ?? []) as Array<{ id: string }>).map((project) => project.id),
+    ),
+  ]
+}
+
 async function resolveViewerIdentityFallback(
   sessionEmail: string,
+  personId: string | null,
 ): Promise<ViewerIdentityFallback | null> {
   const client = createServiceRoleSupabaseClient()
 
@@ -266,34 +295,57 @@ async function resolveViewerIdentityFallback(
     return null
   }
 
-  const { data: peopleData, error: peopleError } = await client
-    .from("people")
-    .select(
-      "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
-    )
-    .ilike("email", sessionEmail)
-    .eq("active", true)
+  let person: PersonRow | null = null
 
-  if (peopleError) {
-    return null
+  if (personId) {
+    const { data: personData, error: personError } = await client
+      .from("people")
+      .select(
+        "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+      )
+      .eq("id", personId)
+      .eq("active", true)
+      .maybeSingle()
+
+    if (!personError && personData) {
+      person = personData as PersonRow
+    }
   }
 
-  const people = (peopleData ?? []) as PersonRow[]
+  if (!person) {
+    const { data: peopleData, error: peopleError } = await client
+      .from("people")
+      .select(
+        "id, full_name, title, photo_url, office_id, supervisor_person_id, annual_salary, availability_hours_per_week, email, active",
+      )
+      .ilike("email", sessionEmail)
+      .eq("active", true)
 
-  if (people.length !== 1) {
-    return null
+    if (peopleError) {
+      return null
+    }
+
+    const people = (peopleData ?? []) as PersonRow[]
+
+    if (people.length !== 1) {
+      return null
+    }
+
+    person = people[0]
   }
-
-  const person = people[0]
-  const [{ data: officeData, error: officeError }, { data: assignmentData, error: assignmentError }] =
-    await Promise.all([
-      client.from("offices").select("id, name").eq("id", person.office_id).maybeSingle(),
-      client
-        .from("assignments")
-        .select("project_id")
-        .eq("person_id", person.id)
-        .eq("active", true),
-    ])
+  const [
+    { data: officeData, error: officeError },
+    { data: assignmentData, error: assignmentError },
+    leadProjectIds,
+  ] = await Promise.all([
+    client.from("offices").select("id, name").eq("id", person.office_id).maybeSingle(),
+    client
+      .from("assignments")
+      .select("project_id")
+      .eq("person_id", person.id)
+      .eq("active", true),
+    fetchLeadProjectIds(person.id, client),
+  ])
 
   if (officeError || assignmentError) {
     return null
@@ -305,6 +357,7 @@ async function resolveViewerIdentityFallback(
         ((assignmentData ?? []) as Array<{ project_id: string }>).map((assignment) => assignment.project_id),
       ),
     ],
+    leadProjectIds,
     office: officeData ? ((officeData as OfficeRow)) : null,
     person,
   }
@@ -318,7 +371,10 @@ async function hydrateViewerAccessContextResponse(
     return response
   }
 
-  const identityFallback = await resolveViewerIdentityFallback(sessionEmail)
+  const identityFallback = await resolveViewerIdentityFallback(
+    sessionEmail,
+    response.userAccount.personId ?? null,
+  )
 
   if (!identityFallback) {
     return response
@@ -425,11 +481,20 @@ function getPreviewViewerAccess(selection: ViewerSelection): CurrentViewerAccess
         )
         .map((assignment) => assignment.project_id)
     : []
+  const leadProjectIds = userAccount.personId
+    ? previewProjects
+        .filter(
+          (project) =>
+            project.lead_person_id === userAccount.personId && Boolean(project.active),
+        )
+        .map((project) => project.id)
+    : []
   const viewer = buildAuthorizationViewer(
     userAccount,
     roleAssignments,
     clientProjectAccess,
     activeAssignedProjectIds,
+    leadProjectIds,
   )
   const summary = buildViewerSummary(viewer, userAccount, person, office)
 
@@ -443,6 +508,7 @@ function getPreviewViewerAccess(selection: ViewerSelection): CurrentViewerAccess
 function buildViewerAccessFromDbResponse(
   response: ViewerAccessContextResponse,
   sessionEmail: string,
+  leadProjectIds: string[],
 ): CurrentViewerAccess {
   if (!response.found || !response.userAccount) {
     return {
@@ -495,7 +561,7 @@ function buildViewerAccessFromDbResponse(
         photo_url: response.person.photoUrl,
         office_id: response.person.officeId,
         supervisor_person_id: response.person.supervisorPersonId ?? null,
-        annual_salary: response.person.annualSalary,
+        annual_salary: response.person.annualSalary ?? null,
         availability_hours_per_week: response.person.availabilityHoursPerWeek,
         email: response.person.email,
         active: response.person.active,
@@ -516,6 +582,7 @@ function buildViewerAccessFromDbResponse(
     roleAssignments,
     clientProjectAccess,
     activeAssignedProjectIds,
+    leadProjectIds,
   )
   const summary = buildViewerSummary(viewer, userAccount, person, office)
 
@@ -585,15 +652,20 @@ const getLiveViewerAccess = cache(
       throw error
     }
 
-    const response = await trace.measure(
-      "hydrateViewerAccessContextResponse",
-      () =>
-        hydrateViewerAccessContextResponse(
-          data as ViewerAccessContextResponse,
-          sessionEmail,
-        ),
+    const response = data as ViewerAccessContextResponse
+    const leadProjectIds =
+      response.leadProjectIds ??
+      (response.userAccount?.personId && client
+        ? await trace.measure("fetchLeadProjectIds", () =>
+            fetchLeadProjectIds(response.userAccount?.personId ?? "", client),
+          )
+        : []
+      )
+    const result = buildViewerAccessFromDbResponse(
+      response,
+      sessionEmail,
+      leadProjectIds,
     )
-    const result = buildViewerAccessFromDbResponse(response, sessionEmail)
     trace.finish({
       cacheHit: false,
       hasPersonId: Boolean(result.viewer?.personId),
@@ -608,6 +680,10 @@ const getLiveViewerAccess = cache(
 export async function getCurrentViewerAccess(
   context: ViewerRequestContext = {},
 ): Promise<CurrentViewerAccess> {
+  if (context.viewerAccess) {
+    return context.viewerAccess
+  }
+
   const status = getDatabaseStatus()
 
   if (!status.configured) {

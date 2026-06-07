@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { PersonListItem, UpdatePersonInput } from "@mandala/db";
 
 import { PeopleListRow } from "./people-list-row";
+import type { PersonMutationActionResult } from "./person-action-results";
 import type { PersonCreateOfficeOption, PersonCreateSupervisorOption } from "./person-create-types";
 import { TokenIcon } from "../ui/token-icon";
 
@@ -25,7 +26,7 @@ interface PeopleListTableProps {
   ) => Promise<{ error: string | null; ok: boolean }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   people: PersonListItem[];
 }
 
@@ -159,7 +160,7 @@ export function PeopleListTable({
           result = compareText(left.title ?? "", right.title ?? "");
           break;
         case "salary":
-          result = compareNumber(left.annualSalary, right.annualSalary);
+          result = compareNumber(left.annualSalary ?? -1, right.annualSalary ?? -1);
           break;
       }
 
@@ -230,43 +231,45 @@ export function PeopleListTable({
   }
 
   return (
-    <div className="people-list">
-      {!forbidden ? (
-        <div className="people-list-columns">
-          {PEOPLE_COLUMNS.map((column) => (
-            <div className="people-column-cell" key={column.key}>
-              <HeaderLabel label={column.label} value={column.key} />
-            </div>
-          ))}
-        </div>
-      ) : null}
+    <div className="people-list-scroll">
+      <div className="people-list">
+        {!forbidden ? (
+          <div className="people-list-columns">
+            {PEOPLE_COLUMNS.map((column) => (
+              <div className="people-column-cell" key={column.key}>
+                <HeaderLabel label={column.label} value={column.key} />
+              </div>
+            ))}
+          </div>
+        ) : null}
 
-      {forbidden ? (
-        <div className="people-list-empty">
-          No people access for the current viewer.
-        </div>
-      ) : people.length === 0 ? (
-        <div className="people-list-empty">
-          {configured
-            ? "No people match the current filters."
-            : "Configure the database connection to load people."}
-        </div>
-      ) : (
-        sortedPeople.map((person, index) => (
-          <PeopleListRow
-            ensureProjectOptions={ensureProjectOptions}
-            ensureSupervisorOptions={ensureSupervisorOptions}
-            key={person.id}
-            officeOptions={officeOptions}
-            onAddProjectAction={onAddProjectAction}
-            onUpdatePersonAction={onUpdatePersonAction}
-            person={person}
-            projectOptions={projectOptions}
-            rowIndex={index}
-            supervisorOptions={supervisorOptions}
-          />
-        ))
-      )}
+        {forbidden ? (
+          <div className="people-list-empty">
+            No people access for the current viewer.
+          </div>
+        ) : people.length === 0 ? (
+          <div className="people-list-empty">
+            {configured
+              ? "No people match the current filters."
+              : "Configure the database connection to load people."}
+          </div>
+        ) : (
+          sortedPeople.map((person, index) => (
+            <PeopleListRow
+              ensureProjectOptions={ensureProjectOptions}
+              ensureSupervisorOptions={ensureSupervisorOptions}
+              key={person.id}
+              officeOptions={officeOptions}
+              onAddProjectAction={onAddProjectAction}
+              onUpdatePersonAction={onUpdatePersonAction}
+              person={person}
+              projectOptions={projectOptions}
+              rowIndex={index}
+              supervisorOptions={supervisorOptions}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }

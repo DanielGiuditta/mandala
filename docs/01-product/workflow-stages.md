@@ -14,7 +14,7 @@
 - Stage is a project lifecycle label.
 - The V1 stage set is fixed.
 - Partners can change stage on any project.
-- Scoped admins can change stage on projects managed by their scoped offices.
+- Admins can change stage on any project.
 - Project leads can change stage on projects they lead.
 - Stage changes are not gated by approvals or checklists in V1.
 - Project checklist items may exist in V1 without affecting stage changes.

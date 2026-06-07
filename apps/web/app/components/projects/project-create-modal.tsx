@@ -17,6 +17,7 @@ import type {
 } from "./project-create-types";
 
 interface ProjectCreateModalProps {
+  canEditLead?: boolean;
   disabled?: boolean;
   disabledReason?: string;
   initialFormInput?: CreateProjectFormInput;
@@ -32,12 +33,12 @@ interface ProjectCreateModalProps {
   onUpdateProjectAction?: (
     input: UpdateProjectInput,
   ) => Promise<{ projectId: string }>;
-  preservedOriginatingOfficeId?: string;
   projectId?: string;
   trigger?: "add" | "edit";
 }
 
 export function ProjectCreateModal({
+  canEditLead = true,
   disabled = false,
   disabledReason,
   initialFormInput,
@@ -46,7 +47,6 @@ export function ProjectCreateModal({
   officeOptions,
   onCreateProjectAction,
   onUpdateProjectAction,
-  preservedOriginatingOfficeId,
   projectId,
   trigger = "add",
 }: ProjectCreateModalProps) {
@@ -158,16 +158,19 @@ export function ProjectCreateModal({
             </header>
 
             <ProjectCreateForm
-              leadFieldDisabled={leadOptionsStatus !== "ready"}
+              leadFieldDisabled={!canEditLead || leadOptionsStatus !== "ready"}
               leadFieldPlaceholder={
-                leadOptionsStatus === "loading" || leadOptionsStatus === "idle"
+                !canEditLead
+                  ? "Only admins and partners can change the lead"
+                  : leadOptionsStatus === "loading" || leadOptionsStatus === "idle"
                   ? "Loading leads..."
                   : "Lead options unavailable"
               }
               hasLeadOptionGap={
-                leadOptionsUnavailable ||
+                canEditLead &&
+                (leadOptionsUnavailable ||
                 leadOptionsStatus === "unavailable" ||
-                leadOptionsStatus === "error"
+                leadOptionsStatus === "error")
               }
               initialFormInput={initialFormInput}
               leadOptions={leadOptions}
@@ -180,18 +183,9 @@ export function ProjectCreateModal({
                     throw new Error("Project edit is unavailable on this route.");
                   }
 
-                  const nextPayload = preservedOriginatingOfficeId
-                    ? {
-                        ...payload,
-                        // The edit modal's Office control now represents only the
-                        // managing office, so keep the hidden originating office stable.
-                        originatingOfficeId: preservedOriginatingOfficeId,
-                      }
-                    : payload;
-
                   await onUpdateProjectAction({
                     projectId,
-                    ...nextPayload,
+                    ...payload,
                   });
                 } else {
                   if (!onCreateProjectAction) {

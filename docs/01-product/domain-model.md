@@ -142,7 +142,7 @@ The managing office owns:
 - staffing
 - project execution
 - labor cost reporting
-- office-scoped project management permissions
+- project ownership and reporting context
 
 ## Assignment
 
@@ -208,6 +208,8 @@ The web app may also expose a lightweight self-only sidebar tracker for any sign
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
 - the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
+- the sidebar tracker may target only projects the current viewer is allowed to track against
+- the standalone time-tracker workspace is limited to partners, admins, and project leads; employees use the sidebar tracker instead
 - once a person has tracked time on a project, project and people staffed views should include that person for the project even when `assignmentId` is null
 - dedicated web time-entry flows are out of scope for V1, but supervisors and project leads may still correct tracked time
 
@@ -279,6 +281,7 @@ Represents a login identity for an internal staff member or a client user.
 - internal users usually link to a `Person`
 - client users may exist without a `Person`
 - this model is separate from `Person.title`
+- one exact email, `danielgiuditta@gmail.com`, may receive a bootstrap authorization override above partner access without creating a new stored role
 
 ## RoleAssignment
 
@@ -303,8 +306,9 @@ Represents an elevated internal authorization role plus optional office scope.
 
 - persisted elevated roles in V1 are `partner` and `admin`
 - `partner` is instance-scoped and does not use office scope
-- `admin` is office-scoped and one user may hold admin scope for multiple offices
+- `admin` is instance-scoped in the current V1 contract
 - assigning admins is partner-only in V1
+- `officeId` may remain on the table for compatibility, but it does not narrow current admin scope
 
 ## ClientProjectAccess
 
@@ -327,6 +331,7 @@ Represents explicit read access for a client user to a project.
 - client access is never inferred from `Project.clientName`
 - client users are read-only in V1
 - project-lead permissions are derived from `Project.leadPersonId`, not a separate table
+- project leads receive system-wide employee/project read access and project-scoped write access on projects they lead
 - employee permissions are derived from the internal `UserAccount` to `Person` link plus project assignment relationships
 
 ## Project stage labels
@@ -347,7 +352,7 @@ Represents explicit read access for a client user to a project.
 - stage is currently a label, not a workflow gate
 - the V1 stage set is fixed
 - partners can change stage on any project
-- admins can change stage on projects managed by their scoped offices
+- admins can change stage on any project
 - project leads can change stage on projects they lead
 - changing the global stage set is outside V1
 

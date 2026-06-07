@@ -35,18 +35,19 @@ Project-lead permissions should be derived from `projects.lead_person_id`, not m
 - keep authorization scope keys indexed, especially `role_assignments.office_id` and `client_project_access.project_id`
 - store optional project imagery on `projects.photo_url`; do not invent a separate project-media entity in V1 unless the product docs expand
 - store optional person imagery on `people.photo_url`; do not invent a separate person-media entity in V1 unless the product docs expand
+- one exact email, `danielgiuditta@gmail.com`, may receive a bootstrap runtime override without adding a new stored role
 
 ## RLS baseline for authorization work
 
 - partner access is instance-wide
-- admin access is office-scoped
-- office-scoped people policies should anchor on `people.office_id`
-- office-scoped project management policies should anchor on `projects.managing_office_id`
+- admin access is also instance-wide in the current contract
 - project-lead policies should derive from the linked user account's `person_id = projects.lead_person_id`
-- employee contribution policies should derive from active assignment or lead relationships
+- project-lead read policies should allow system-wide employee and project reads once the viewer leads at least one active project
+- employee contribution policies should derive from active assignment relationships
 - self time-tracker policies may resolve the current internal person from the linked user account or, when needed, a unique `people.email` match for the signed-in email
+- self time-tracker project selection should be limited to projects the current viewer may write to
 - client policies should derive only from explicit `client_project_access`
-- salary and hourly-cost reads should remain internal and should not be exposed to client users
+- salary and hourly-cost reads should remain restricted to admins, partners, and the bootstrap override
 - client access should start with restricted project summary data unless the product docs later add explicit client-visibility fields for documents, checklist items, or time
 
 ## Recommended process
@@ -62,3 +63,4 @@ Project-lead permissions should be derived from `projects.lead_person_id`, not m
 - Build explicit list queries for dashboard and detail views.
 - Rollups should be reproducible from source records.
 - Avoid burying critical business logic in UI-only code.
+- Prefer additive SQL read functions for heavy list/detail views when they replace multiple round trips without weakening RLS.

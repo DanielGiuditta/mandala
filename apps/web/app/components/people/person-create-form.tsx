@@ -25,11 +25,13 @@ interface PersonCreateFormProps {
   mode?: PersonCreateMode;
   officeOptions: PersonCreateOfficeOption[];
   onCancel: () => void;
+  onRemove?: () => Promise<void> | void;
   onResendAccountEmail?: () => Promise<{ message?: string } | void> | void;
   onSave: (submission: {
     formInput: PersonCreateFormInput;
     payload: PersonCreatePayload;
   }) => Promise<void> | void;
+  removeDisabledReason?: string;
   supervisorOptions: PersonCreateSupervisorOption[];
   titleSuggestions: string[];
 }
@@ -61,8 +63,10 @@ export function PersonCreateForm({
   mode = "create",
   officeOptions,
   onCancel,
+  onRemove,
   onResendAccountEmail,
   onSave,
+  removeDisabledReason,
   supervisorOptions,
   titleSuggestions,
 }: PersonCreateFormProps) {
@@ -77,6 +81,8 @@ export function PersonCreateForm({
   const [form, setForm] = useState<PersonCreateFormInput>(() =>
     getDefaultFormInput(officeOptions, initialFormInput),
   );
+  const [isConfirmingRemove, setIsConfirmingRemove] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResendingAccountEmail, setIsResendingAccountEmail] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
@@ -102,7 +108,10 @@ export function PersonCreateForm({
     [],
   );
   const supervisorSelectOptions = useMemo(
-    () => supervisorOptions.map((supervisor) => personPickToSelectOption(supervisor)),
+    () => [
+      { label: "No supervisor", value: "" },
+      ...supervisorOptions.map((supervisor) => personPickToSelectOption(supervisor)),
+    ],
     [supervisorOptions],
   );
   const officeSelectOptions = useMemo(
@@ -141,6 +150,8 @@ export function PersonCreateForm({
   const canResendAccountEmail = Boolean(
     isEditMode && onResendAccountEmail && form.permission !== "noAccount" && form.email.trim(),
   );
+  const canRemove = Boolean(isEditMode && onRemove);
+  const isRemoveDisabled = Boolean(removeDisabledReason) || isSubmitting || isRemoving;
   const hasUnsavedAccountInviteChanges = Boolean(
     canResendAccountEmail &&
       initialFormInput &&
@@ -153,6 +164,7 @@ export function PersonCreateForm({
     key: K,
     value: PersonCreateFormInput[K],
   ) {
+    setIsConfirmingRemove(false);
     setResendMessage(null);
     setForm((current) => ({
       ...current,
@@ -188,6 +200,41 @@ export function PersonCreateForm({
       );
     } finally {
       setIsResendingAccountEmail(false);
+    }
+  }
+
+  async function handleRemove() {
+    setSubmitMessage(null);
+
+    if (!onRemove) {
+      return;
+    }
+
+    if (removeDisabledReason) {
+      setSubmitMessage(removeDisabledReason);
+      return;
+    }
+
+    if (!isConfirmingRemove) {
+      setIsConfirmingRemove(true);
+      setSubmitMessage(
+        "Removing this person will disable their account and hide them from active people views. Click Confirm Remove to continue.",
+      );
+      return;
+    }
+
+    try {
+      setIsRemoving(true);
+      await onRemove();
+    } catch (error) {
+      setIsConfirmingRemove(false);
+      setSubmitMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to remove person. Please try again.",
+      );
+    } finally {
+      setIsRemoving(false);
     }
   }
 
@@ -309,6 +356,7 @@ export function PersonCreateForm({
         <span className="project-create-label">Supervisor</span>
         <SelectDropdownField
           ariaLabel="Supervisor"
+          id={supervisorInputId}
           options={supervisorSelectOptions}
           placeholder="Select supervisor..."
           value={form.supervisorPersonId}
@@ -321,6 +369,7 @@ export function PersonCreateForm({
           <span className="project-create-label">Permission</span>
           <SelectDropdownField
             ariaLabel="Permission"
+            id={permissionInputId}
             options={permissionOptions}
             placeholder="Select permission..."
             value={form.permission}
@@ -346,6 +395,7 @@ export function PersonCreateForm({
           <span className="project-create-label">Office</span>
           <SelectDropdownField
             ariaLabel="Office"
+            id={officeInputId}
             options={officeSelectOptions}
             placeholder="Select office..."
             value={form.officeId}
@@ -368,8 +418,8 @@ export function PersonCreateForm({
 
       {form.permission !== "noAccount" ? (
         <p className="project-create-message">
-          {formatCreatePersonPermissionLabel(form.permission)} sends an invite email so the person
-          can set a password and join with this record.
+          {formatCreatePersonPermissionLabel(form.permission)} sends an account setup email so the
+          person can set a password and join with this record.
           {isEditMode && onResendAccountEmail
             ? " Use Resend email to send another setup email to the saved account address."
             : null}
@@ -380,17 +430,33 @@ export function PersonCreateForm({
         <p className="project-create-message">{submitMessage}</p>
       ) : null}
 
-      <div className="project-create-actions">
+      <div
+        className={`project-create-actions${canRemove ? " project-create-actions-with-danger" : ""}`}
+      >
+        {canRemove ? (
+          <button
+            className="project-create-danger-button"
+            disabled={isRemoveDisabled}
+            onClick={() => void handleRemove()}
+            title={removeDisabledReason}
+            type="button"
+          >
+            {isRemoving ? "Removing..." : isConfirmingRemove ? "Confirm Remove" : "Remove"}
+          </button>
+        ) : null}
         <button
           className="project-create-cancel-button"
-          onClick={onCancel}
+          onClick={() => {
+            setIsConfirmingRemove(false);
+            onCancel();
+          }}
           type="button"
         >
           Cancel
         </button>
         <button
           className="project-create-save-button"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isRemoving}
           type="submit"
         >
           {isSubmitting ? "Saving..." : mode === "edit" ? "Save Changes" : "Save"}

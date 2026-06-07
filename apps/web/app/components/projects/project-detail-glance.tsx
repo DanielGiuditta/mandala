@@ -18,7 +18,7 @@ import {
   formatStageLabel,
 } from "./project-detail-utils";
 import { buildProjectUpdateInput } from "./project-inline-edit-utils";
-import { stageIcon } from "./projects-formatters";
+import { formatOfficeRelationship, stageIcon } from "./projects-formatters";
 
 interface ProjectDetailGlanceProps {
   loadPeopleOptionsAction: () => Promise<{
@@ -53,6 +53,7 @@ export function ProjectDetailGlance({
     () => officeOptions.map((office) => ({ label: office.name, value: office.id })),
     [officeOptions],
   );
+  const officeLabel = formatOfficeRelationship(project);
 
   async function ensureLeadOptions() {
     if (leadOptionsStatus === "ready" || leadOptionsStatus === "loading") {
@@ -150,6 +151,7 @@ export function ProjectDetailGlance({
               onCommit={async (nextValue) => {
                 await onUpdateProjectAction(
                   buildProjectUpdateInput(project, {
+                    originatingOfficeId: nextValue,
                     managingOfficeId: nextValue,
                   }),
                 );
@@ -157,16 +159,16 @@ export function ProjectDetailGlance({
               options={officeSelectOptions}
               value={project.managingOfficeId}
               renderTrigger={({ toggleButton }) =>
-                renderValueChip(project.managingOfficeName || "Add Office", toggleButton)
+                renderValueChip(officeLabel || "Add Office", toggleButton)
               }
             />
           ) : (
-            renderValueChip(project.managingOfficeName || "No office assigned", null)
+            renderValueChip(officeLabel || "No office assigned", null)
           )}
         </div>
         <div className="pd-glance-pill">
           <span className="pd-glance-label">Lead</span>
-          {project.canEditProject ? (
+          {project.canEditLead ? (
             <EditableEntityPill
               ariaLabel={`Change lead for ${project.name}`}
               onCommit={async (nextValue) => {

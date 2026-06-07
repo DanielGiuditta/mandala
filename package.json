@@ -6,6 +6,11 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "@supabase/realtime-js": {
+      "ws": "8.21.0"
+    }
+  },
   "scripts": {
     "build": "npm run build --workspace @mandala/web",
     "dev": "npm run dev --workspace @mandala/web",

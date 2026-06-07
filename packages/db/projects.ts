@@ -11,9 +11,12 @@ import {
   canAssignPeopleToProject,
   canChangeProjectStage,
   canCreateOrUpdateProjects,
+  canEditProject,
   canEditProjectTime,
+  canSetProjectLead,
   canUploadProjectDocuments,
   canViewInternalProject,
+  canViewProjectFinancials,
   canViewProjectSummary,
   deriveHourlyCost,
   isProjectStage,
@@ -22,11 +25,14 @@ import {
 import {
   getCurrentViewerAccess,
   getViewerLabel,
+  invalidateViewerAccessCache,
   type CurrentViewerAccess,
   type ViewerRequestContext,
 } from "./auth";
 import {
+  attachPeopleCompensation,
   fetchOfficeRows,
+  fetchPeopleCompensationById,
   fetchPeopleRows,
   type OfficeRow,
   type PersonRow,
@@ -47,7 +53,7 @@ import {
 } from "./supabaseServer";
 import { createPerfTrace } from "./perf";
 
-const PROJECT_READ_CACHE_TTL_MS = 15_000;
+const PROJECT_READ_CACHE_TTL_MS = 300_000;
 
 interface ProjectRow {
   id: string;
@@ -114,10 +120,31 @@ interface TimeEntryRow {
   source: string | null;
 }
 
-interface ProjectListMetricRow {
-  planned_hours_per_week: number | string | null;
+interface ProjectListTimeMetricRow {
   project_id: string;
   rough_labor_cost: number | string | null;
+  total_hours: number | string;
+}
+
+interface ProjectDetailContextResponse {
+  found: boolean;
+  assignments?: AssignmentRow[];
+  checklistItems?: ChecklistItemRow[];
+  documents?: ResourceDocumentRow[];
+  offices?: OfficeRow[];
+  people?: PersonRow[];
+  project?: ProjectRow;
+  timeEntries?: TimeEntryRow[];
+}
+
+interface LoadedProjectDetailContext {
+  assignmentRows: AssignmentRow[];
+  checklistRows: ChecklistItemRow[];
+  documentRows: ResourceDocumentRow[];
+  offices: OfficeRow[];
+  people: PersonRow[];
+  projectRow: ProjectRow | null;
+  timeEntryRows: TimeEntryRow[];
 }
 
 interface CacheEntry<T> {
@@ -128,7 +155,7 @@ interface CacheEntry<T> {
 const projectListCache = new Map<string, CacheEntry<ProjectListData>>();
 const projectRailCache = new Map<string, CacheEntry<ProjectRailData>>();
 const projectDetailCache = new Map<string, CacheEntry<ProjectDetailData>>();
-let projectListMetricsFunctionAvailable: boolean | null = null;
+let projectDetailContextFunctionAvailable: boolean | null = null;
 
 function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
   const entry = store.get(key);
@@ -212,17 +239,19 @@ export interface ProjectListFilters {
 }
 
 export interface ProjectListItem extends Project {
+  canEditLead: boolean;
   canEditProject: boolean;
   canEditStage: boolean;
+  canViewFinancials: boolean;
   clientName: string | null;
   description: string | null;
   leadPersonName: string | null;
   leadPersonPhotoUrl: string | null;
   managingOfficeName: string;
   originatingOfficeName: string;
-  plannedHoursPerWeek: number | null;
   restrictedToSummary: boolean;
-  roughLaborCost: number | null;
+  totalHours: number | null;
+  totalLaborCost: number | null;
 }
 
 export interface ProjectAssignmentItem extends Assignment {
@@ -256,7 +285,7 @@ export interface ProjectTimeSummary {
   byPerson: Array<{
     hours: number;
     hourlyCost: number | null;
-    laborCost: number;
+    laborCost: number | null;
     personId: string;
     personName: string;
     personPhotoUrl: string | null;
@@ -265,14 +294,14 @@ export interface ProjectTimeSummary {
   recentEntries: Array<
     TimeEntry & {
       hourlyCost: number | null;
-      laborCost: number;
+      laborCost: number | null;
       personName: string | null;
       personPhotoUrl: string | null;
       personTitle: string | null;
     }
   >;
   totalHours: number;
-  totalLaborCost: number;
+  totalLaborCost: number | null;
 }
 
 export interface ProjectDetailData {
@@ -412,6 +441,27 @@ function normalizeRequiredText(value: string, fieldName: string): string {
   return normalized;
 }
 
+function normalizeDocumentFileUrl(value: string): string {
+  const normalized = normalizeRequiredText(value, "Document file URL");
+  let parsed: URL;
+
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error("Document file URL must be a valid HTTPS URL.");
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error("Document file URL must use HTTPS.");
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error("Document file URL cannot include embedded credentials.");
+  }
+
+  return parsed.toString();
+}
+
 function isIsoDate(value: string | null | undefined): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
@@ -501,6 +551,57 @@ async function resolveActivePerson(
   }
 
   return person;
+}
+
+async function invalidatePersonViewerCaches(
+  personIds: Array<string | null | undefined>,
+): Promise<void> {
+  const normalizedPersonIds = [
+    ...new Set(
+      personIds
+        .map((personId) => personId?.trim() ?? "")
+        .filter((personId): personId is string => Boolean(personId)),
+    ),
+  ]
+
+  if (normalizedPersonIds.length === 0) {
+    return
+  }
+
+  const serviceClient = createServerSupabaseClient({ useServiceRole: true })
+
+  if (!serviceClient) {
+    return
+  }
+
+  const [{ data: peopleData }, { data: accountData }] = await Promise.all([
+    serviceClient
+      .from("people")
+      .select("email")
+      .in("id", normalizedPersonIds),
+    serviceClient
+      .from("user_accounts")
+      .select("email")
+      .in("person_id", normalizedPersonIds),
+  ])
+
+  const emails = new Set<string>()
+
+  for (const row of (peopleData ?? []) as Array<{ email?: string | null }>) {
+    if (row.email) {
+      emails.add(row.email)
+    }
+  }
+
+  for (const row of (accountData ?? []) as Array<{ email?: string | null }>) {
+    if (row.email) {
+      emails.add(row.email)
+    }
+  }
+
+  for (const email of emails) {
+    invalidateViewerAccessCache(email)
+  }
 }
 
 async function resolveAssignmentRow(
@@ -597,17 +698,21 @@ function buildProjectListItem(
   row: ProjectRow,
   officesById: Map<string, OfficeRow>,
   peopleById: Map<string, PersonRow>,
-  metrics: { plannedHoursPerWeek: number; roughLaborCost: number } | null,
+  metrics: { totalHours: number; totalLaborCost: number } | null,
   restrictedToSummary: boolean,
   canEditProject: boolean,
   canEditStage: boolean,
+  canEditLead: boolean,
+  canViewFinancials: boolean,
 ): ProjectListItem {
   const project = toProject(row);
 
   return {
     ...project,
+    canEditLead,
     canEditProject,
     canEditStage,
+    canViewFinancials,
     clientName: project.clientName ?? null,
     description: project.description ?? null,
     leadPersonName: row.lead_person_id
@@ -620,11 +725,12 @@ function buildProjectListItem(
       officesById.get(row.managing_office_id)?.name ?? "Unknown office",
     originatingOfficeName:
       officesById.get(row.originating_office_id)?.name ?? "Unknown office",
-    plannedHoursPerWeek: restrictedToSummary
-      ? null
-      : (metrics?.plannedHoursPerWeek ?? 0),
     restrictedToSummary,
-    roughLaborCost: restrictedToSummary ? null : (metrics?.roughLaborCost ?? 0),
+    totalHours: restrictedToSummary ? null : (metrics?.totalHours ?? 0),
+    totalLaborCost:
+      restrictedToSummary || !canViewFinancials
+        ? null
+        : (metrics?.totalLaborCost ?? 0),
   };
 }
 
@@ -651,7 +757,7 @@ function matchesFilters(row: ProjectRow, filters: ProjectListFilters): boolean {
   return true;
 }
 
-function isMissingProjectListMetricsFunction(error: {
+function isMissingProjectDetailContextFunction(error: {
   code?: string;
   details?: string | null;
   hint?: string | null;
@@ -662,7 +768,129 @@ function isMissingProjectListMetricsFunction(error: {
   }
 
   const combined = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`;
-  return combined.includes("get_project_list_metrics");
+  return combined.includes("get_project_detail_context");
+}
+
+async function loadProjectDetailContextFallback(
+  projectId: string,
+  client: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+): Promise<LoadedProjectDetailContext> {
+  const { data: projectData, error: projectError } = await client
+    .from("projects")
+    .select(PROJECT_ROW_SELECT)
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError) {
+    throw projectError;
+  }
+
+  if (!projectData) {
+    return {
+      assignmentRows: [],
+      checklistRows: [],
+      documentRows: [],
+      offices: [],
+      people: [],
+      projectRow: null,
+      timeEntryRows: [],
+    };
+  }
+
+  const row = projectData as ProjectRow;
+  const [
+    offices,
+    leadPeople,
+    assignmentResponse,
+    checklistResponse,
+    documentResponse,
+    timeEntryResponse,
+  ] = await Promise.all([
+    fetchOfficeRows([row.originating_office_id, row.managing_office_id], {
+      client,
+    }),
+    row.lead_person_id
+      ? fetchPeopleRows([row.lead_person_id], { client })
+      : Promise.resolve([]),
+    client
+      .from("assignments")
+      .select(ASSIGNMENT_ROW_SELECT)
+      .eq("project_id", projectId)
+      .order("start_date", { ascending: true }),
+    client
+      .from("checklist_items")
+      .select(CHECKLIST_ROW_SELECT)
+      .eq("project_id", projectId)
+      .order("completed", { ascending: true })
+      .order("created_at", { ascending: true }),
+    client
+      .from("resource_documents")
+      .select(RESOURCE_DOCUMENT_ROW_SELECT)
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false }),
+    client
+      .from("time_entries")
+      .select(TIME_ENTRY_ROW_SELECT)
+      .eq("project_id", projectId)
+      .order("date", { ascending: false }),
+  ]);
+
+  if (assignmentResponse.error) {
+    throw assignmentResponse.error;
+  }
+
+  if (checklistResponse.error) {
+    throw checklistResponse.error;
+  }
+
+  if (documentResponse.error) {
+    throw documentResponse.error;
+  }
+
+  if (timeEntryResponse.error) {
+    throw timeEntryResponse.error;
+  }
+
+  const assignmentRows = (assignmentResponse.data ?? []) as AssignmentRow[];
+  const checklistRows = (checklistResponse.data ?? []) as ChecklistItemRow[];
+  const documentRows = (documentResponse.data ?? []) as ResourceDocumentRow[];
+  const timeEntryRows = (timeEntryResponse.data ?? []) as TimeEntryRow[];
+  const allPeopleIds = [
+    ...new Set([
+      ...leadPeople.map((person) => person.id),
+      ...assignmentRows.map((assignment) => assignment.person_id),
+      ...checklistRows
+        .map((item) => item.assigned_person_id)
+        .filter((value): value is string => Boolean(value)),
+      ...timeEntryRows.map((entry) => entry.person_id),
+      ...documentRows
+        .map((document) => document.uploaded_by_person_id)
+        .filter((value): value is string => Boolean(value)),
+    ]),
+  ];
+  const allPeople = await fetchPeopleRows(allPeopleIds, { client });
+  const officesById = new Map(offices.map((office) => [office.id, office]));
+  const staffingOfficeIds = [
+    ...new Set(
+      allPeople
+        .map((person) => person.office_id)
+        .filter((officeId) => !officesById.has(officeId)),
+    ),
+  ];
+  const staffingOffices =
+    staffingOfficeIds.length > 0
+      ? await fetchOfficeRows(staffingOfficeIds, { client })
+      : [];
+
+  return {
+    assignmentRows,
+    checklistRows,
+    documentRows,
+    offices: [...offices, ...staffingOffices],
+    people: allPeople,
+    projectRow: row,
+    timeEntryRows,
+  };
 }
 
 function emptyTimeSummary(): ProjectTimeSummary {
@@ -748,7 +976,7 @@ function emptyProjectDetailData(
 }
 
 function buildProjectStaffedPeople(
-  assignmentRows: Pick<AssignmentRow, "person_id">[],
+  assignmentRows: Pick<AssignmentRow, "person_id" | "active">[],
   timeEntryRows: Pick<TimeEntryRow, "person_id">[],
   peopleById: Map<string, PersonRow>,
   officesById: Map<string, OfficeRow>,
@@ -780,7 +1008,9 @@ function buildProjectStaffedPeople(
   }
 
   for (const assignment of assignmentRows) {
-    ensureStaffedPerson(assignment.person_id).hasAssignment = true;
+    if (assignment.active) {
+      ensureStaffedPerson(assignment.person_id).hasAssignment = true;
+    }
   }
 
   for (const timeEntry of timeEntryRows) {
@@ -795,40 +1025,44 @@ function buildProjectStaffedPeople(
   );
 }
 
+function getAnnualSalary(row: Pick<PersonRow, "annual_salary">): number | null {
+  return row.annual_salary === null ? null : Number(row.annual_salary);
+}
+
+function getHourlyCostForPerson(
+  canViewFinancials: boolean,
+  person: PersonRow | undefined,
+): number | null {
+  if (!canViewFinancials || !person) {
+    return null;
+  }
+
+  const annualSalary = getAnnualSalary(person);
+  return annualSalary === null ? null : deriveHourlyCost(annualSalary);
+}
+
 function buildProjectMetrics(
-  assignmentRows: Pick<
-    AssignmentRow,
-    "assigned_hours_per_week" | "project_id"
-  >[],
   timeEntryRows: Pick<TimeEntryRow, "hours" | "person_id" | "project_id">[],
   peopleById: Map<string, PersonRow>,
-): Map<string, { plannedHoursPerWeek: number; roughLaborCost: number }> {
+): Map<string, { totalHours: number; totalLaborCost: number }> {
   const metricsByProjectId = new Map<
     string,
-    { plannedHoursPerWeek: number; roughLaborCost: number }
+    { totalHours: number; totalLaborCost: number }
   >();
-
-  for (const assignment of assignmentRows) {
-    const existing = metricsByProjectId.get(assignment.project_id) ?? {
-      plannedHoursPerWeek: 0,
-      roughLaborCost: 0,
-    };
-
-    existing.plannedHoursPerWeek += Number(assignment.assigned_hours_per_week);
-    metricsByProjectId.set(assignment.project_id, existing);
-  }
 
   for (const timeEntry of timeEntryRows) {
     const person = peopleById.get(timeEntry.person_id);
-    const laborCost = person
-      ? Number(timeEntry.hours) * deriveHourlyCost(Number(person.annual_salary))
-      : 0;
+    const annualSalary = person ? getAnnualSalary(person) : null;
+    const laborCost = annualSalary === null
+      ? 0
+      : Number(timeEntry.hours) * deriveHourlyCost(annualSalary);
     const existing = metricsByProjectId.get(timeEntry.project_id) ?? {
-      plannedHoursPerWeek: 0,
-      roughLaborCost: 0,
+      totalHours: 0,
+      totalLaborCost: 0,
     };
 
-    existing.roughLaborCost += laborCost;
+    existing.totalHours += Number(timeEntry.hours);
+    existing.totalLaborCost += laborCost;
     metricsByProjectId.set(timeEntry.project_id, existing);
   }
 
@@ -852,10 +1086,6 @@ function listPreviewProjects(
       )
       .map((row) => row.id),
   );
-  const assignmentRows = previewAssignments.filter(
-    (assignment) =>
-      assignment.active && internalProjectIds.has(assignment.project_id),
-  );
   const timeEntryRows = previewTimeEntries.filter((entry) =>
     internalProjectIds.has(entry.project_id),
   );
@@ -873,11 +1103,7 @@ function listPreviewProjects(
       .filter((person) => [...leadIds, ...metricPeopleIds].includes(person.id))
       .map((person) => [person.id, person]),
   );
-  const metricsByProjectId = buildProjectMetrics(
-    assignmentRows,
-    timeEntryRows,
-    peopleById,
-  );
+  const metricsByProjectId = buildProjectMetrics(timeEntryRows, peopleById);
 
   return {
     accessMessage: null,
@@ -896,8 +1122,10 @@ function listPreviewProjects(
         peopleById,
         metricsByProjectId.get(row.id) ?? null,
         !canViewInternalProject(viewer, toProjectPermissionSubject(row)),
-        canCreateOrUpdateProjects(viewer, row.managing_office_id),
+        canEditProject(viewer, toProjectPermissionSubject(row)),
         canChangeProjectStage(viewer, toProjectPermissionSubject(row)),
+        canSetProjectLead(viewer, toProjectPermissionSubject(row)),
+        canViewProjectFinancials(viewer, toProjectPermissionSubject(row)),
       ),
     ),
     viewerLabel: null,
@@ -929,7 +1157,10 @@ function listPreviewProjectRail(
   };
 }
 
-function getPreviewProjectDetail(projectId: string): ProjectDetailData {
+function getPreviewProjectDetail(
+  projectId: string,
+  viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+): ProjectDetailData {
   const row = previewProjects.find((project) => project.id === projectId);
 
   if (!row) {
@@ -1002,14 +1233,24 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
     officesById.set(office.id, office);
   }
 
+  const projectSubject = toProjectPermissionSubject(row);
+  const canEditExistingProject = canEditProject(viewer, projectSubject);
+  const canEditLead = canSetProjectLead(viewer, projectSubject);
+  const canEditStage = canChangeProjectStage(viewer, projectSubject);
+  const canAssignPeople = canAssignPeopleToProject(viewer, projectSubject);
+  const canEditChecklistItems = canAddChecklistItemsToProject(viewer, projectSubject);
+  const canViewFinancials = canViewProjectFinancials(viewer, projectSubject);
+
   const project = buildProjectListItem(
     row,
     officesById,
     peopleById,
     null,
     false,
-    false,
-    false,
+    canEditExistingProject,
+    canEditStage,
+    canEditLead,
+    canViewFinancials,
   );
   const staffedPeople = buildProjectStaffedPeople(
     assignmentRows,
@@ -1060,7 +1301,7 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
     {
       hours: number;
       hourlyCost: number | null;
-      laborCost: number;
+      laborCost: number | null;
       personId: string;
       personName: string;
       personPhotoUrl: string | null;
@@ -1073,20 +1314,23 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
   for (const timeEntry of timeEntries) {
     const person = peopleById.get(timeEntry.personId);
     const personName = person?.full_name ?? "Unknown person";
-    const hourlyCost = person
-      ? deriveHourlyCost(Number(person.annual_salary))
-      : null;
+    const hourlyCost = getHourlyCostForPerson(canViewFinancials, person);
     const laborCost = hourlyCost !== null
       ? timeEntry.hours * hourlyCost
-      : 0;
+      : null;
     const existing = byPerson.get(timeEntry.personId);
 
     totalHours += timeEntry.hours;
-    totalLaborCost += laborCost;
+    if (laborCost !== null) {
+      totalLaborCost += laborCost;
+    }
 
     if (existing) {
       existing.hours += timeEntry.hours;
-      existing.laborCost += laborCost;
+      existing.laborCost =
+        existing.laborCost !== null && laborCost !== null
+          ? existing.laborCost + laborCost
+          : null;
     } else {
       byPerson.set(timeEntry.personId, {
         hours: timeEntry.hours,
@@ -1102,10 +1346,10 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
 
   return {
     accessMessage: null,
-    canAssignPeople: false,
-    canEdit: false,
-    canEditChecklistItems: false,
-    canEditStage: false,
+    canAssignPeople,
+    canEdit: canEditExistingProject,
+    canEditChecklistItems,
+    canEditStage,
     checklistItems,
     configured: false,
     configMessage: PREVIEW_CONFIG_MESSAGE,
@@ -1121,21 +1365,21 @@ function getPreviewProjectDetail(projectId: string): ProjectDetailData {
       ),
       recentEntries: timeEntries.slice(0, 5).map((entry) => ({
         ...entry,
-        hourlyCost: peopleById.get(entry.personId)
-          ? deriveHourlyCost(
-              Number(peopleById.get(entry.personId)!.annual_salary),
-            )
-          : null,
-        laborCost: peopleById.get(entry.personId)
-          ? entry.hours *
-            deriveHourlyCost(Number(peopleById.get(entry.personId)!.annual_salary))
-          : 0,
+        hourlyCost: getHourlyCostForPerson(
+          canViewFinancials,
+          peopleById.get(entry.personId),
+        ),
+        laborCost:
+          getHourlyCostForPerson(canViewFinancials, peopleById.get(entry.personId)) !== null
+            ? entry.hours *
+              getHourlyCostForPerson(canViewFinancials, peopleById.get(entry.personId))!
+            : null,
         personName: peopleById.get(entry.personId)?.full_name ?? null,
         personPhotoUrl: peopleById.get(entry.personId)?.photo_url ?? null,
         personTitle: peopleById.get(entry.personId)?.title ?? null,
       })),
       totalHours,
-      totalLaborCost,
+      totalLaborCost: canViewFinancials ? totalLaborCost : null,
     },
     viewerLabel: null,
   };
@@ -1279,99 +1523,46 @@ export async function listProjects(
       ),
     )
     .map((row) => row.id);
-  let metricPeopleIds: string[] = [];
-  let metricsByProjectId = new Map<
-    string,
-    { plannedHoursPerWeek: number; roughLaborCost: number }
-  >();
-  let fallbackMetrics:
-    | {
-        assignments: AssignmentRow[];
-        timeEntries: TimeEntryRow[];
-      }
-    | null = null;
+  const leadIds = [
+    ...new Set(
+      visibleProjectRows
+        .map((row) => row.lead_person_id)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  const leadPeoplePromise = leadIds.length > 0
+    ? trace.measure("fetchLeadPeopleRows", () =>
+        fetchPeopleRows(leadIds, { client }),
+      )
+    : Promise.resolve([]);
+  const metricsPromise = internalProjectIds.length > 0
+    ? trace.measure("rpc.getProjectListTimeMetrics", () =>
+        client.rpc("get_project_list_time_metrics", {
+          input_project_ids: internalProjectIds,
+        }),
+      )
+    : Promise.resolve({ data: [], error: null });
 
-  if (internalProjectIds.length > 0) {
-    if (projectListMetricsFunctionAvailable !== false) {
-      const { data: metricsData, error: metricsError } = await trace.measure(
-        "metricsRpc",
-        () =>
-          client.rpc("get_project_list_metrics", {
-            input_project_ids: internalProjectIds,
-          }),
-      );
+  const [people, metricsResponse] = await Promise.all([
+    leadPeoplePromise,
+    metricsPromise,
+  ]);
 
-      if (!metricsError) {
-        projectListMetricsFunctionAvailable = true;
-        metricsByProjectId = new Map(
-          ((metricsData ?? []) as ProjectListMetricRow[]).map((row) => [
-            row.project_id,
-            {
-              plannedHoursPerWeek: Number(row.planned_hours_per_week ?? 0),
-              roughLaborCost: Number(row.rough_labor_cost ?? 0),
-            },
-          ]),
-        );
-      } else if (isMissingProjectListMetricsFunction(metricsError)) {
-        projectListMetricsFunctionAvailable = false;
-      } else {
-        throw metricsError;
-      }
-    }
-
-    if (projectListMetricsFunctionAvailable === false) {
-      const [
-        { data: assignmentData, error: assignmentError },
-        { data: timeEntryData, error: timeEntryError },
-      ] = await trace.measure("metricsQueriesFallback", () =>
-        Promise.all([
-          client
-            .from("assignments")
-            .select(ASSIGNMENT_ROW_SELECT)
-            .in("project_id", internalProjectIds)
-            .eq("active", true),
-          client
-            .from("time_entries")
-            .select(TIME_ENTRY_ROW_SELECT)
-            .in("project_id", internalProjectIds),
-        ]),
-      );
-
-      if (assignmentError) {
-        throw assignmentError;
-      }
-
-      if (timeEntryError) {
-        throw timeEntryError;
-      }
-
-      fallbackMetrics = {
-        assignments: (assignmentData ?? []) as AssignmentRow[],
-        timeEntries: (timeEntryData ?? []) as TimeEntryRow[],
-      };
-      metricPeopleIds = fallbackMetrics.timeEntries.map((entry) => entry.person_id);
-    }
+  if (metricsResponse.error) {
+    throw metricsResponse.error;
   }
 
-  const leadIds = visibleProjectRows
-    .map((row) => row.lead_person_id)
-    .filter((value): value is string => Boolean(value));
-  const people = await trace.measure("fetchPeopleRows", () =>
-    fetchPeopleRows(
-      [...new Set([...leadIds, ...metricPeopleIds])],
-      { client },
-    ),
-  );
   const officesById = new Map(offices.map((office) => [office.id, office]));
   const peopleById = new Map(people.map((person) => [person.id, person]));
-
-  if (fallbackMetrics) {
-    metricsByProjectId = buildProjectMetrics(
-      fallbackMetrics.assignments,
-      fallbackMetrics.timeEntries,
-      peopleById,
-    );
-  }
+  const metricsByProjectId = ((metricsResponse.data ?? []) as ProjectListTimeMetricRow[])
+    .reduce((map, metric) => {
+      map.set(metric.project_id, {
+        totalHours: Number(metric.total_hours),
+        totalLaborCost:
+          metric.rough_labor_cost === null ? 0 : Number(metric.rough_labor_cost),
+      });
+      return map;
+    }, new Map<string, { totalHours: number; totalLaborCost: number }>());
 
   const result = {
     accessMessage: viewerAccess.accessMessage,
@@ -1390,8 +1581,10 @@ export async function listProjects(
           viewerAccess.viewer!,
           toProjectPermissionSubject(row),
         ),
-        canCreateOrUpdateProjects(viewerAccess.viewer!, row.managing_office_id),
+        canEditProject(viewerAccess.viewer!, toProjectPermissionSubject(row)),
         canChangeProjectStage(viewerAccess.viewer!, toProjectPermissionSubject(row)),
+        canSetProjectLead(viewerAccess.viewer!, toProjectPermissionSubject(row)),
+        canViewProjectFinancials(viewerAccess.viewer!, toProjectPermissionSubject(row)),
       ),
     ),
     viewerLabel,
@@ -1420,12 +1613,25 @@ export async function listProjectRailData(
     return cachedValue;
   }
 
-  const viewerAccess = await getCurrentViewerAccess(context);
-  const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null;
+  const viewerAccessPromise = getCurrentViewerAccess(context);
+  const railDataPromise = client
+    ? Promise.all([
+        client
+          .from("projects")
+          .select("id, name, photo_url, managing_office_id, lead_person_id")
+          .order("name"),
+        fetchOfficeRows(undefined, { client }),
+      ]).then(
+        (value) => ({ error: null as null, value }),
+        (error: unknown) => ({ error, value: null as null }),
+      )
+    : null;
+  const viewerAccess = await viewerAccessPromise;
+  const viewerLabel = getViewerLabel(viewerAccess.summary);
 
   if (!viewerAccess.viewer) {
     return emptyProjectRailData(
@@ -1451,13 +1657,19 @@ export async function listProjectRailData(
       : previewResult;
   }
 
-  const [{ data: projectData, error: projectError }, offices] = await Promise.all([
-    client
-      .from("projects")
-      .select("id, name, photo_url, managing_office_id, lead_person_id")
-      .order("name"),
-    fetchOfficeRows(undefined, { client }),
-  ]);
+  const railDataResult = railDataPromise
+    ? await railDataPromise
+    : { error: null as null, value: null as null };
+
+  if (railDataResult.error) {
+    throw railDataResult.error;
+  }
+
+  if (!railDataResult.value) {
+    throw new Error("Project rail query returned no data.");
+  }
+
+  const [{ data: projectData, error: projectError }, offices] = railDataResult.value;
 
   if (projectError) {
     throw projectError;
@@ -1515,11 +1727,11 @@ export async function createProject(
   const name = normalizeRequiredText(input.name, "Project name");
   const originatingOfficeId = normalizeRequiredText(
     input.originatingOfficeId,
-    "Originating office",
+    "Office",
   );
   const managingOfficeId = normalizeRequiredText(
     input.managingOfficeId,
-    "Managing office",
+    "Office",
   );
 
   if (!isProjectStage(input.stage)) {
@@ -1604,6 +1816,9 @@ export async function createProject(
     throw error;
   }
 
+  invalidateProjectReadCaches()
+  await invalidatePersonViewerCaches([input.leadPersonId])
+
   return toProject(data as ProjectRow);
 }
 
@@ -1622,11 +1837,11 @@ export async function updateProject(
   const leadPersonId = normalizeNullableText(input.leadPersonId);
   const originatingOfficeId = normalizeRequiredText(
     input.originatingOfficeId,
-    "Originating office",
+    "Office",
   );
   const managingOfficeId = normalizeRequiredText(
     input.managingOfficeId,
-    "Managing office",
+    "Office",
   );
   const photoUrl = normalizeNullableText(input.photoUrl);
 
@@ -1634,28 +1849,17 @@ export async function updateProject(
     throw new Error("Stage is invalid.");
   }
 
-  const canFullyEditProject =
-    canCreateOrUpdateProjects(viewer, projectRow.managing_office_id) &&
-    canCreateOrUpdateProjects(viewer, managingOfficeId);
-  const isStageOnlyUpdate =
-    name === projectRow.name &&
-    clientName === (projectRow.client_name ?? null) &&
-    description === (projectRow.description ?? null) &&
-    originatingOfficeId === projectRow.originating_office_id &&
-    managingOfficeId === projectRow.managing_office_id &&
-    leadPersonId === (projectRow.lead_person_id ?? null) &&
-    photoUrl === (projectRow.photo_url ?? null) &&
-    (input.startDate ?? null) === projectRow.start_date &&
-    (input.targetCompletionDate ?? null) === projectRow.target_completion_date;
+  const projectSubject = toProjectPermissionSubject(projectRow);
+
+  if (!canEditProject(viewer, projectSubject)) {
+    throw new Error("You do not have permission to update this project.");
+  }
 
   if (
-    !canFullyEditProject &&
-    !(
-      isStageOnlyUpdate &&
-      canChangeProjectStage(viewer, toProjectPermissionSubject(projectRow))
-    )
+    leadPersonId !== (projectRow.lead_person_id ?? null) &&
+    !canSetProjectLead(viewer, projectSubject)
   ) {
-    throw new Error("You do not have permission to update this project.");
+    throw new Error("Only admins and partners can change the project lead.");
   }
 
   if (input.startDate && !isIsoDate(input.startDate)) {
@@ -1720,6 +1924,12 @@ export async function updateProject(
     throw error;
   }
 
+  invalidateProjectReadCaches()
+  await invalidatePersonViewerCaches([
+    projectRow.lead_person_id,
+    leadPersonId,
+  ])
+
   return toProject(data as ProjectRow);
 }
 
@@ -1772,6 +1982,9 @@ export async function createProjectAssignment(
   if (error) {
     throw error;
   }
+
+  invalidateProjectReadCaches()
+  await invalidatePersonViewerCaches([person.id])
 
   return {
     ...toAssignment(data as AssignmentRow),
@@ -1918,7 +2131,7 @@ export async function createProjectDocument(
   }
 
   const name = normalizeRequiredText(input.name, "Document name");
-  const fileUrl = normalizeRequiredText(input.fileUrl, "Document file URL");
+  const fileUrl = normalizeDocumentFileUrl(input.fileUrl);
   const uploader = viewer.personId
     ? (await fetchPeopleRows([viewer.personId], { client }))[0] ?? null
     : null;
@@ -2048,13 +2261,23 @@ export async function updateProjectTimeEntry(
   }
 
   const updatedEntry = toTimeEntry(data as TimeEntryRow);
-  const person = (await fetchPeopleRows([updatedEntry.personId], { client }))[0] ?? null;
-  const hourlyCost = person ? deriveHourlyCost(Number(person.annual_salary)) : null;
+  const canViewFinancials = canViewProjectFinancials(
+    viewer,
+    toProjectPermissionSubject(projectRow),
+  );
+  const personRow = (await fetchPeopleRows([updatedEntry.personId], { client }))[0] ?? null;
+  const compensationByPersonId = canViewFinancials
+    ? await fetchPeopleCompensationById([updatedEntry.personId], { client })
+    : new Map<string, number>();
+  const person = personRow
+    ? attachPeopleCompensation([personRow], compensationByPersonId)[0]
+    : null;
+  const hourlyCost = getHourlyCostForPerson(canViewFinancials, person ?? undefined);
 
   return {
     ...updatedEntry,
     hourlyCost,
-    laborCost: hourlyCost ? updatedEntry.hours * hourlyCost : 0,
+    laborCost: hourlyCost !== null ? updatedEntry.hours * hourlyCost : null,
     personName: person?.full_name ?? null,
     personPhotoUrl: person?.photo_url ?? null,
     personTitle: person?.title ?? null,
@@ -2072,12 +2295,19 @@ export async function getProjectDetail(
     return cachedValue;
   }
 
-  const viewerAccess = await getCurrentViewerAccess(context);
-  const viewerLabel = getViewerLabel(viewerAccess.summary);
   const status = getDatabaseStatus();
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
     : null;
+  const viewerAccessPromise = getCurrentViewerAccess(context);
+  const detailContextPromise =
+    client && projectDetailContextFunctionAvailable !== false
+      ? client.rpc("get_project_detail_context", {
+          target_project_id: projectId,
+        })
+      : null;
+  const viewerAccess = await viewerAccessPromise;
+  const viewerLabel = getViewerLabel(viewerAccess.summary);
 
   if (!viewerAccess.viewer) {
     return emptyProjectDetailData(
@@ -2090,7 +2320,7 @@ export async function getProjectDetail(
   }
 
   if (!client) {
-    const previewData = getPreviewProjectDetail(projectId);
+    const previewData = getPreviewProjectDetail(projectId, viewerAccess.viewer);
 
     if (
       previewData.project &&
@@ -2126,10 +2356,11 @@ export async function getProjectDetail(
           )
         : false,
       canEdit: previewData.project
-        ? canCreateOrUpdateProjects(
-            viewerAccess.viewer,
-            previewData.project.managingOfficeId,
-          )
+        ? canEditProject(viewerAccess.viewer, {
+            id: previewData.project.id,
+            leadPersonId: previewData.project.leadPersonId,
+            managingOfficeId: previewData.project.managingOfficeId,
+          })
         : false,
       canEditChecklistItems: previewData.project
         ? canAddChecklistItemsToProject(
@@ -2167,17 +2398,40 @@ export async function getProjectDetail(
       : previewResult;
   }
 
-  const { data: projectRow, error: projectError } = await client
-    .from("projects")
-    .select(PROJECT_ROW_SELECT)
-    .eq("id", projectId)
-    .maybeSingle();
+  let detailContext: LoadedProjectDetailContext;
 
-  if (projectError) {
-    throw projectError;
+  if (detailContextPromise) {
+    const { data, error } = await detailContextPromise;
+
+    if (error) {
+      if (isMissingProjectDetailContextFunction(error)) {
+        projectDetailContextFunctionAvailable = false;
+        detailContext = await loadProjectDetailContextFallback(projectId, client);
+      } else {
+        throw error;
+      }
+    } else {
+      projectDetailContextFunctionAvailable = true;
+
+      const response = (data ?? null) as ProjectDetailContextResponse | null;
+
+      detailContext = {
+        assignmentRows: (response?.assignments ?? []) as AssignmentRow[],
+        checklistRows: (response?.checklistItems ?? []) as ChecklistItemRow[],
+        documentRows: (response?.documents ?? []) as ResourceDocumentRow[],
+        offices: (response?.offices ?? []) as OfficeRow[],
+        people: (response?.people ?? []) as PersonRow[],
+        projectRow: response?.found && response.project ? (response.project as ProjectRow) : null,
+        timeEntryRows: (response?.timeEntries ?? []) as TimeEntryRow[],
+      };
+    }
+  } else {
+    detailContext = await loadProjectDetailContextFallback(projectId, client);
   }
 
-  if (!projectRow) {
+  const row = detailContext.projectRow;
+
+  if (!row) {
     return emptyProjectDetailData(
       status.configured,
       status.message,
@@ -2186,8 +2440,6 @@ export async function getProjectDetail(
       false,
     );
   }
-
-  const row = projectRow as ProjectRow;
 
   if (
     !canViewProjectSummary(viewerAccess.viewer, toProjectPermissionSubject(row))
@@ -2202,88 +2454,29 @@ export async function getProjectDetail(
     );
   }
 
-  const [
-    offices,
-    leadPeople,
-    assignmentResponse,
-    checklistResponse,
-    documentResponse,
-    timeEntryResponse,
-  ] = await Promise.all([
-    fetchOfficeRows([row.originating_office_id, row.managing_office_id], {
-      client,
-    }),
-    row.lead_person_id
-      ? fetchPeopleRows([row.lead_person_id], { client })
-      : Promise.resolve([]),
-    client
-      .from("assignments")
-      .select(ASSIGNMENT_ROW_SELECT)
-      .eq("project_id", projectId)
-      .order("start_date", { ascending: true }),
-    client
-      .from("checklist_items")
-      .select(CHECKLIST_ROW_SELECT)
-      .eq("project_id", projectId)
-      .order("completed", { ascending: true })
-      .order("created_at", { ascending: true }),
-    client
-      .from("resource_documents")
-      .select(RESOURCE_DOCUMENT_ROW_SELECT)
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false }),
-    client
-      .from("time_entries")
-      .select(TIME_ENTRY_ROW_SELECT)
-      .eq("project_id", projectId)
-      .order("date", { ascending: false }),
-  ]);
-
-  const [assignmentRows, checklistRows, documentRows, timeEntryRows] = [
-    (assignmentResponse.data ?? []) as AssignmentRow[],
-    (checklistResponse.data ?? []) as ChecklistItemRow[],
-    (documentResponse.data ?? []) as ResourceDocumentRow[],
-    (timeEntryResponse.data ?? []) as TimeEntryRow[],
-  ];
-
-  if (assignmentResponse.error) throw assignmentResponse.error;
-  if (checklistResponse.error) throw checklistResponse.error;
-  if (documentResponse.error) throw documentResponse.error;
-  if (timeEntryResponse.error) throw timeEntryResponse.error;
-
-  const staffingPeopleIds = assignmentRows.map(
-    (assignment) => assignment.person_id,
+  const assignmentRows = detailContext.assignmentRows;
+  const checklistRows = detailContext.checklistRows;
+  const documentRows = detailContext.documentRows;
+  const timeEntryRows = detailContext.timeEntryRows;
+  const offices = detailContext.offices;
+  const projectSubject = toProjectPermissionSubject(row);
+  const canViewFinancials = canViewProjectFinancials(
+    viewerAccess.viewer,
+    projectSubject,
   );
-  const checklistPeopleIds = checklistRows
-    .map((item) => item.assigned_person_id)
-    .filter((value): value is string => Boolean(value));
-  const timePeopleIds = timeEntryRows.map((entry) => entry.person_id);
-  const allPeopleIds = [
-    ...new Set([
-      ...leadPeople.map((person) => person.id),
-      ...staffingPeopleIds,
-      ...checklistPeopleIds,
-      ...timePeopleIds,
-    ]),
-  ];
-  const allPeople = await fetchPeopleRows(allPeopleIds, { client });
+  const compensationByPersonId =
+    canViewFinancials && detailContext.people.length > 0
+      ? await fetchPeopleCompensationById(
+          detailContext.people.map((person) => person.id),
+          { client },
+        )
+      : new Map<string, number>();
+  const allPeople = attachPeopleCompensation(
+    detailContext.people,
+    compensationByPersonId,
+  );
   const officesById = new Map(offices.map((office) => [office.id, office]));
   const peopleById = new Map(allPeople.map((person) => [person.id, person]));
-  const staffingOfficeIds = [
-    ...new Set(
-      allPeople
-        .map((person) => person.office_id)
-        .filter((officeId) => !officesById.has(officeId)),
-    ),
-  ];
-  const staffingOffices =
-    staffingOfficeIds.length > 0
-      ? await fetchOfficeRows(staffingOfficeIds, { client })
-      : [];
-
-  for (const office of staffingOffices) {
-    officesById.set(office.id, office);
-  }
 
   const project = buildProjectListItem(
     row,
@@ -2291,8 +2484,10 @@ export async function getProjectDetail(
     peopleById,
     null,
     false,
-    canCreateOrUpdateProjects(viewerAccess.viewer, row.managing_office_id),
-    canChangeProjectStage(viewerAccess.viewer, toProjectPermissionSubject(row)),
+    canEditProject(viewerAccess.viewer, projectSubject),
+    canChangeProjectStage(viewerAccess.viewer, projectSubject),
+    canSetProjectLead(viewerAccess.viewer, projectSubject),
+    canViewFinancials,
   );
   const restrictedToSummary = !canViewInternalProject(
     viewerAccess.viewer,
@@ -2376,7 +2571,7 @@ export async function getProjectDetail(
     {
       hours: number;
       hourlyCost: number | null;
-      laborCost: number;
+      laborCost: number | null;
       personId: string;
       personName: string;
       personPhotoUrl: string | null;
@@ -2390,20 +2585,23 @@ export async function getProjectDetail(
   for (const timeEntry of timeEntries) {
     const person = peopleById.get(timeEntry.personId);
     const personName = person?.full_name ?? "Unknown person";
-    const hourlyCost = person
-      ? deriveHourlyCost(Number(person.annual_salary))
-      : null;
+    const hourlyCost = getHourlyCostForPerson(canViewFinancials, person);
     const laborCost = hourlyCost !== null
       ? timeEntry.hours * hourlyCost
-      : 0;
+      : null;
     const existing = byPerson.get(timeEntry.personId);
 
     totalHours += timeEntry.hours;
-    totalLaborCost += laborCost;
+    if (laborCost !== null) {
+      totalLaborCost += laborCost;
+    }
 
     if (existing) {
       existing.hours += timeEntry.hours;
-      existing.laborCost += laborCost;
+      existing.laborCost =
+        existing.laborCost !== null && laborCost !== null
+          ? existing.laborCost + laborCost
+          : null;
     } else {
       byPerson.set(timeEntry.personId, {
         hours: timeEntry.hours,
@@ -2423,7 +2621,10 @@ export async function getProjectDetail(
       viewerAccess.viewer,
       toProjectPermissionSubject(row),
     ),
-    canEdit: canCreateOrUpdateProjects(viewerAccess.viewer, row.managing_office_id),
+    canEdit: canEditProject(
+      viewerAccess.viewer,
+      toProjectPermissionSubject(row),
+    ),
     canEditChecklistItems: canAddChecklistItemsToProject(
       viewerAccess.viewer,
       toProjectPermissionSubject(row),
@@ -2447,21 +2648,21 @@ export async function getProjectDetail(
       ),
       recentEntries: timeEntries.slice(0, 5).map((entry) => ({
         ...entry,
-        hourlyCost: peopleById.get(entry.personId)
-          ? deriveHourlyCost(
-              Number(peopleById.get(entry.personId)!.annual_salary),
-            )
-          : null,
-        laborCost: peopleById.get(entry.personId)
-          ? entry.hours *
-            deriveHourlyCost(Number(peopleById.get(entry.personId)!.annual_salary))
-          : 0,
+        hourlyCost: getHourlyCostForPerson(
+          canViewFinancials,
+          peopleById.get(entry.personId),
+        ),
+        laborCost:
+          getHourlyCostForPerson(canViewFinancials, peopleById.get(entry.personId)) !== null
+            ? entry.hours *
+              getHourlyCostForPerson(canViewFinancials, peopleById.get(entry.personId))!
+            : null,
         personName: peopleById.get(entry.personId)?.full_name ?? null,
         personPhotoUrl: peopleById.get(entry.personId)?.photo_url ?? null,
         personTitle: peopleById.get(entry.personId)?.title ?? null,
       })),
       totalHours,
-      totalLaborCost,
+      totalLaborCost: canViewFinancials ? totalLaborCost : null,
     },
     viewerLabel,
   };

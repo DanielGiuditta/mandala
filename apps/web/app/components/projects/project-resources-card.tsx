@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import type { ProjectDocumentItem } from "@mandala/db";
 
+import { ResourceDocumentIcon } from "../resources/resource-document-icon";
 import { formatDateTime } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
 
@@ -98,10 +99,8 @@ export function ProjectResourcesCard({
           visibleDocuments.map((document) => (
             <article className="pd-list-item" key={document.id}>
               <div className="pd-list-item-main">
-                <span aria-hidden className="pd-doc-icon">
-                  []
-                </span>
-                <div>
+                <ResourceDocumentIcon fileType={document.fileType} />
+                <div className="pd-list-item-main-column">
                   <a className="pd-link" href={document.fileUrl} rel="noreferrer" target="_blank">
                     {document.name}
                   </a>

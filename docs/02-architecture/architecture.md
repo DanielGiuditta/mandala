@@ -15,7 +15,9 @@ The product has two interfaces with shared domain rules:
 1. the web application
 2. a Windows companion app for V1 time capture
 
-The Windows companion app remains the primary V1 time-capture surface, but the web shell may also expose a lightweight self-only sidebar tracker that writes manual time entries for any active project for the signed-in internal user, resolving the signed-in email to the backing person identity.
+The Windows companion app remains the primary V1 time-capture surface, but the web shell may also expose a lightweight self-only sidebar tracker that writes manual time entries on projects the signed-in internal user may track against, resolving the signed-in email to the backing person identity.
+
+The standalone time-tracker workspace remains an elevated internal surface for partners, admins, and project leads. Employees use the sidebar tracker instead.
 
 A monorepo avoids duplicating domain types, permission enums, workflow keys, and design-system primitives.
 
@@ -37,15 +39,13 @@ Lay the core model down first, then build vertical slices:
 For V1, the authorization skeleton should add:
 
 - `UserAccount` for login identity
-- `RoleAssignment` for elevated `partner` and office-scoped `admin` permissions
+- `RoleAssignment` for elevated instance-scoped `partner` and `admin` permissions
 - `ClientProjectAccess` for explicit client entitlements
 - derived project-lead permissions from `Project.leadPersonId`
 - derived employee permissions from the `UserAccount` to `Person` link and active project relationships
+- one exact-email bootstrap override for `danielgiuditta@gmail.com` without introducing a new stored role
 
-Office-scoped admin checks should use:
-
-- `Person.officeId` for person management
-- `Project.managingOfficeId` for project staffing, stage, time, checklist, and document management
+Project-lead write checks should still use the specific target project's `leadPersonId`.
 
 ## Boundaries
 

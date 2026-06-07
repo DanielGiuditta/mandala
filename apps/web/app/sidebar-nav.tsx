@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { TokenIcon } from "./components/ui/token-icon"
 
 function FigmaIcon({ src }: { src: string }) {
@@ -55,14 +55,35 @@ const NAV_ITEMS = [
 
 interface SidebarNavProps {
   isOpen: boolean
+  primaryTier: string | null
 }
 
-export function SidebarNav({ isOpen }: SidebarNavProps) {
+function canViewNavItem(
+  href: string,
+  primaryTier: string | null,
+): boolean {
+  if (href === "/projects") {
+    return true
+  }
+
+  if (primaryTier === "partner" || primaryTier === "admin") {
+    return true
+  }
+
+  if (primaryTier === "projectLead") {
+    return href === "/people" || href === "/time-tracker"
+  }
+
+  return false
+}
+
+export function SidebarNav({ isOpen, primaryTier }: SidebarNavProps) {
   const pathname = usePathname()
+  const router = useRouter()
 
   return (
     <nav aria-label="Primary" className="app-sidebar-nav app-sidebar-nav-track">
-      {NAV_ITEMS.map((item) => {
+      {NAV_ITEMS.filter((item) => canViewNavItem(item.href, primaryTier)).map((item) => {
         const isProjectsRoot = item.href === "/projects" && pathname === "/"
         const isActive =
           isProjectsRoot || pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -75,6 +96,9 @@ export function SidebarNav({ isOpen }: SidebarNavProps) {
             }`}
             href={item.href}
             key={item.href}
+            onFocus={() => router.prefetch(item.href)}
+            onMouseEnter={() => router.prefetch(item.href)}
+            prefetch={false}
           >
             {item.renderIcon()}
             <span className={`app-sidebar-nav-label ${isOpen ? "" : "app-sidebar-nav-label-hidden"}`}>

@@ -19,6 +19,7 @@ import { ProjectStaffCard } from "./project-staff-card";
 import { ProjectTasksCard } from "./project-tasks-card";
 import { ProjectWorklogCard } from "./project-worklog-card";
 import type { ProjectCreateOfficeOption } from "./project-create-types";
+import { formatOfficeRelationship } from "./projects-formatters";
 
 interface ProjectDetailEntityProps {
   closeControl?: ReactNode;
@@ -122,14 +123,16 @@ export function ProjectDetailEntity({
         action={
           <div className="entity-header-action-group">
             <ProjectCreateModal
+              canEditLead={data.project.canEditLead}
               disabled={!data.canEdit}
-              disabledReason={!data.canEdit ? "Only admins and partners can edit this project." : undefined}
+              disabledReason={!data.canEdit ? "Only admins, partners, and project leads can edit this project." : undefined}
               initialFormInput={{
                 clientName: data.project.clientName ?? "",
                 description: data.project.description ?? "",
                 leadPersonId: data.project.leadPersonId ?? "",
                 name: data.project.name,
-                officeId: data.project.managingOfficeId,
+                officeId:
+                  data.project.managingOfficeId || data.project.originatingOfficeId,
                 photoFile: null,
                 photoUrl: data.project.photoUrl ?? null,
                 stage: data.project.stage,
@@ -140,7 +143,6 @@ export function ProjectDetailEntity({
               mode="edit"
               officeOptions={officeOptions}
               onUpdateProjectAction={onUpdateProjectAction}
-              preservedOriginatingOfficeId={data.project.originatingOfficeId}
               projectId={data.project.id}
               trigger="edit"
             />
@@ -173,7 +175,7 @@ export function ProjectDetailEntity({
               Internal task, staffing, resource, and worklog details are hidden for this viewer.
             </p>
             <p className="pd-meta-text">
-              Office: {data.project.managingOfficeName}.
+              Office: {formatOfficeRelationship(data.project)}.
             </p>
           </section>
         ) : (

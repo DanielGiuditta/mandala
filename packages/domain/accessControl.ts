@@ -1,5 +1,7 @@
 import type { RoleAssignment } from "./roleAssignment"
 
+export const EXACT_SUPER_USER_EMAIL = "danielgiuditta@gmail.com"
+
 export const EFFECTIVE_USER_TIERS = [
   "partner",
   "admin",
@@ -12,10 +14,12 @@ export type EffectiveUserTier = (typeof EFFECTIVE_USER_TIERS)[number]
 
 export interface AuthorizationViewer {
   userAccountId: string
+  email: string
   personId?: string | null
   active: boolean
   roleAssignments: RoleAssignment[]
   activeAssignedProjectIds: string[]
+  leadProjectIds: string[]
   clientProjectIds: string[]
 }
 
@@ -34,11 +38,31 @@ function getActiveRoleAssignments(viewer: AuthorizationViewer): RoleAssignment[]
   return viewer.roleAssignments.filter((assignment) => assignment.active)
 }
 
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+export function hasExactSuperUserOverride(viewer: AuthorizationViewer): boolean {
+  return normalizeEmail(viewer.email) === EXACT_SUPER_USER_EMAIL
+}
+
 export function hasPartnerRole(viewer: AuthorizationViewer): boolean {
   return getActiveRoleAssignments(viewer).some((assignment) => assignment.role === "partner")
 }
 
+export function hasPartnerPrivileges(viewer: AuthorizationViewer): boolean {
+  return hasExactSuperUserOverride(viewer) || hasPartnerRole(viewer)
+}
+
+export function hasAdminRole(viewer: AuthorizationViewer): boolean {
+  return getActiveRoleAssignments(viewer).some((assignment) => assignment.role === "admin")
+}
+
 export function getAdminOfficeIds(viewer: AuthorizationViewer): string[] {
+  if (!hasAdminRole(viewer)) {
+    return []
+  }
+
   return [
     ...new Set(
       getActiveRoleAssignments(viewer)
@@ -55,7 +79,7 @@ export function isAdminForOffice(
   viewer: AuthorizationViewer,
   officeId: string,
 ): boolean {
-  return getAdminOfficeIds(viewer).includes(officeId)
+  return Boolean(officeId) && hasAdminRole(viewer)
 }
 
 export function isProjectLead(
@@ -83,19 +107,35 @@ export function isInternalViewer(viewer: AuthorizationViewer): boolean {
   return Boolean(viewer.personId)
 }
 
+export function hasProjectLeadAccess(viewer: AuthorizationViewer): boolean {
+  return viewer.leadProjectIds.length > 0
+}
+
+export function canViewFinancialData(viewer: AuthorizationViewer): boolean {
+  if (!viewer.active) {
+    return false
+  }
+
+  return hasPartnerPrivileges(viewer) || hasAdminRole(viewer)
+}
+
 export function getViewerBaseTier(
   viewer: AuthorizationViewer,
-): Exclude<EffectiveUserTier, "projectLead"> | null {
+): EffectiveUserTier | null {
   if (!viewer.active) {
     return null
   }
 
-  if (hasPartnerRole(viewer)) {
+  if (hasPartnerPrivileges(viewer)) {
     return "partner"
   }
 
-  if (getAdminOfficeIds(viewer).length > 0) {
+  if (hasAdminRole(viewer)) {
     return "admin"
+  }
+
+  if (hasProjectLeadAccess(viewer)) {
+    return "projectLead"
   }
 
   if (isInternalViewer(viewer)) {
@@ -117,11 +157,11 @@ export function getViewerTierForProject(
     return null
   }
 
-  if (hasPartnerRole(viewer)) {
+  if (hasPartnerPrivileges(viewer)) {
     return "partner"
   }
 
-  if (isAdminForOffice(viewer, project.managingOfficeId)) {
+  if (hasAdminRole(viewer)) {
     return "admin"
   }
 
@@ -145,7 +185,7 @@ export function canViewPeopleDirectory(viewer: AuthorizationViewer): boolean {
     return false
   }
 
-  return hasPartnerRole(viewer) || getAdminOfficeIds(viewer).length > 0
+  return hasPartnerPrivileges(viewer) || hasAdminRole(viewer) || hasProjectLeadAccess(viewer)
 }
 
 export function canViewPerson(
@@ -156,18 +196,26 @@ export function canViewPerson(
     return false
   }
 
-  if (hasPartnerRole(viewer) || isAdminForOffice(viewer, person.officeId)) {
+  if (
+    hasPartnerPrivileges(viewer) ||
+    hasAdminRole(viewer) ||
+    hasProjectLeadAccess(viewer)
+  ) {
     return true
   }
 
-  return viewer.personId === person.id
+  return false
 }
 
 export function canViewCompensation(
   viewer: AuthorizationViewer,
   person: PersonPermissionSubject,
 ): boolean {
-  return canViewPerson(viewer, person)
+  if (!canViewPerson(viewer, person)) {
+    return false
+  }
+
+  return canViewFinancialData(viewer)
 }
 
 export function canCreateOrUpdatePeople(
@@ -178,7 +226,7 @@ export function canCreateOrUpdatePeople(
     return false
   }
 
-  return hasPartnerRole(viewer) || isAdminForOffice(viewer, officeId)
+  return Boolean(officeId) && (hasPartnerPrivileges(viewer) || hasAdminRole(viewer))
 }
 
 export function canCreateOrUpdateProjects(
@@ -189,14 +237,33 @@ export function canCreateOrUpdateProjects(
     return false
   }
 
-  return hasPartnerRole(viewer) || isAdminForOffice(viewer, managingOfficeId)
+  return Boolean(managingOfficeId) && (hasPartnerPrivileges(viewer) || hasAdminRole(viewer))
+}
+
+export function canEditProject(
+  viewer: AuthorizationViewer,
+  project: ProjectPermissionSubject,
+): boolean {
+  if (!viewer.active) {
+    return false
+  }
+
+  return (
+    hasPartnerPrivileges(viewer) ||
+    hasAdminRole(viewer) ||
+    isProjectLead(viewer, project)
+  )
 }
 
 export function canSetProjectLead(
   viewer: AuthorizationViewer,
   project: ProjectPermissionSubject,
 ): boolean {
-  return canCreateOrUpdateProjects(viewer, project.managingOfficeId)
+  if (!viewer.active) {
+    return false
+  }
+
+  return Boolean(project.managingOfficeId) && (hasPartnerPrivileges(viewer) || hasAdminRole(viewer))
 }
 
 export function canAssignPeopleToProject(
@@ -207,25 +274,21 @@ export function canAssignPeopleToProject(
     return false
   }
 
-  return (
-    hasPartnerRole(viewer) ||
-    isAdminForOffice(viewer, project.managingOfficeId) ||
-    isProjectLead(viewer, project)
-  )
+  return canEditProject(viewer, project)
 }
 
 export function canChangeProjectStage(
   viewer: AuthorizationViewer,
   project: ProjectPermissionSubject,
 ): boolean {
-  return canAssignPeopleToProject(viewer, project)
+  return canEditProject(viewer, project)
 }
 
 export function canEditProjectTime(
   viewer: AuthorizationViewer,
   project: ProjectPermissionSubject,
 ): boolean {
-  return canAssignPeopleToProject(viewer, project)
+  return canEditProject(viewer, project)
 }
 
 export function canTrackOwnTimeForProject(
@@ -236,7 +299,16 @@ export function canTrackOwnTimeForProject(
     return false
   }
 
-  return true
+  if (!canAccessTimeTracker(viewer)) {
+    return false
+  }
+
+  return (
+    hasPartnerPrivileges(viewer) ||
+    hasAdminRole(viewer) ||
+    isProjectLead(viewer, project) ||
+    isAssignedToProject(viewer, project.id)
+  )
 }
 
 export function canAddChecklistItemsToProject(
@@ -247,12 +319,7 @@ export function canAddChecklistItemsToProject(
     return false
   }
 
-  return (
-    hasPartnerRole(viewer) ||
-    isAdminForOffice(viewer, project.managingOfficeId) ||
-    isProjectLead(viewer, project) ||
-    isAssignedToProject(viewer, project.id)
-  )
+  return canEditProject(viewer, project) || isAssignedToProject(viewer, project.id)
 }
 
 export function canUploadProjectDocuments(
@@ -267,7 +334,7 @@ export function canAssignAdmins(viewer: AuthorizationViewer): boolean {
     return false
   }
 
-  return hasPartnerRole(viewer)
+  return hasPartnerPrivileges(viewer)
 }
 
 export function canViewProjectSummary(
@@ -278,16 +345,47 @@ export function canViewProjectSummary(
     return false
   }
 
-  return getViewerTierForProject(viewer, project) !== null
+  return (
+    hasPartnerPrivileges(viewer) ||
+    hasAdminRole(viewer) ||
+    hasProjectLeadAccess(viewer) ||
+    isAssignedToProject(viewer, project.id) ||
+    isClientForProject(viewer, project.id)
+  )
 }
 
 export function canViewInternalProject(
   viewer: AuthorizationViewer,
   project: ProjectPermissionSubject,
 ): boolean {
-  const tier = getViewerTierForProject(viewer, project)
+  return canViewProjectSummary(viewer, project) && !isClientForProject(viewer, project.id)
+}
 
-  return tier !== null && tier !== "client"
+export function canViewProjectFinancials(
+  viewer: AuthorizationViewer,
+  project: ProjectPermissionSubject,
+): boolean {
+  if (!canViewInternalProject(viewer, project)) {
+    return false
+  }
+
+  return canViewFinancialData(viewer)
+}
+
+export function canAccessTimeTracker(viewer: AuthorizationViewer): boolean {
+  if (!viewer.active) {
+    return false
+  }
+
+  return isInternalViewer(viewer)
+}
+
+export function canViewTimeTrackerWorkspace(viewer: AuthorizationViewer): boolean {
+  if (!viewer.active) {
+    return false
+  }
+
+  return hasPartnerPrivileges(viewer) || hasAdminRole(viewer) || hasProjectLeadAccess(viewer)
 }
 
 export function canViewSharedLibrary(viewer: AuthorizationViewer): boolean {
@@ -295,5 +393,5 @@ export function canViewSharedLibrary(viewer: AuthorizationViewer): boolean {
     return false
   }
 
-  return isInternalViewer(viewer)
+  return hasPartnerPrivileges(viewer) || hasAdminRole(viewer)
 }

@@ -28,6 +28,83 @@ function hasAuthCookie(request: NextRequest): boolean {
     .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"))
 }
 
+function toBase64(value: string): string {
+  const remainder = value.length % 4
+  const padding = remainder === 0 ? "" : "=".repeat(4 - remainder)
+
+  return `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/")
+}
+
+function decodeSupabaseCookieValue(value: string): string | null {
+  const encodedValue = value.startsWith("base64-")
+    ? value.slice("base64-".length)
+    : value
+
+  try {
+    return atob(toBase64(encodedValue))
+  } catch {
+    return null
+  }
+}
+
+function readSessionExpiryMs(request: NextRequest): number | null {
+  const authCookieChunks = request.cookies
+    .getAll()
+    .filter((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"))
+    .sort((left, right) => {
+      const leftChunk = Number(left.name.match(/\.([0-9]+)$/)?.[1] ?? -1)
+      const rightChunk = Number(right.name.match(/\.([0-9]+)$/)?.[1] ?? -1)
+
+      return leftChunk - rightChunk
+    })
+
+  if (authCookieChunks.length === 0) {
+    return null
+  }
+
+  const serializedSession = decodeSupabaseCookieValue(
+    authCookieChunks.map((cookie) => cookie.value).join(""),
+  )
+
+  if (!serializedSession) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(serializedSession) as {
+      access_token?: string
+      expires_at?: number
+    }
+
+    if (typeof parsed.expires_at === "number") {
+      return parsed.expires_at * 1000
+    }
+
+    const accessToken = parsed.access_token
+
+    if (!accessToken) {
+      return null
+    }
+
+    const payload = accessToken.split(".")[1]
+
+    if (!payload) {
+      return null
+    }
+
+    const decodedPayload = decodeSupabaseCookieValue(payload)
+
+    if (!decodedPayload) {
+      return null
+    }
+
+    const claims = JSON.parse(decodedPayload) as { exp?: number }
+    return typeof claims.exp === "number" ? claims.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
 function isPrefetchRequest(request: NextRequest): boolean {
   return (
     request.headers.has("next-router-prefetch") ||
@@ -43,6 +120,14 @@ function isRscNavigationRequest(request: NextRequest): boolean {
   )
 }
 
+function isServerActionRequest(request: NextRequest): boolean {
+  return (
+    request.method === "POST" &&
+    (request.headers.has("next-action") ||
+      request.headers.get("content-type")?.includes("multipart/form-data") === true)
+  )
+}
+
 const SESSION_REFRESH_WINDOW_MS = 60_000
 
 function isSessionFresh(expiresAt?: number | null): boolean {
@@ -50,7 +135,7 @@ function isSessionFresh(expiresAt?: number | null): boolean {
     return false
   }
 
-  return expiresAt * 1000 > Date.now() + SESSION_REFRESH_WINDOW_MS
+  return expiresAt > Date.now() + SESSION_REFRESH_WINDOW_MS
 }
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
@@ -71,6 +156,16 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   if (!url || !key) {
     trace.finish({ result: "missing-config" })
+    return NextResponse.next({
+      request,
+    })
+  }
+
+  // Server Actions already resolve auth inside the action/server tree.
+  // Bypassing the middleware refresh avoids edge-only cookie mutation failures
+  // on POST requests while preserving downstream auth checks.
+  if (isServerActionRequest(request)) {
+    trace.finish({ result: "server-action-bypass" })
     return NextResponse.next({
       request,
     })
@@ -100,66 +195,97 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     })
   }
 
-  let response = NextResponse.next({
-    request,
-  })
+  const cookieSessionExpiresAt = readSessionExpiryMs(request)
 
-  const supabase = createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
-      },
-      setAll(cookiesToSet) {
-        for (const { name, options, value } of cookiesToSet) {
-          request.cookies.set(name, value)
-          response.cookies.set(name, value, options)
-        }
-      },
-    },
-  })
-  const {
-    data: { session },
-  } = await trace.measure("supabase.auth.getSession", () =>
-    supabase.auth.getSession(),
-  )
-
-  if (session?.user && isSessionFresh(session.expires_at)) {
+  if (isSessionFresh(cookieSessionExpiresAt)) {
     if (pathname === "/login") {
-      trace.finish({ result: "redirect-from-login-fresh-session" })
+      trace.finish({ result: "redirect-from-login-fresh-cookie" })
       return NextResponse.redirect(
         new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
       )
     }
 
-    trace.finish({ result: "fresh-session" })
-    return response
+    trace.finish({ result: "fresh-cookie-session" })
+    return NextResponse.next({
+      request,
+    })
   }
 
-  const {
-    data: { user },
-  } = await trace.measure("supabase.auth.getUser", () =>
-    supabase.auth.getUser(),
-  )
+  let response = NextResponse.next({
+    request,
+  })
 
-  if (!user && isProtectedPath(pathname)) {
-    trace.finish({ result: "redirect-login-no-user" })
-    const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+  try {
+    const supabase = createServerClient(url, key, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          for (const { name, options, value } of cookiesToSet) {
+            try {
+              request.cookies.set(name, value)
+            } catch {
+              // Some edge requests expose an immutable request cookie jar.
+            }
 
-    const redirectResponse = NextResponse.redirect(loginUrl)
-    copyCookies(response, redirectResponse)
-    return redirectResponse
-  }
-
-  if (user && pathname === "/login") {
-    trace.finish({ result: "redirect-from-login-user" })
-    const redirectResponse = NextResponse.redirect(
-      new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
+            response.cookies.set(name, value, options)
+          }
+        },
+      },
+    })
+    const {
+      data: { session },
+    } = await trace.measure("supabase.auth.getSession", () =>
+      supabase.auth.getSession(),
     )
-    copyCookies(response, redirectResponse)
-    return redirectResponse
-  }
 
-  trace.finish({ result: user ? "user-allowed" : "anonymous-allowed" })
-  return response
+    if (session?.user && isSessionFresh(session.expires_at ? session.expires_at * 1000 : null)) {
+      if (pathname === "/login") {
+        trace.finish({ result: "redirect-from-login-fresh-session" })
+        return NextResponse.redirect(
+          new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
+        )
+      }
+
+      trace.finish({ result: "fresh-session" })
+      return response
+    }
+
+    const {
+      data: { user },
+    } = await trace.measure("supabase.auth.getUser", () =>
+      supabase.auth.getUser(),
+    )
+
+    if (!user && isProtectedPath(pathname)) {
+      trace.finish({ result: "redirect-login-no-user" })
+      const loginUrl = new URL("/login", request.url)
+      loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`)
+
+      const redirectResponse = NextResponse.redirect(loginUrl)
+      copyCookies(response, redirectResponse)
+      return redirectResponse
+    }
+
+    if (user && pathname === "/login") {
+      trace.finish({ result: "redirect-from-login-user" })
+      const redirectResponse = NextResponse.redirect(
+        new URL(getSafeNextPath(request.nextUrl.searchParams.get("next")), request.url),
+      )
+      copyCookies(response, redirectResponse)
+      return redirectResponse
+    }
+
+    trace.finish({ result: user ? "user-allowed" : "anonymous-allowed" })
+    return response
+  } catch (error) {
+    trace.finish({
+      result: "error-fallback",
+    })
+
+    return NextResponse.next({
+      request,
+    })
+  }
 }

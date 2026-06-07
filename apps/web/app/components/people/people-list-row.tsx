@@ -21,6 +21,10 @@ import {
   getPersonInitials,
 } from "./people-list-formatters";
 import {
+  assertPersonMutationSucceeded,
+  type PersonMutationActionResult,
+} from "./person-action-results";
+import {
   formatCreatePersonPermissionLabel,
   PERSON_CREATE_PERMISSION_OPTIONS,
 } from "./person-create-utils";
@@ -34,7 +38,7 @@ interface PeopleListRowProps {
   ) => Promise<{ error: string | null; ok: boolean }>;
   onUpdatePersonAction: (
     input: UpdatePersonInput,
-  ) => Promise<{ personId: string }>;
+  ) => Promise<PersonMutationActionResult>;
   person: PersonListItem;
   projectOptions: Array<{ id: string; name: string; photoUrl: string | null }>;
   rowIndex: number;
@@ -239,10 +243,13 @@ export function PeopleListRow({
           <EditableEntityPill
             ariaLabel={`Change office for ${person.fullName}`}
             onCommit={async (nextValue) => {
-              await onUpdatePersonAction(
-                buildPersonUpdateInput(person, {
-                  officeId: nextValue,
-                }),
+              assertPersonMutationSucceeded(
+                await onUpdatePersonAction(
+                  buildPersonUpdateInput(person, {
+                    officeId: nextValue,
+                  }),
+                ),
+                "Unable to update person.",
               );
             }}
             options={officeSelectOptions}
@@ -266,10 +273,13 @@ export function PeopleListRow({
           <EditableEntityPill
             ariaLabel={`Change supervisor for ${person.fullName}`}
             onCommit={async (nextValue) => {
-              await onUpdatePersonAction(
-                buildPersonUpdateInput(person, {
-                  supervisorPersonId: nextValue || null,
-                }),
+              assertPersonMutationSucceeded(
+                await onUpdatePersonAction(
+                  buildPersonUpdateInput(person, {
+                    supervisorPersonId: nextValue || null,
+                  }),
+                ),
+                "Unable to update person.",
               );
             }}
             onOpenRequested={ensureSupervisorOptions}
@@ -295,10 +305,13 @@ export function PeopleListRow({
           <EditableEntityPill
             ariaLabel={`Change permission for ${person.fullName}`}
             onCommit={async (nextValue) => {
-              await onUpdatePersonAction(
-                buildPersonUpdateInput(person, {
-                  permission: nextValue as PersonListItem["effectivePermission"],
-                }),
+              assertPersonMutationSucceeded(
+                await onUpdatePersonAction(
+                  buildPersonUpdateInput(person, {
+                    permission: nextValue as PersonListItem["effectivePermission"],
+                  }),
+                ),
+                "Unable to update person.",
               );
             }}
             options={permissionSelectOptions}
