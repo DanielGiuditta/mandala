@@ -31,7 +31,7 @@ jobs:
           MANDALA_AGENT_VERSION: ${{ inputs.version }}
         shell: pwsh
         run: |
-          $arguments = @(
+          $buildArguments = @(
             "-Version", $env:MANDALA_AGENT_VERSION,
             "-SupabaseUrl", $env:MANDALA_SUPABASE_URL,
             "-SupabaseAnonKey", $env:MANDALA_SUPABASE_ANON_KEY
@@ -40,13 +40,13 @@ jobs:
           if ($env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
             $certificatePath = Join-Path $env:RUNNER_TEMP "mandala-agent-signing.pfx"
             [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:MANDALA_DESKTOP_SIGNING_PFX_BASE64))
-            $arguments += @("-SigningCertificatePath", $certificatePath)
+            $buildArguments += @("-SigningCertificatePath", $certificatePath)
             if ($env:MANDALA_DESKTOP_SIGNING_PFX_PASSWORD) {
-              $arguments += @("-SigningCertificatePassword", $env:MANDALA_DESKTOP_SIGNING_PFX_PASSWORD)
+              $buildArguments += @("-SigningCertificatePassword", $env:MANDALA_DESKTOP_SIGNING_PFX_PASSWORD)
             }
           }
 
-          & .\apps\desktop-agent\scripts\build-release.ps1 @arguments
+          & .\apps\desktop-agent\scripts\build-release.ps1 @buildArguments
 
           if ($env:SUPABASE_SERVICE_ROLE_KEY -and $env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
             node .\apps\desktop-agent\scripts\publish-release.mjs .\apps\desktop-agent\release\MandalaAgentSetup.exe
