@@ -208,10 +208,28 @@ The web app may also expose a lightweight self-only sidebar tracker for any sign
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
 - the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
+- a `TimeEntry` is finalized work history, not the active timer state
 - the sidebar tracker may target only projects the current viewer is allowed to track against
 - the standalone time-tracker workspace is limited to partners, admins, and project leads; employees use the sidebar tracker instead
 - once a person has tracked time on a project, project and people staffed views should include that person for the project even when `assignmentId` is null
 - dedicated web time-entry flows are out of scope for V1, but supervisors and project leads may still correct tracked time
+
+## ActiveWorkSession
+
+Represents the one live work session allowed for a person. This is supporting runtime state, not an additional reporting entity.
+
+### Fields
+
+- `personId` (unique; one active session per person)
+- `projectId`
+- `startedAt`
+- `lastActivityAt`
+
+### Notes
+
+- starting a new project after confirmation closes the previous session and writes its elapsed time as a manual `TimeEntry`
+- after more than five minutes without activity, the session pauses and its elapsed time is written only through the last active minute window
+- active sessions govern project working mode; viewing other projects remains available but is read-only
 
 ## ResourceDocument
 

@@ -19,6 +19,7 @@ This document defines the effective user tiers for V1 and the minimum data neede
 - Only admins, partners, and the exact-email override may set or revoke `Project.leadPersonId`.
 - Only partners and the exact-email override may grant or revoke elevated `admin` or `partner` permissions.
 - Compensation visibility is restricted to admins, partners, and the exact-email override.
+- The approved Windows-agent installer is downloadable only by admins, partners, and the exact-email override.
 - Client access is explicit per project and is never inferred from `Project.clientName`.
 - V1 keeps the global project stage set fixed. Access control governs who can change a project's stage, not who can redefine the stage catalog.
 
@@ -68,6 +69,8 @@ On those projects they may:
 
 Employees do not receive system-wide people, project, library, compensation, or standalone time-tracker workspace visibility.
 
+When any internal user has an active work session, project mutations are allowed only on that active project. Other accessible project views remain read-only until the user explicitly starts work on them. This working-mode restriction applies in addition to the permission matrix below.
+
 ### `noAccount`
 
 Person record without a linked application login yet.
@@ -96,6 +99,7 @@ Clients never receive internal write permissions.
 | Assign people to projects | Yes | Yes | Yes | No | No | Project leads act only on projects they lead. |
 | Change project stage | Yes | Yes | Yes | No | No | Same scope as project write. |
 | View standalone time-tracker workspace | Yes | Yes | Yes | No | No | Employees use the sidebar tracker instead of the dedicated workspace. |
+| Download Windows-agent installer | Yes | Yes | No | No | No | The web application issues a short-lived private download link. |
 | Track own time via sidebar tracker | Yes | Yes | Yes | Yes | No | Self only. Partners, admins, and project leads may track on projects they can write to. Employees may track on projects where they are actively assigned. |
 | Edit project time entries | Yes | Yes | Yes | No | No | A tracked person's recorded supervisor may also edit that person's time entries. |
 | Add checklist items | Yes | Yes | Yes | Yes | No | Employees act only on assigned projects. |

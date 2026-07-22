@@ -80,6 +80,12 @@ interface PreviewTimeEntryRow {
   source: string | null
 }
 
+export interface PreviewActiveWorkSessionRow {
+  person_id: string
+  project_id: string
+  started_at: string
+}
+
 interface PreviewResourceDocumentRow {
   category: string
   created_at: string
@@ -860,6 +866,8 @@ export const previewAssignments: PreviewAssignmentRow[] = [
     start_date: "2026-03-18",
   },
 ]
+
+export const previewActiveWorkSessions: PreviewActiveWorkSessionRow[] = []
 
 export const previewTimeEntries: PreviewTimeEntryRow[] = [
   {

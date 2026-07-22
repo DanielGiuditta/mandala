@@ -19,11 +19,13 @@ interface ProjectResourcesCardProps {
     projectId: string;
   }) => Promise<{ error: string | null; ok: boolean }>;
   documents: ProjectDocumentItem[];
+  canAddResources: boolean;
   projectId: string;
 }
 
 export function ProjectResourcesCard({
   addResourceAction,
+  canAddResources,
   documents,
   projectId,
 }: ProjectResourcesCardProps) {
@@ -38,7 +40,8 @@ export function ProjectResourcesCard({
     <section className="pd-card">
       <ProjectCardHeader
         addAriaLabel="Add resource"
-        onAddClick={() => setShowAdd((value) => !value)}
+        addDisabled={!canAddResources}
+        onAddClick={canAddResources ? () => setShowAdd((value) => !value) : undefined}
         title="Resources"
       />
 

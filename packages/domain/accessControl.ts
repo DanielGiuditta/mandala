@@ -395,3 +395,11 @@ export function canViewSharedLibrary(viewer: AuthorizationViewer): boolean {
 
   return hasPartnerPrivileges(viewer) || hasAdminRole(viewer)
 }
+
+export function canDownloadDesktopAgent(viewer: AuthorizationViewer): boolean {
+  if (!viewer.active) {
+    return false
+  }
+
+  return hasPartnerPrivileges(viewer) || hasAdminRole(viewer)
+}

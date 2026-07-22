@@ -1,6 +1,10 @@
 .DS_Store
 node_modules/
 dist/
+apps/desktop-agent/publish/
+apps/desktop-agent/release/
+apps/desktop-agent/src/**/bin/
+apps/desktop-agent/src/**/obj/
 coverage/
 .next/
 .next.stale.*/

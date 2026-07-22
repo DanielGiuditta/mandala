@@ -4,12 +4,14 @@ import { TokenIcon } from "../ui/token-icon";
 
 interface ProjectCardHeaderProps {
   addAriaLabel?: string;
+  addDisabled?: boolean;
   onAddClick?: () => void;
   title: string;
 }
 
 export function ProjectCardHeader({
   addAriaLabel,
+  addDisabled = false,
   onAddClick,
   title,
 }: ProjectCardHeaderProps) {
@@ -20,6 +22,7 @@ export function ProjectCardHeader({
         <button
           aria-label={addAriaLabel}
           className="projects-add-button"
+          disabled={addDisabled}
           onClick={onAddClick}
           type="button"
         >

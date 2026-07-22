@@ -52,6 +52,7 @@ import {
   getDatabaseStatus,
 } from "./supabaseServer";
 import { createPerfTrace } from "./perf";
+import { getSelfActiveWorkSession } from "./timeTracker";
 
 const PROJECT_READ_CACHE_TTL_MS = 300_000;
 
@@ -305,6 +306,8 @@ export interface ProjectTimeSummary {
 }
 
 export interface ProjectDetailData {
+  activeWorkProjectId: string | null;
+  activeWorkProjectName: string | null;
   accessMessage: string | null;
   canAssignPeople: boolean;
   canEdit: boolean;
@@ -956,6 +959,8 @@ function emptyProjectDetailData(
   forbidden: boolean,
 ): ProjectDetailData {
   return {
+    activeWorkProjectId: null,
+    activeWorkProjectName: null,
     accessMessage,
     canAssignPeople: false,
     canEdit: false,
@@ -973,6 +978,19 @@ function emptyProjectDetailData(
     timeSummary: emptyTimeSummary(),
     viewerLabel,
   };
+}
+
+async function assertViewerCanWorkOnProject(
+  projectId: string,
+  context: ViewerRequestContext,
+): Promise<void> {
+  const activeSession = await getSelfActiveWorkSession(context);
+
+  if (activeSession && activeSession.projectId !== projectId) {
+    throw new Error(
+      `You are currently tracking ${activeSession.projectName ?? "another project"}. Start Work on this project before making changes.`,
+    );
+  }
 }
 
 function buildProjectStaffedPeople(
@@ -1345,6 +1363,8 @@ function getPreviewProjectDetail(
   }
 
   return {
+    activeWorkProjectId: null,
+    activeWorkProjectName: null,
     accessMessage: null,
     canAssignPeople,
     canEdit: canEditExistingProject,
@@ -1830,6 +1850,7 @@ export async function updateProject(
     input.projectId,
     context,
   );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
 
   const name = normalizeRequiredText(input.name, "Project name");
   const clientName = normalizeNullableText(input.clientName);
@@ -1941,6 +1962,7 @@ export async function createProjectAssignment(
     input.projectId,
     context,
   );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
 
   if (!canAssignPeopleToProject(viewer, toProjectPermissionSubject(projectRow))) {
     throw new Error("You do not have permission to staff this project.");
@@ -2003,6 +2025,7 @@ export async function createProjectChecklistItem(
     input.projectId,
     context,
   );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
 
   if (!canAddChecklistItemsToProject(viewer, toProjectPermissionSubject(projectRow))) {
     throw new Error("You do not have permission to add checklist items.");
@@ -2042,6 +2065,7 @@ export async function updateProjectChecklistItem(
     input.projectId,
     context,
   );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
 
   if (!canAddChecklistItemsToProject(viewer, toProjectPermissionSubject(projectRow))) {
     throw new Error("You do not have permission to update checklist items.");
@@ -2125,6 +2149,7 @@ export async function createProjectDocument(
     input.projectId,
     context,
   );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
 
   if (!canUploadProjectDocuments(viewer, toProjectPermissionSubject(projectRow))) {
     throw new Error("You do not have permission to add project documents.");
@@ -2168,6 +2193,7 @@ export async function updateProjectTimeEntry(
     input.projectId,
     context,
   );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
 
   const timeEntryId = normalizeRequiredText(input.timeEntryId, "Time entry");
   const { data: timeEntryRow, error: timeEntryError } = await client
@@ -2339,13 +2365,19 @@ export async function getProjectDetail(
     const restrictedToSummary =
       previewData.project !== null &&
       !canViewInternalProject(viewerAccess.viewer, previewData.project);
+    const activeWorkSession = await getSelfActiveWorkSession(context);
+    const isReadOnlyWhileWorkingElsewhere = Boolean(
+      activeWorkSession && activeWorkSession.projectId !== projectId,
+    );
 
     const previewResult = {
       ...previewData,
+      activeWorkProjectId: activeWorkSession?.projectId ?? null,
+      activeWorkProjectName: activeWorkSession?.projectName ?? null,
       accessMessage: restrictedToSummary
         ? "Client access is currently limited to the project summary."
         : viewerAccess.accessMessage,
-      canAssignPeople: previewData.project
+      canAssignPeople: !isReadOnlyWhileWorkingElsewhere && previewData.project
         ? canAssignPeopleToProject(
             viewerAccess.viewer,
             {
@@ -2355,14 +2387,14 @@ export async function getProjectDetail(
             },
           )
         : false,
-      canEdit: previewData.project
+      canEdit: !isReadOnlyWhileWorkingElsewhere && previewData.project
         ? canEditProject(viewerAccess.viewer, {
             id: previewData.project.id,
             leadPersonId: previewData.project.leadPersonId,
             managingOfficeId: previewData.project.managingOfficeId,
           })
         : false,
-      canEditChecklistItems: previewData.project
+      canEditChecklistItems: !isReadOnlyWhileWorkingElsewhere && previewData.project
         ? canAddChecklistItemsToProject(
             viewerAccess.viewer,
             {
@@ -2372,7 +2404,7 @@ export async function getProjectDetail(
             },
           )
         : false,
-      canEditStage: previewData.project
+      canEditStage: !isReadOnlyWhileWorkingElsewhere && previewData.project
         ? canChangeProjectStage(
             viewerAccess.viewer,
             {
@@ -2384,6 +2416,15 @@ export async function getProjectDetail(
         : false,
       checklistItems: restrictedToSummary ? [] : previewData.checklistItems,
       documents: restrictedToSummary ? [] : previewData.documents,
+      project:
+        isReadOnlyWhileWorkingElsewhere && previewData.project
+          ? {
+              ...previewData.project,
+              canEditLead: false,
+              canEditProject: false,
+              canEditStage: false,
+            }
+          : previewData.project,
       restrictedToSummary,
       staffedPeople: restrictedToSummary ? [] : previewData.staffedPeople,
       staffing: restrictedToSummary ? [] : previewData.staffing,
@@ -2460,6 +2501,25 @@ export async function getProjectDetail(
   const timeEntryRows = detailContext.timeEntryRows;
   const offices = detailContext.offices;
   const projectSubject = toProjectPermissionSubject(row);
+  const activeWorkSession = await getSelfActiveWorkSession(context);
+  const isReadOnlyWhileWorkingElsewhere = Boolean(
+    activeWorkSession && activeWorkSession.projectId !== projectId,
+  );
+  const canEditCurrentProject =
+    !isReadOnlyWhileWorkingElsewhere &&
+    canEditProject(viewerAccess.viewer, projectSubject);
+  const canEditCurrentProjectStage =
+    !isReadOnlyWhileWorkingElsewhere &&
+    canChangeProjectStage(viewerAccess.viewer, projectSubject);
+  const canSetCurrentProjectLead =
+    !isReadOnlyWhileWorkingElsewhere &&
+    canSetProjectLead(viewerAccess.viewer, projectSubject);
+  const canAssignPeopleToCurrentProject =
+    !isReadOnlyWhileWorkingElsewhere &&
+    canAssignPeopleToProject(viewerAccess.viewer, projectSubject);
+  const canEditCurrentProjectChecklist =
+    !isReadOnlyWhileWorkingElsewhere &&
+    canAddChecklistItemsToProject(viewerAccess.viewer, projectSubject);
   const canViewFinancials = canViewProjectFinancials(
     viewerAccess.viewer,
     projectSubject,
@@ -2484,9 +2544,9 @@ export async function getProjectDetail(
     peopleById,
     null,
     false,
-    canEditProject(viewerAccess.viewer, projectSubject),
-    canChangeProjectStage(viewerAccess.viewer, projectSubject),
-    canSetProjectLead(viewerAccess.viewer, projectSubject),
+    canEditCurrentProject,
+    canEditCurrentProjectStage,
+    canSetCurrentProjectLead,
     canViewFinancials,
   );
   const restrictedToSummary = !canViewInternalProject(
@@ -2496,6 +2556,8 @@ export async function getProjectDetail(
 
   if (restrictedToSummary) {
     const summaryOnlyResult = {
+      activeWorkProjectId: activeWorkSession?.projectId ?? null,
+      activeWorkProjectName: activeWorkSession?.projectName ?? null,
       accessMessage:
         "Client access is currently limited to the project summary.",
       canAssignPeople: false,
@@ -2616,23 +2678,13 @@ export async function getProjectDetail(
   }
 
   const result = {
+    activeWorkProjectId: activeWorkSession?.projectId ?? null,
+    activeWorkProjectName: activeWorkSession?.projectName ?? null,
     accessMessage: viewerAccess.accessMessage,
-    canAssignPeople: canAssignPeopleToProject(
-      viewerAccess.viewer,
-      toProjectPermissionSubject(row),
-    ),
-    canEdit: canEditProject(
-      viewerAccess.viewer,
-      toProjectPermissionSubject(row),
-    ),
-    canEditChecklistItems: canAddChecklistItemsToProject(
-      viewerAccess.viewer,
-      toProjectPermissionSubject(row),
-    ),
-    canEditStage: canChangeProjectStage(
-      viewerAccess.viewer,
-      toProjectPermissionSubject(row),
-    ),
+    canAssignPeople: canAssignPeopleToCurrentProject,
+    canEdit: canEditCurrentProject,
+    canEditChecklistItems: canEditCurrentProjectChecklist,
+    canEditStage: canEditCurrentProjectStage,
     checklistItems,
     configured: status.configured,
     configMessage: status.message,

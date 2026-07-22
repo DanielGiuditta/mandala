@@ -1,0 +1,60 @@
+name: Build Mandala Windows Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        required: true
+        default: 1.0.0
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress --yes
+      - name: Build, sign, and optionally publish
+        env:
+          MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MANDALA_DESKTOP_SIGNING_PFX_BASE64: ${{ secrets.MANDALA_DESKTOP_SIGNING_PFX_BASE64 }}
+          MANDALA_DESKTOP_SIGNING_PFX_PASSWORD: ${{ secrets.MANDALA_DESKTOP_SIGNING_PFX_PASSWORD }}
+          MANDALA_AGENT_VERSION: ${{ inputs.version }}
+        shell: pwsh
+        run: |
+          $arguments = @(
+            "-Version", $env:MANDALA_AGENT_VERSION,
+            "-SupabaseUrl", $env:MANDALA_SUPABASE_URL,
+            "-SupabaseAnonKey", $env:MANDALA_SUPABASE_ANON_KEY
+          )
+
+          if ($env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
+            $certificatePath = Join-Path $env:RUNNER_TEMP "mandala-agent-signing.pfx"
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:MANDALA_DESKTOP_SIGNING_PFX_BASE64))
+            $arguments += @("-SigningCertificatePath", $certificatePath)
+            if ($env:MANDALA_DESKTOP_SIGNING_PFX_PASSWORD) {
+              $arguments += @("-SigningCertificatePassword", $env:MANDALA_DESKTOP_SIGNING_PFX_PASSWORD)
+            }
+          }
+
+          & .\apps\desktop-agent\scripts\build-release.ps1 @arguments
+
+          if ($env:SUPABASE_SERVICE_ROLE_KEY -and $env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
+            node .\apps\desktop-agent\scripts\publish-release.mjs .\apps\desktop-agent\release\MandalaAgentSetup.exe
+          } else {
+            Write-Host "Installer was not published because signing or storage credentials are missing."
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MandalaAgentSetup-${{ inputs.version }}
+          path: apps/desktop-agent/release/MandalaAgentSetup.exe
+          if-no-files-found: error

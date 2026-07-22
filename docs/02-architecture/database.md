@@ -16,6 +16,7 @@
 - checklist_items
 - time_entries
 - resource_documents
+- active_work_sessions (one current session per person; finalized work remains in `time_entries`)
 
 After the core operational tables, add the minimum authorization support tables:
 
@@ -35,6 +36,7 @@ Project-lead permissions should be derived from `projects.lead_person_id`, not m
 - keep authorization scope keys indexed, especially `role_assignments.office_id` and `client_project_access.project_id`
 - store optional project imagery on `projects.photo_url`; do not invent a separate project-media entity in V1 unless the product docs expand
 - store optional person imagery on `people.photo_url`; do not invent a separate person-media entity in V1 unless the product docs expand
+- enforce the one-active-session-per-person rule with a unique `active_work_sessions.person_id` key; session start, stop, switch, and idle pause must be transactional with the corresponding `TimeEntry` write
 - one exact email, `danielgiuditta@gmail.com`, may receive a bootstrap runtime override without adding a new stored role
 
 ## RLS baseline for authorization work

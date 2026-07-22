@@ -161,6 +161,11 @@ export function ProjectDetailEntity({
         title={data.project.name}
       />
       <div className="pd-entity-content">
+        {data.activeWorkProjectId && data.activeWorkProjectId !== data.project.id ? (
+          <div className="notice pd-notice">
+            Viewing only. You are tracking {data.activeWorkProjectName ?? "another project"}. Start Work on this project to make changes.
+          </div>
+        ) : null}
         <ProjectDetailGlance
           loadPeopleOptionsAction={loadPeopleOptionsAction}
           officeOptions={officeOptions}
@@ -190,6 +195,7 @@ export function ProjectDetailEntity({
                 updateTaskAction={taskActions.updateTaskAction}
               />
               <ProjectWorklogCard
+                canEditWorklog={data.canEdit}
                 editWorklogAction={worklogActions.editWorklogAction}
                 projectId={projectId}
                 staffing={data.staffing}
@@ -206,6 +212,7 @@ export function ProjectDetailEntity({
               />
               <ProjectResourcesCard
                 addResourceAction={resourceActions.addResourceAction}
+                canAddResources={data.canEditChecklistItems}
                 documents={data.documents}
                 projectId={projectId}
               />

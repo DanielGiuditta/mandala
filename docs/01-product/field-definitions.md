@@ -87,6 +87,14 @@ It may remain null for valid tracked time when the person is not staffed to the 
 
 Even when this field is null, tracked time may still make the person appear as staffed to the project in derived UI views.
 
+## ActiveWorkSession
+
+### `personId`
+The person currently working. It is unique so one person cannot have more than one active project timer.
+
+### `lastActivityAt`
+The latest recorded keyboard, mouse, scroll, or touch activity for the active session. The tracker pauses after five minutes without activity.
+
 ## ResourceDocument
 
 ### `projectId`

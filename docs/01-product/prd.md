@@ -70,9 +70,15 @@ At machine login or session start, the person selects the current project from a
 
 The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
 
-That tracker may let the person pick any project they are allowed to track against, start or stop a timer, and write a single manual time entry when the timer stops. The signed-in email resolves to the person's backing record for storage.
+That tracker may let the person pick any project they are allowed to track against and start or stop work. Only one active work session may exist for a person at a time across browsers and devices. Starting work on a different project requires confirmation; on confirmation, the existing session is stopped, its elapsed time is saved as one manual `TimeEntry`, and the new session begins.
+
+Opening another project never changes the active work session. While a person is actively working on one project, other project detail views are read-only: project changes, staffing, checklist changes, document additions, and worklog changes are unavailable until the person explicitly starts work on that project.
+
+The web tracker pauses after five minutes without keyboard, mouse, scroll, or touch activity. Resuming activity never restarts a timer; the person must explicitly start work again. The active project and elapsed session time remain visible in the app sidebar while a session is active.
 
 The standalone web time-tracker workspace remains limited to partners, admins, and project leads. Employees use the sidebar tracker instead.
+
+The approved Windows installer is downloadable from the web application only by partners and admins. Installation is an IT-managed action; employees use the installed agent with their existing Mandala account.
 
 Once a person has recorded time on a project, the web app should treat that person as staffed to the project for project and people visibility across the system, even if no planned assignment exists yet.
 

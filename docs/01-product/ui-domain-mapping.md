@@ -33,7 +33,7 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - "Assign To Project" → create `Assignment`
 - "Add Checklist Item" → create `ChecklistItem`
 - "Complete Checklist Item" → update `ChecklistItem.completed`
-- "Track My Time" / "Start Timer" / "Stop Timer" → create a self-authored manual `TimeEntry` through the lightweight sidebar tracker on projects the viewer may track against
+- "Start Work" / "Stop" → manage the self-only `ActiveWorkSession` through the lightweight sidebar tracker; stopping, switching after confirmation, or idle pause writes the finalized elapsed time as a manual `TimeEntry`
 - "View Project Time" → read `TimeEntry`
 - "Upload Document" → create `ResourceDocument`
 - "Grant Client Access" → create `ClientProjectAccess`
@@ -47,6 +47,7 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - Do not surface separate "Managing Office" / "Originating Office" labels in the current project UI; the visible label is just "Office".
 - Do not treat checklist items as stage gates in V1.
 - Do not add a dedicated V1 web "Log Time" screen or workflow. The lightweight self-only sidebar tracker is the employee-facing web capture surface, and it may target only projects the viewer may track against.
+- Opening a project does not change the active project. An accessible project other than the active one is view-only until the employee selects Start Work on it.
 - Do not use `Person.title` to store authorization roles.
 - Do not infer client permissions from `Project.clientName`.
 - Treat "Project Lead" as a permission derived from `Project.leadPersonId`, not a standalone entity.

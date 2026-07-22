@@ -3,8 +3,11 @@ import {
   getSelfTimeTrackerData,
   invalidatePeopleReadCaches,
   invalidateProjectReadCaches,
-  recordSelfTimeTrackerEntry,
-  type RecordSelfTimeTrackerEntryInput,
+  startSelfTimeTrackerSession,
+  stopSelfTimeTrackerSession,
+  touchSelfTimeTrackerSession,
+  type StartSelfTimeTrackerSessionInput,
+  type StopSelfTimeTrackerSessionInput,
 } from "@mandala/db"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { NextRequest, NextResponse } from "next/server"
@@ -85,6 +88,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
+        activeSession: null,
         accessMessage: formatTrackerError(error),
         configured: true,
         configMessage: null,
@@ -99,35 +103,65 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const viewerContext = await getViewerRequestContext()
-    const input = (await request.json()) as RecordSelfTimeTrackerEntryInput
-    const result = await recordSelfTimeTrackerEntry(input, viewerContext)
+    const input = (await request.json()) as
+      | ({ action: "start" } & StartSelfTimeTrackerSessionInput)
+      | ({ action: "stop" } & StopSelfTimeTrackerSessionInput)
+      | { action: "activity" }
+    const result = input.action === "start"
+      ? await startSelfTimeTrackerSession(input, viewerContext)
+      : input.action === "stop"
+        ? await stopSelfTimeTrackerSession(input, viewerContext)
+        : input.action === "activity"
+          ? (await touchSelfTimeTrackerSession(viewerContext), {
+              activeSession: null,
+              stoppedProjectId: null,
+            })
+          : null
+
+    if (!result) {
+      throw new Error("Time tracker action is invalid.")
+    }
+
+    if (input.action === "activity") {
+      return NextResponse.json({
+        activeSession: null,
+        error: null,
+        ok: true,
+        stoppedProjectId: null,
+      })
+    }
 
     invalidateProjectReadCaches()
     invalidatePeopleReadCaches()
     revalidateTag(getProjectsTag())
-    revalidateTag(getProjectTag(result.entry.projectId))
+    if (result.stoppedProjectId) {
+      revalidateTag(getProjectTag(result.stoppedProjectId))
+      revalidatePath(`/projects/${result.stoppedProjectId}`)
+    }
+    if (result.activeSession) {
+      revalidateTag(getProjectTag(result.activeSession.projectId))
+      revalidatePath(`/projects/${result.activeSession.projectId}`)
+    }
     revalidateTag(getPeopleTag())
     revalidatePath("/projects")
-    revalidatePath(`/projects/${result.entry.projectId}`)
     revalidatePath("/people")
-    revalidatePath(`/people/${result.entry.personId}`)
     revalidatePath("/time-tracker")
 
     return NextResponse.json({
-      entry: result.entry,
+      activeSession: result.activeSession,
       error: null,
       ok: true,
-      todayHours: result.todayHours,
+      stoppedProjectId: result.stoppedProjectId,
     })
   } catch (error) {
     console.error("POST /api/time-tracker failed", error)
 
     return NextResponse.json(
       {
-        entry: null,
+        activeSession: null,
         error: formatTrackerError(error),
         ok: false,
-        todayHours: null,
+        stoppedProjectId: null,
       },
       { status: 200 },
     )

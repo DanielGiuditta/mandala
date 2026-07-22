@@ -15,6 +15,7 @@ import {
 } from "./project-detail-utils";
 
 interface ProjectWorklogCardProps {
+  canEditWorklog: boolean;
   editWorklogAction: (input: {
     assignmentId?: string | null;
     date?: string;
@@ -30,6 +31,7 @@ interface ProjectWorklogCardProps {
 
 export function ProjectWorklogCard({
   editWorklogAction,
+  canEditWorklog,
   projectId,
   staffing,
   timeSummary,
@@ -54,7 +56,7 @@ export function ProjectWorklogCard({
     <section className="pd-card">
       <div className="pd-card-header">
         <h3 className="pd-card-title">Work log</h3>
-        <button
+        {canEditWorklog ? <button
           aria-label={showRowEditControls ? "Hide row edit controls" : "Show row edit controls"}
           className={`pd-icon-button pd-icon-button-edit${showRowEditControls ? " pd-icon-button-edit-active" : ""}`}
           onClick={() => {
@@ -74,7 +76,7 @@ export function ProjectWorklogCard({
               fill="currentColor"
             />
           </svg>
-        </button>
+        </button> : null}
       </div>
 
       <div className="pd-log-summary">
@@ -197,7 +199,7 @@ export function ProjectWorklogCard({
                       <p className="pd-meta-text">
                         {formatDate(entry.date)} · {`${formatHoursMetric(entry.hours)}h`} · {formatCostMetric(entry.laborCost)}
                       </p>
-                      {showRowEditControls ? (
+                      {canEditWorklog && showRowEditControls ? (
                         <button className="pd-text-button" onClick={() => setEditingEntryId(entry.id)} type="button">
                           Edit
                         </button>

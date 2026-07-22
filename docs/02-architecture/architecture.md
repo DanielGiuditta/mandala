@@ -17,6 +17,8 @@ The product has two interfaces with shared domain rules:
 
 The Windows companion app remains the primary V1 time-capture surface, but the web shell may also expose a lightweight self-only sidebar tracker that writes manual time entries on projects the signed-in internal user may track against, resolving the signed-in email to the backing person identity.
 
+The Windows agent is a native .NET application. It calls the authenticated active-work-session database functions directly, stores its refresh token with Windows DPAPI for the current Windows user, and uses Windows-wide idle detection rather than browser activity events. Signed installer releases live in a private storage bucket; the web application creates short-lived download links only for partners and admins.
+
 The standalone time-tracker workspace remains an elevated internal surface for partners, admins, and project leads. Employees use the sidebar tracker instead.
 
 A monorepo avoids duplicating domain types, permission enums, workflow keys, and design-system primitives.

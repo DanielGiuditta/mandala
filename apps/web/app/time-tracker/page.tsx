@@ -62,6 +62,7 @@ export default async function TimeTrackerPage() {
       <main className="stack">
         <TimeTrackerDomainList
           data={{
+            activeSession: null,
             accessMessage:
               viewerAccess.accessMessage ??
               "Current viewer cannot access the time tracker.",
@@ -82,6 +83,7 @@ export default async function TimeTrackerPage() {
     console.error("GET /time-tracker page failed", error)
 
     return {
+      activeSession: null,
       accessMessage: formatTrackerError(error),
       configured: true,
       configMessage: null,

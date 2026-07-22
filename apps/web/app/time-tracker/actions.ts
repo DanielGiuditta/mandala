@@ -35,6 +35,7 @@ export async function loadSelfTimeTrackerAction(
     console.error("loadSelfTimeTrackerAction failed", error);
 
     return {
+      activeSession: null,
       accessMessage:
         error instanceof Error
           ? error.message

@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from "react"
 
 import { signOutAction } from "../login/actions"
 import { SidebarNav } from "../sidebar-nav"
+import { EntityModal } from "./entity-modal"
 import {
   getFallbackAvatarInitial,
   getPersonFallbackAvatarStyle,
@@ -28,6 +29,8 @@ export interface AppShellState {
 
 const NAV_FORCE_COLLAPSE_WIDTH = 800
 const TIME_TRACKER_STORAGE_PREFIX = "mandala.timeTracker"
+const TRACKER_IDLE_TIMEOUT_MS = 5 * 60 * 1000
+const TRACKER_ACTIVITY_HEARTBEAT_MS = 30 * 1000
 
 interface RunningTrackerState {
   projectId: string
@@ -40,9 +43,10 @@ interface TimeTrackerStorageKeys {
 }
 
 interface TimeTrackerMutationResponse {
+  activeSession: SelfTimeTrackerData["activeSession"]
   error: string | null
   ok: boolean
-  todayHours: number | null
+  stoppedProjectId: string | null
 }
 
 function BrandMark() {
@@ -87,12 +91,11 @@ function getLocalDateString(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function getTrackerRunningHoursForToday(
+function getTrackerElapsedHours(
   runningState: RunningTrackerState | null,
-  selectedProjectId: string,
   nowTimestamp: number,
 ): number {
-  if (!runningState || runningState.projectId !== selectedProjectId) {
+  if (!runningState) {
     return 0
   }
 
@@ -101,15 +104,11 @@ function getTrackerRunningHoursForToday(
     return 0
   }
 
-  const now = new Date(nowTimestamp)
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const effectiveStart = startedAt > dayStart ? startedAt : dayStart
-
-  if (effectiveStart.getTime() >= nowTimestamp) {
+  if (startedAt.getTime() >= nowTimestamp) {
     return 0
   }
 
-  return (nowTimestamp - effectiveStart.getTime()) / (1000 * 60 * 60)
+  return (nowTimestamp - startedAt.getTime()) / (1000 * 60 * 60)
 }
 
 function formatTodayHours(hours: number): string {
@@ -126,19 +125,6 @@ function formatTodayHours(hours: number): string {
   }
 
   return `${wholeHours}h ${remainingMinutes}m`
-}
-
-function isRunningTrackerState(value: unknown): value is RunningTrackerState {
-  if (!value || typeof value !== "object") {
-    return false
-  }
-
-  const candidate = value as { projectId?: unknown; startedAt?: unknown }
-  if (typeof candidate.projectId !== "string" || typeof candidate.startedAt !== "string") {
-    return false
-  }
-
-  return !Number.isNaN(new Date(candidate.startedAt).getTime())
 }
 
 function getTimeTrackerStorageKeys(sessionEmail: string): TimeTrackerStorageKeys {
@@ -163,38 +149,16 @@ function clearTimeTrackerStorage(sessionEmail: string) {
   localStorage.removeItem(storageKeys.selectedProjectId)
 }
 
-function shouldHydrateTrackerImmediately(
-  pathname: string | null,
-  runningState: RunningTrackerState | null,
-): boolean {
-  return pathname === "/time-tracker" || Boolean(runningState)
-}
-
 function readTimeTrackerStorage(sessionEmail: string): {
-  runningState: RunningTrackerState | null
   selectedProjectId: string
 } {
   const storageKeys = getTimeTrackerStorageKeys(sessionEmail)
   const storedSelectedProjectId = localStorage.getItem(storageKeys.selectedProjectId) ?? ""
-  const storedRunningStateRaw = localStorage.getItem(storageKeys.running)
-  let runningState: RunningTrackerState | null = null
-
-  if (storedRunningStateRaw) {
-    try {
-      const parsedRunningState = JSON.parse(storedRunningStateRaw)
-      if (isRunningTrackerState(parsedRunningState)) {
-        runningState = parsedRunningState
-      } else {
-        localStorage.removeItem(storageKeys.running)
-      }
-    } catch {
-      localStorage.removeItem(storageKeys.running)
-    }
-  }
+  // Active timers moved from browser storage to the shared server session.
+  localStorage.removeItem(storageKeys.running)
 
   return {
-    runningState,
-    selectedProjectId: storedSelectedProjectId || runningState?.projectId || "",
+    selectedProjectId: storedSelectedProjectId,
   }
 }
 
@@ -212,12 +176,12 @@ export function AppSidebar({
   const profilePanelId = useId()
   const signOutFormRef = useRef<HTMLFormElement | null>(null)
   const trackerHydrationKeyRef = useRef<string | null>(null)
+  const trackerIdleTimeoutRef = useRef<number | null>(null)
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false)
   const [isDetailWorkspaceNavExpanded, setIsDetailWorkspaceNavExpanded] = useState(false)
   const [isProfileExpanded, setIsProfileExpanded] = useState(false)
   const [viewportWidth, setViewportWidth] = useState<number>(NAV_FORCE_COLLAPSE_WIDTH)
   const [trackerVisible, setTrackerVisible] = useState(false)
-  const [trackerHydrationRequested, setTrackerHydrationRequested] = useState(false)
   const [trackerLoading, setTrackerLoading] = useState(false)
   const [trackerSaving, setTrackerSaving] = useState(false)
   const [trackerAccessMessage, setTrackerAccessMessage] = useState<string | null>(null)
@@ -226,6 +190,8 @@ export function AppSidebar({
   const [trackerRunningState, setTrackerRunningState] = useState<RunningTrackerState | null>(null)
   const [trackerNowTimestamp, setTrackerNowTimestamp] = useState(() => Date.now())
   const [trackerError, setTrackerError] = useState<string | null>(null)
+  const [trackerReloadVersion, setTrackerReloadVersion] = useState(0)
+  const [pendingTrackerSwitchProjectId, setPendingTrackerSwitchProjectId] = useState<string | null>(null)
   const profileName = shell.displayName ?? shell.sessionEmail ?? "kolam user"
   const profileInitial = getFallbackAvatarInitial(profileName, "K")
   const profileAvatarStyle = getPersonFallbackAvatarStyle(profileName, "app-shell")
@@ -239,7 +205,7 @@ export function AppSidebar({
   const isSidebarOpen =
     !isForcedCollapsed &&
     !isManuallyCollapsed &&
-    (!isDetailWorkspaceOpen || isDetailWorkspaceNavExpanded)
+    (!isDetailWorkspaceOpen || isDetailWorkspaceNavExpanded || Boolean(trackerRunningState))
   const profileAvatar = shell.photoUrl ? (
     <img
       alt=""
@@ -261,7 +227,7 @@ export function AppSidebar({
       {profileAvatar}
       {isSidebarOpen ? (
         <div className="app-profile-trigger-copy">
-          <p className="app-profile-name">{profileName}</p>
+          <p className="app-profile-name" title={profileName}>{profileName}</p>
         </div>
       ) : null}
     </div>
@@ -301,20 +267,22 @@ export function AppSidebar({
   const trackerSelectedProject = trackerProjects.find(
     (project) => project.id === trackerSelectedProjectId,
   )
-  const trackerDisplayHours =
-    (trackerSelectedProject?.todayHours ?? 0) +
-    getTrackerRunningHoursForToday(
-      trackerRunningState,
-      trackerSelectedProjectId,
-      trackerNowTimestamp,
-    )
+  const trackerRunningProject = trackerProjects.find(
+    (project) => project.id === trackerRunningState?.projectId,
+  )
+  const pendingTrackerSwitchProject = trackerProjects.find(
+    (project) => project.id === pendingTrackerSwitchProjectId,
+  )
+  const trackerElapsedHours = getTrackerElapsedHours(
+    trackerRunningState,
+    trackerNowTimestamp,
+  )
   const canStartTracker =
     canSeeSidebarTimeTracker &&
     Boolean(trackerSessionEmail) &&
     !trackerLoading &&
     !trackerSaving &&
     !trackerAccessMessage &&
-    !trackerRunningState &&
     Boolean(trackerSelectedProjectId)
   const canStopTracker =
     canSeeSidebarTimeTracker &&
@@ -325,11 +293,7 @@ export function AppSidebar({
     Boolean(trackerRunningState)
 
   useEffect(() => {
-    setTrackerHydrationRequested(false)
-  }, [pathname, trackerSessionEmail])
-
-  useEffect(() => {
-    if (!isSidebarOpen || !canSeeSidebarTimeTracker || !trackerSessionEmail) {
+    if (!canSeeSidebarTimeTracker || !trackerSessionEmail) {
       trackerHydrationKeyRef.current = null
       setTrackerVisible(false)
       setTrackerProjects([])
@@ -343,12 +307,8 @@ export function AppSidebar({
     }
 
     const trackerEmail = trackerSessionEmail
-    const trackerHydrationKey = `${trackerEmail}:${getLocalDateString(new Date())}`
+    const trackerHydrationKey = `${trackerEmail}:${getLocalDateString(new Date())}:${trackerReloadVersion}`
     const persistedState = readTimeTrackerStorage(trackerEmail)
-    const shouldHydrateTrackerImmediatelyValue = shouldHydrateTrackerImmediately(
-      pathname,
-      persistedState.runningState,
-    )
     let isCancelled = false
 
     async function hydrateTracker() {
@@ -399,7 +359,12 @@ export function AppSidebar({
         const storedSelectedProjectId = persistedTrackerState.selectedProjectId
         const availableProjectIds = new Set(response.projects.map((project) => project.id))
 
-        let nextRunningState = persistedTrackerState.runningState
+        const nextRunningState = response.activeSession
+          ? {
+              projectId: response.activeSession.projectId,
+              startedAt: response.activeSession.startedAt,
+            }
+          : null
 
         let nextSelectedProjectId = ""
         if (storedSelectedProjectId && availableProjectIds.has(storedSelectedProjectId)) {
@@ -408,12 +373,7 @@ export function AppSidebar({
           localStorage.removeItem(storageKeys.selectedProjectId)
         }
 
-        if (nextRunningState && !availableProjectIds.has(nextRunningState.projectId)) {
-          nextRunningState = null
-          nextSelectedProjectId = ""
-          clearTimeTrackerStorage(trackerEmail)
-        } else if (response.accessMessage) {
-          nextRunningState = null
+        if (response.accessMessage) {
           clearTimeTrackerStorage(trackerEmail)
         } else if (nextRunningState) {
           nextSelectedProjectId = nextRunningState.projectId
@@ -429,11 +389,10 @@ export function AppSidebar({
         if (isCancelled) {
           return
         }
-        const persistedTrackerState = readTimeTrackerStorage(trackerEmail)
         setTrackerVisible(true)
         setTrackerProjects([])
-        setTrackerSelectedProjectId(persistedTrackerState.selectedProjectId)
-        setTrackerRunningState(persistedTrackerState.runningState)
+        setTrackerSelectedProjectId(readTimeTrackerStorage(trackerEmail).selectedProjectId)
+        setTrackerRunningState(null)
         setTrackerAccessMessage(null)
         setTrackerError(error instanceof Error ? error.message : "Unable to load tracker.")
       } finally {
@@ -457,7 +416,7 @@ export function AppSidebar({
     setTrackerError(null)
     setTrackerLoading(false)
     setTrackerSelectedProjectId(persistedState.selectedProjectId)
-    setTrackerRunningState(persistedState.runningState)
+    setTrackerRunningState(null)
 
     if (trackerHydrationKeyRef.current === trackerHydrationKey) {
       return () => {
@@ -465,23 +424,19 @@ export function AppSidebar({
       }
     }
 
-    if (shouldHydrateTrackerImmediatelyValue || trackerHydrationRequested) {
-      startHydrate()
-    }
+    startHydrate()
 
     return () => {
       isCancelled = true
     }
   }, [
     canSeeSidebarTimeTracker,
-    isSidebarOpen,
-    pathname,
-    trackerHydrationRequested,
+    trackerReloadVersion,
     trackerSessionEmail,
   ])
 
   useEffect(() => {
-    if (!isSidebarOpen || !trackerRunningState) {
+    if (!trackerRunningState || trackerSaving) {
       return
     }
 
@@ -491,26 +446,83 @@ export function AppSidebar({
     }, 1000)
 
     return () => window.clearInterval(intervalId)
-  }, [isSidebarOpen, trackerRunningState, trackerVisible])
+  }, [trackerRunningState, trackerVisible])
 
-  async function handleTrackerStop() {
+  useEffect(() => {
+    if (!trackerRunningState) {
+      if (trackerIdleTimeoutRef.current !== null) {
+        window.clearTimeout(trackerIdleTimeoutRef.current)
+        trackerIdleTimeoutRef.current = null
+      }
+      return
+    }
+
+    let lastActivityHeartbeatAt = Date.now()
+
+    function scheduleIdleStop() {
+      if (trackerIdleTimeoutRef.current !== null) {
+        window.clearTimeout(trackerIdleTimeoutRef.current)
+      }
+
+      trackerIdleTimeoutRef.current = window.setTimeout(() => {
+        void handleTrackerStop("idle")
+      }, TRACKER_IDLE_TIMEOUT_MS)
+    }
+
+    function recordActivity() {
+      scheduleIdleStop()
+
+      if (Date.now() - lastActivityHeartbeatAt < TRACKER_ACTIVITY_HEARTBEAT_MS) {
+        return
+      }
+
+      lastActivityHeartbeatAt = Date.now()
+      void fetch("/api/time-tracker", {
+        body: JSON.stringify({ action: "activity" }),
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+    }
+
+    const activityEvents: Array<keyof DocumentEventMap> = [
+      "keydown",
+      "mousedown",
+      "mousemove",
+      "scroll",
+      "touchstart",
+    ]
+
+    scheduleIdleStop()
+    activityEvents.forEach((eventName) =>
+      document.addEventListener(eventName, recordActivity, { passive: true }),
+    )
+
+    return () => {
+      if (trackerIdleTimeoutRef.current !== null) {
+        window.clearTimeout(trackerIdleTimeoutRef.current)
+        trackerIdleTimeoutRef.current = null
+      }
+      activityEvents.forEach((eventName) =>
+        document.removeEventListener(eventName, recordActivity),
+      )
+    }
+  }, [trackerRunningState, trackerSaving])
+
+  async function handleTrackerStop(reason: "idle" | "manual" = "manual") {
     if (!trackerSessionEmail || !trackerRunningState || trackerSaving || trackerLoading) {
       return
     }
 
-    const trackerEmail = trackerSessionEmail
     setTrackerSaving(true)
     setTrackerError(null)
-    const stoppedAt = new Date().toISOString()
     const entryDate = getLocalDateString(new Date())
 
     try {
       const response = await fetch("/api/time-tracker", {
         body: JSON.stringify({
+          action: "stop",
           entryDate,
-          projectId: trackerRunningState.projectId,
-          startedAt: trackerRunningState.startedAt,
-          stoppedAt,
         }),
         credentials: "same-origin",
         headers: {
@@ -520,21 +532,16 @@ export function AppSidebar({
       })
       const result = (await response.json()) as TimeTrackerMutationResponse
 
-      if (!result.ok || result.todayHours == null) {
+      if (!result.ok) {
         setTrackerError(result.error ?? "Unable to save tracked time.")
         return
       }
 
-      const storageKeys = getTimeTrackerStorageKeys(trackerEmail)
-      localStorage.removeItem(storageKeys.running)
       setTrackerRunningState(null)
-      setTrackerProjects((previous) =>
-        previous.map((project) =>
-          project.id === trackerRunningState.projectId
-            ? { ...project, todayHours: result.todayHours ?? project.todayHours }
-            : project,
-        ),
-      )
+      setTrackerReloadVersion((value) => value + 1)
+      if (reason === "idle") {
+        setTrackerError("Timer paused after 5 minutes of inactivity.")
+      }
       router.refresh()
     } catch (error) {
       setTrackerError(error instanceof Error ? error.message : "Unable to save tracked time.")
@@ -543,26 +550,64 @@ export function AppSidebar({
     }
   }
 
-  function handleTrackerStart() {
+  async function startTracker(confirmSwitch: boolean) {
     if (!trackerSessionEmail || !trackerSelectedProjectId || trackerLoading || trackerSaving) {
       return
     }
 
-    const trackerEmail = trackerSessionEmail
-    const runningState: RunningTrackerState = {
-      projectId: trackerSelectedProjectId,
-      startedAt: new Date().toISOString(),
-    }
-    const storageKeys = getTimeTrackerStorageKeys(trackerEmail)
-    localStorage.setItem(storageKeys.running, JSON.stringify(runningState))
-    localStorage.setItem(storageKeys.selectedProjectId, trackerSelectedProjectId)
-    setTrackerRunningState(runningState)
-    setTrackerNowTimestamp(Date.now())
+    setTrackerSaving(true)
     setTrackerError(null)
+
+    try {
+      const response = await fetch("/api/time-tracker", {
+        body: JSON.stringify({
+          action: "start",
+          confirmSwitch,
+          entryDate: getLocalDateString(new Date()),
+          projectId: trackerSelectedProjectId,
+        }),
+        credentials: "same-origin",
+        headers: {
+          "content-type": "application/json",
+        },
+        method: "POST",
+      })
+      const result = (await response.json()) as TimeTrackerMutationResponse
+
+      if (!result.ok || !result.activeSession) {
+        setTrackerError(result.error ?? "Unable to start the timer.")
+        return
+      }
+
+      const storageKeys = getTimeTrackerStorageKeys(trackerSessionEmail)
+      localStorage.setItem(storageKeys.selectedProjectId, result.activeSession.projectId)
+      setTrackerSelectedProjectId(result.activeSession.projectId)
+      setTrackerRunningState({
+        projectId: result.activeSession.projectId,
+        startedAt: result.activeSession.startedAt,
+      })
+      setTrackerNowTimestamp(Date.now())
+      setPendingTrackerSwitchProjectId(null)
+      setTrackerReloadVersion((value) => value + 1)
+      router.refresh()
+    } catch (error) {
+      setTrackerError(error instanceof Error ? error.message : "Unable to start the timer.")
+    } finally {
+      setTrackerSaving(false)
+    }
+  }
+
+  function handleTrackerStart() {
+    if (trackerRunningState && trackerRunningState.projectId !== trackerSelectedProjectId) {
+      setPendingTrackerSwitchProjectId(trackerSelectedProjectId)
+      return
+    }
+
+    void startTracker(false)
   }
 
   function handleTrackerSelectionChange(nextProjectId: string) {
-    if (!trackerSessionEmail || trackerRunningState) {
+    if (!trackerSessionEmail) {
       return
     }
 
@@ -578,13 +623,8 @@ export function AppSidebar({
     setTrackerSelectedProjectId(nextProjectId)
   }
 
-  function requestTrackerHydration() {
-    if (!trackerHydrationRequested) {
-      setTrackerHydrationRequested(true)
-    }
-  }
-
   return (
+    <>
     <aside className={`app-sidebar ${isSidebarOpen ? "app-sidebar-open" : "app-sidebar-closed"}`}>
       <div className="app-sidebar-top">
         <div className={`app-logo-row ${isSidebarOpen ? "app-logo-row-open" : "app-logo-row-closed"}`}>
@@ -637,13 +677,11 @@ export function AppSidebar({
           <section
             className="app-time-tracker"
             aria-label="Time tracker"
-            onFocusCapture={requestTrackerHydration}
-            onMouseEnter={requestTrackerHydration}
           >
             <p className="app-time-tracker-title">Time tracker</p>
             <SelectDropdownField
               ariaLabel="Tracked project"
-              disabled={trackerLoading || trackerSaving || Boolean(trackerRunningState)}
+              disabled={trackerLoading || trackerSaving}
               options={trackerProjects.map((project) => ({ label: project.name, value: project.id }))}
               placeholder={trackerLoading ? "Loading projects..." : "Select project"}
               value={trackerSelectedProjectId}
@@ -651,14 +689,26 @@ export function AppSidebar({
             />
 
             {trackerRunningState ? (
-              <button
-                className="app-time-tracker-button app-time-tracker-button-stop"
-                disabled={!canStopTracker}
-                onClick={() => void handleTrackerStop()}
-                type="button"
-              >
-                Stop
-              </button>
+              <>
+                {trackerSelectedProjectId !== trackerRunningState.projectId ? (
+                  <button
+                    className="app-time-tracker-button"
+                    disabled={!canStartTracker}
+                    onClick={handleTrackerStart}
+                    type="button"
+                  >
+                    Start Work
+                  </button>
+                ) : null}
+                <button
+                  className="app-time-tracker-button app-time-tracker-button-stop"
+                  disabled={!canStopTracker}
+                  onClick={() => void handleTrackerStop()}
+                  type="button"
+                >
+                  Stop
+                </button>
+              </>
             ) : (
               <button
                 className="app-time-tracker-button"
@@ -666,14 +716,16 @@ export function AppSidebar({
                 onClick={handleTrackerStart}
                 type="button"
               >
-                Start
+                Start Work
               </button>
             )}
 
             <p className="app-time-tracker-today">
-              {trackerSelectedProject
-                ? `${formatTodayHours(trackerDisplayHours)} today`
-                : "0m today"}
+              {trackerRunningState
+                ? `${trackerRunningProject?.name ?? "Current project"} · ${formatTodayHours(trackerElapsedHours)} active`
+                : trackerSelectedProject
+                  ? `${formatTodayHours(trackerSelectedProject.todayHours)} today`
+                  : "No active project"}
             </p>
             {trackerAccessMessage ? (
               <p className="pd-form-error app-time-tracker-error">{trackerAccessMessage}</p>
@@ -735,5 +787,34 @@ export function AppSidebar({
         )}
       </div>
     </aside>
+    {pendingTrackerSwitchProject && trackerRunningState ? (
+      <EntityModal>
+        <section aria-label="Confirm project switch" className="pd-card" role="dialog">
+          <h2 className="pd-card-title">Switch active project?</h2>
+          <p className="pd-meta-text">
+            You are currently tracking {trackerRunningProject?.name ?? "the current project"}. Do you want to stop it and start tracking {pendingTrackerSwitchProject.name}?
+          </p>
+          <div className="pd-inline-form-actions">
+            <button
+              className="pd-secondary-button"
+              disabled={trackerSaving}
+              onClick={() => setPendingTrackerSwitchProjectId(null)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="pd-primary-button"
+              disabled={trackerSaving}
+              onClick={() => void startTracker(true)}
+              type="button"
+            >
+              Stop and start work
+            </button>
+          </div>
+        </section>
+      </EntityModal>
+    ) : null}
+    </>
   )
 }

@@ -30,6 +30,20 @@ function TimeTrackerIcon() {
   )
 }
 
+function DesktopAgentIcon() {
+  return (
+    <svg
+      aria-hidden
+      className="app-sidebar-icon"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <rect height="13" rx="1.5" stroke="currentColor" strokeWidth="1.8" width="17" x="3.5" y="4" />
+      <path d="M8 20h8M12 17v3M12 8v5m0 0 2.2-2.2M12 13 9.8 10.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
 const NAV_ITEMS = [
   {
     href: "/projects",
@@ -50,6 +64,11 @@ const NAV_ITEMS = [
     href: "/library",
     label: "Resources",
     renderIcon: () => <FigmaIcon src="/figma/nav/resources-icon.svg" />,
+  },
+  {
+    href: "/desktop-agent",
+    label: "Windows agent",
+    renderIcon: () => <DesktopAgentIcon />,
   },
 ] as const
 
