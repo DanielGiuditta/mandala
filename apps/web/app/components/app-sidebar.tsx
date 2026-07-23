@@ -1,6 +1,7 @@
 "use client"
 
 import type { SelfTimeTrackerData } from "@mandala/db"
+import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
 
@@ -200,6 +201,7 @@ export function AppSidebar({
     shell.primaryTier === "admin" ||
     shell.primaryTier === "projectLead" ||
     shell.primaryTier === "employee"
+  const canDownloadDesktopAgent = shell.primaryTier === "partner" || shell.primaryTier === "admin"
   const isForcedCollapsed = viewportWidth < NAV_FORCE_COLLAPSE_WIDTH
   const isDetailWorkspaceOpen = isDetailWorkspacePath(pathname)
   const isSidebarOpen =
@@ -762,6 +764,15 @@ export function AppSidebar({
                     <span className="app-profile-theme-thumb" />
                   </span>
                 </button>
+                {canDownloadDesktopAgent ? (
+                  <Link
+                    className="ghost-button app-profile-panel-action"
+                    href="/desktop-agent"
+                    onClick={() => setIsProfileExpanded(false)}
+                  >
+                    Windows companion
+                  </Link>
+                ) : null}
                 <button
                   className="ghost-button app-profile-panel-action"
                   onClick={() => signOutFormRef.current?.requestSubmit()}
