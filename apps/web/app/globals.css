@@ -4483,23 +4483,6 @@ th {
   margin: 0;
 }
 
-.desktop-agent-steps,
-.desktop-agent-support-list {
-  color: var(--figma-color-text-secondary);
-  display: grid;
-  font-size: 14px;
-  gap: 10px;
-  line-height: 20px;
-  margin: 14px 0 0;
-  padding-left: 20px;
-}
-
-.desktop-agent-steps strong,
-.desktop-agent-support-list strong {
-  color: var(--figma-color-text-primary);
-  font-weight: 600;
-}
-
 .pd-icon-button {
   align-items: center;
   appearance: none;
@@ -4658,6 +4641,7 @@ th {
 .pd-primary-button {
   background: var(--app-accent);
   color: var(--app-accent-contrast);
+  text-decoration: none;
 }
 
 .pd-secondary-button {

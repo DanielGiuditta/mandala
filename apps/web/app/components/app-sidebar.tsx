@@ -1,7 +1,6 @@
 "use client"
 
 import type { SelfTimeTrackerData } from "@mandala/db"
-import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useId, useRef, useState } from "react"
 
@@ -765,13 +764,16 @@ export function AppSidebar({
                   </span>
                 </button>
                 {canDownloadDesktopAgent ? (
-                  <Link
+                  <button
                     className="ghost-button app-profile-panel-action"
-                    href="/desktop-agent"
-                    onClick={() => setIsProfileExpanded(false)}
+                    onClick={() => {
+                      setIsProfileExpanded(false)
+                      router.push("/desktop-agent")
+                    }}
+                    type="button"
                   >
                     Windows companion
-                  </Link>
+                  </button>
                 ) : null}
                 <button
                   className="ghost-button app-profile-panel-action"
