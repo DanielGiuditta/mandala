@@ -29,6 +29,7 @@ jobs:
       - name: Build, sign, and optionally publish
         env:
           MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
           MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MANDALA_DESKTOP_SIGNING_PFX_BASE64: ${{ secrets.MANDALA_DESKTOP_SIGNING_PFX_BASE64 }}
