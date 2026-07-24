@@ -7,6 +7,11 @@ on:
         description: Release version
         required: true
         default: 1.0.0
+      publish_unsigned:
+        description: Publish an unsigned pre-launch installer to the private Mandala download link
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -47,7 +52,15 @@ jobs:
               -SupabaseAnonKey $env:MANDALA_SUPABASE_ANON_KEY
           }
 
-          if ($env:SUPABASE_SERVICE_ROLE_KEY -and $env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
+          $publishUnsigned = "${{ inputs.publish_unsigned }}" -eq "true"
+          if ($publishUnsigned -and -not $env:SUPABASE_SERVICE_ROLE_KEY) {
+            throw "The publish_unsigned option requires SUPABASE_SERVICE_ROLE_KEY."
+          }
+
+          if ($env:SUPABASE_SERVICE_ROLE_KEY -and ($env:MANDALA_DESKTOP_SIGNING_PFX_BASE64 -or $publishUnsigned)) {
+            if ($publishUnsigned -and -not $env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
+              Write-Warning "Publishing an unsigned pre-launch installer. Windows may show a publisher warning during installation."
+            }
             node .\apps\desktop-agent\scripts\publish-release.mjs .\apps\desktop-agent\release\MandalaAgentSetup.exe
           } else {
             Write-Host "Installer was not published because signing or storage credentials are missing."

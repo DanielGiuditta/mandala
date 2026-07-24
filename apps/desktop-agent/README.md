@@ -70,3 +70,5 @@ The manual GitHub workflow at `.github/workflows/build-desktop-agent.yml` builds
 - `MANDALA_DESKTOP_SIGNING_PFX_PASSWORD`
 
 The Supabase URL and anon key are required for every build. When the signing certificate and service-role key are also configured, the workflow signs and publishes the installer; otherwise it produces a build artifact only.
+
+For a pre-launch workstation test before the organization’s signing certificate is available, run the workflow with `publish_unsigned` enabled. This publishes the installer to the same private Mandala download link, but Windows may show a publisher warning. Do not use this option for broad employee deployment.
