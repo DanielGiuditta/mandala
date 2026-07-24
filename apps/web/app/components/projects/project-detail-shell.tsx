@@ -42,6 +42,10 @@ export function ProjectDetailShell({
   projectId,
   railProjects,
 }: ProjectDetailShellProps) {
+  const projectCreateDisabledReason = data.activeWorkProjectId
+    ? `You are currently tracking ${data.activeWorkProjectName ?? "another project"}. Stop work before creating a project.`
+    : undefined;
+
   if (data.forbidden) {
     const message =
       data.accessMessage ??
@@ -82,6 +86,8 @@ export function ProjectDetailShell({
           configured={data.configured}
           createProjectTrigger={
             <ProjectCreateModal
+              disabled={Boolean(data.activeWorkProjectId)}
+              disabledReason={projectCreateDisabledReason}
               loadLeadOptionsAction={loadPeopleOptionsAction}
               officeOptions={officeOptions}
               onCreateProjectAction={createProjectAction}

@@ -33,6 +33,7 @@ Project-lead permissions should be derived from `projects.lead_person_id`, not m
 - enforce foreign keys once the core tables exist
 - add indexes on office, person, project, and assignment relationship columns
 - add reporting indexes on fields such as `projects.stage`, `time_entries.date`, and `resource_documents.created_at`
+- store resource locations as either an HTTPS `file_url` or a LAN UNC `server_path`; do not store or proxy the underlying files in Supabase
 - keep authorization scope keys indexed, especially `role_assignments.office_id` and `client_project_access.project_id`
 - store optional project imagery on `projects.photo_url`; do not invent a separate project-media entity in V1 unless the product docs expand
 - store optional person imagery on `people.photo_url`; do not invent a separate person-media entity in V1 unless the product docs expand

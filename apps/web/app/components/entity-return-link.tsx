@@ -9,6 +9,7 @@ import type {
   ReactNode,
   TouchEvent,
 } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   rememberEntityReturnUrl,
@@ -23,6 +24,7 @@ interface EntityReturnLinkProps {
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   onFocus?: (event: FocusEvent<HTMLAnchorElement>) => void;
   onMouseEnter?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  onMouseLeave?: (event: MouseEvent<HTMLAnchorElement>) => void;
   onTouchStart?: (event: TouchEvent<HTMLAnchorElement>) => void;
   prefetch?: boolean | "auto" | null;
   prefetchOnIntent?: boolean;
@@ -43,8 +45,9 @@ export function EntityReturnLink({
   onClick,
   onFocus,
   onMouseEnter,
+  onMouseLeave,
   onTouchStart,
-  prefetch = "auto",
+  prefetch = false,
   prefetchOnIntent = true,
   preserveCurrentSearch = true,
   scope,
@@ -53,6 +56,8 @@ export function EntityReturnLink({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const prefetchTimeoutRef = useRef<number | null>(null);
+  const [isPending, setIsPending] = useState(false);
   const listPath = getListPath(scope);
   const currentSearch = searchParams.toString();
   const shouldPreserveCurrentSearch =
@@ -63,6 +68,18 @@ export function EntityReturnLink({
   const resolvedHref = shouldPreserveCurrentSearch
     ? `${href}?${currentSearch}`
     : href;
+
+  useEffect(() => {
+    setIsPending(false);
+  }, [pathname, currentSearch]);
+
+  useEffect(() => {
+    return () => {
+      if (prefetchTimeoutRef.current !== null) {
+        window.clearTimeout(prefetchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function prefetchTarget() {
     if (!prefetchOnIntent) {
@@ -78,6 +95,17 @@ export function EntityReturnLink({
       `${window.location.pathname}${window.location.search}`,
     );
     onClick?.(event);
+
+    if (
+      !event.defaultPrevented &&
+      event.button === 0 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      setIsPending(true);
+    }
   }
 
   function handleFocus(event: FocusEvent<HTMLAnchorElement>) {
@@ -86,23 +114,35 @@ export function EntityReturnLink({
   }
 
   function handleMouseEnter(event: MouseEvent<HTMLAnchorElement>) {
-    prefetchTarget();
+    if (prefetchTimeoutRef.current !== null) {
+      window.clearTimeout(prefetchTimeoutRef.current);
+    }
+    prefetchTimeoutRef.current = window.setTimeout(prefetchTarget, 120);
     onMouseEnter?.(event);
   }
 
+  function handleMouseLeave(event: MouseEvent<HTMLAnchorElement>) {
+    if (prefetchTimeoutRef.current !== null) {
+      window.clearTimeout(prefetchTimeoutRef.current);
+      prefetchTimeoutRef.current = null;
+    }
+    onMouseLeave?.(event);
+  }
+
   function handleTouchStart(event: TouchEvent<HTMLAnchorElement>) {
-    prefetchTarget();
     onTouchStart?.(event);
   }
 
   return (
     <Link
       aria-current={ariaCurrent}
-      className={className}
+      aria-busy={isPending || undefined}
+      className={`${className ?? ""}${isPending ? " entity-navigation-pending" : ""}`}
       href={resolvedHref}
       onClick={handleClick}
       onFocus={handleFocus}
       onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onTouchStart={handleTouchStart}
       prefetch={prefetch}
       style={style}

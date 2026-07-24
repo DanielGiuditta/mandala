@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useEffect, useRef, useState } from "react"
 import { TokenIcon } from "./components/ui/token-icon"
 
 function FigmaIcon({ src }: { src: string }) {
@@ -99,6 +100,37 @@ function canViewNavItem(
 export function SidebarNav({ isOpen, primaryTier }: SidebarNavProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const prefetchTimeoutRef = useRef<number | null>(null)
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPendingHref(null)
+  }, [pathname])
+
+  useEffect(() => {
+    return () => {
+      if (prefetchTimeoutRef.current !== null) {
+        window.clearTimeout(prefetchTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  function schedulePrefetch(href: string) {
+    if (prefetchTimeoutRef.current !== null) {
+      window.clearTimeout(prefetchTimeoutRef.current)
+    }
+
+    prefetchTimeoutRef.current = window.setTimeout(() => {
+      router.prefetch(href)
+    }, 120)
+  }
+
+  function cancelPrefetch() {
+    if (prefetchTimeoutRef.current !== null) {
+      window.clearTimeout(prefetchTimeoutRef.current)
+      prefetchTimeoutRef.current = null
+    }
+  }
 
   return (
     <nav aria-label="Primary" className="app-sidebar-nav app-sidebar-nav-track">
@@ -106,23 +138,39 @@ export function SidebarNav({ isOpen, primaryTier }: SidebarNavProps) {
         const isProjectsRoot = item.href === "/projects" && pathname === "/"
         const isActive =
           isProjectsRoot || pathname === item.href || pathname.startsWith(`${item.href}/`)
+        const isPending = pendingHref === item.href
 
         return (
           <Link
+            aria-busy={isPending || undefined}
             aria-current={isActive ? "page" : undefined}
             className={`app-sidebar-link ${
               isOpen && isActive ? "app-sidebar-link-active-open" : ""
-            }`}
+            }${isPending ? " app-sidebar-link-pending" : ""}`}
             href={item.href}
             key={item.href}
             onFocus={() => router.prefetch(item.href)}
-            onMouseEnter={() => router.prefetch(item.href)}
+            onClick={(event) => {
+              if (
+                !isActive &&
+                event.button === 0 &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.shiftKey &&
+                !event.altKey
+              ) {
+                setPendingHref(item.href)
+              }
+            }}
+            onMouseEnter={() => schedulePrefetch(item.href)}
+            onMouseLeave={cancelPrefetch}
             prefetch={false}
           >
             {item.renderIcon()}
             <span className={`app-sidebar-nav-label ${isOpen ? "" : "app-sidebar-nav-label-hidden"}`}>
               {item.label}
             </span>
+            {isPending ? <span aria-hidden className="app-navigation-spinner" /> : null}
           </Link>
         )
       })}

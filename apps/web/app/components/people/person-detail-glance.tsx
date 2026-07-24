@@ -16,6 +16,7 @@ import {
   type PersonMutationActionResult,
 } from "./person-action-results";
 import { personPickToSelectOption } from "./person-pick-select-option";
+import { PersonSourcedProjects } from "./person-sourced-projects";
 import type {
   PersonCreateOfficeOption,
   PersonCreateSupervisorOption,
@@ -53,11 +54,6 @@ export function PersonDetailGlance({
   onUpdatePersonAction,
   person,
 }: PersonDetailGlanceProps) {
-  const sourcedProject = person.staffedProjects[0] ?? null;
-  const additionalProjectCount = Math.max(
-    0,
-    person.staffedProjects.length - (sourcedProject ? 1 : 0),
-  );
   const hoursThisWeek = person.hoursThisWeek;
   const [projectOptions, setProjectOptions] = useState<
     Array<{ id: string; name: string; photoUrl: string | null }>
@@ -218,17 +214,12 @@ export function PersonDetailGlance({
       <div className="pd-glance-grid pd-glance-grid-person">
         <div className="pd-glance-pill">
           <span className="pd-glance-label">Sourced to</span>
-          {sourcedProject ? (
-            <EntityReturnLink
-              className="entity-inline-text-link"
-              href={`/projects/${sourcedProject.projectId}`}
-              scope="projects"
-            >
-              <strong title={sourcedProject.projectName}>
-                {sourcedProject.projectName}
-                {additionalProjectCount > 0 ? ` +${additionalProjectCount}` : ""}
-              </strong>
-            </EntityReturnLink>
+          {person.staffedProjects.length > 0 ? (
+            <PersonSourcedProjects
+              personName={person.fullName}
+              projects={person.staffedProjects}
+              variant="detail"
+            />
           ) : person.canEdit ? (
             <EditableEntityPill
               ariaLabel={`Add project for ${person.fullName}`}

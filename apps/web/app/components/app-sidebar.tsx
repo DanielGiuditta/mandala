@@ -34,6 +34,7 @@ const TRACKER_ACTIVITY_HEARTBEAT_MS = 30 * 1000
 
 interface RunningTrackerState {
   projectId: string
+  projectName: string | null
   startedAt: string
 }
 
@@ -256,21 +257,14 @@ export function AppSidebar({
     }
   }, [isDetailWorkspaceOpen])
 
-  useEffect(() => {
-    if (!shell.isAuthenticated) {
-      return
-    }
-
-    router.prefetch("/projects")
-    router.prefetch("/people")
-  }, [router, shell.isAuthenticated])
-
   const trackerSelectedProject = trackerProjects.find(
     (project) => project.id === trackerSelectedProjectId,
   )
   const trackerRunningProject = trackerProjects.find(
     (project) => project.id === trackerRunningState?.projectId,
   )
+  const trackerRunningProjectName =
+    trackerRunningState?.projectName ?? trackerRunningProject?.name ?? "Current project"
   const pendingTrackerSwitchProject = trackerProjects.find(
     (project) => project.id === pendingTrackerSwitchProjectId,
   )
@@ -363,6 +357,7 @@ export function AppSidebar({
         const nextRunningState = response.activeSession
           ? {
               projectId: response.activeSession.projectId,
+              projectName: response.activeSession.projectName,
               startedAt: response.activeSession.startedAt,
             }
           : null
@@ -408,7 +403,6 @@ export function AppSidebar({
         return
       }
 
-      setTrackerLoading(true)
       void hydrateTracker()
     }
 
@@ -425,10 +419,24 @@ export function AppSidebar({
       }
     }
 
-    startHydrate()
+    setTrackerLoading(true)
+    const idleCallbackId =
+      "requestIdleCallback" in window
+        ? window.requestIdleCallback(startHydrate, { timeout: 1_500 })
+        : null
+    const fallbackTimeoutId =
+      idleCallbackId === null
+        ? window.setTimeout(startHydrate, 250)
+        : null
 
     return () => {
       isCancelled = true
+      if (idleCallbackId !== null) {
+        window.cancelIdleCallback(idleCallbackId)
+      }
+      if (fallbackTimeoutId !== null) {
+        window.clearTimeout(fallbackTimeoutId)
+      }
     }
   }, [
     canSeeSidebarTimeTracker,
@@ -585,6 +593,7 @@ export function AppSidebar({
       setTrackerSelectedProjectId(result.activeSession.projectId)
       setTrackerRunningState({
         projectId: result.activeSession.projectId,
+        projectName: result.activeSession.projectName,
         startedAt: result.activeSession.startedAt,
       })
       setTrackerNowTimestamp(Date.now())
@@ -723,7 +732,7 @@ export function AppSidebar({
 
             <p className="app-time-tracker-today">
               {trackerRunningState
-                ? `${trackerRunningProject?.name ?? "Current project"} · ${formatTodayHours(trackerElapsedHours)} active`
+                ? `${trackerRunningProjectName} · ${formatTodayHours(trackerElapsedHours)} active`
                 : trackerSelectedProject
                   ? `${formatTodayHours(trackerSelectedProject.todayHours)} today`
                   : "No active project"}
@@ -800,12 +809,20 @@ export function AppSidebar({
         )}
       </div>
     </aside>
+    {trackerRunningState && !isSidebarOpen ? (
+      <div className="app-active-work-floating" aria-label="Current active project">
+        <span className="app-active-work-kicker">Tracking</span>
+        <span className="app-active-work-copy">
+          {trackerRunningProjectName} · {formatTodayHours(trackerElapsedHours)} active
+        </span>
+      </div>
+    ) : null}
     {pendingTrackerSwitchProject && trackerRunningState ? (
       <EntityModal>
         <section aria-label="Confirm project switch" className="pd-card" role="dialog">
           <h2 className="pd-card-title">Switch active project?</h2>
           <p className="pd-meta-text">
-            You are currently tracking {trackerRunningProject?.name ?? "the current project"}. Do you want to stop it and start tracking {pendingTrackerSwitchProject.name}?
+            You are currently tracking {trackerRunningProjectName}. Do you want to stop it and start tracking {pendingTrackerSwitchProject.name}?
           </p>
           <div className="pd-inline-form-actions">
             <button

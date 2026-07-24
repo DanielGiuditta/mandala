@@ -65,9 +65,10 @@ type AddResourceAction = (
     category?: string | null;
     description?: string | null;
     fileType?: string | null;
-    fileUrl: string;
+    fileUrl?: string | null;
     name: string;
     projectId: string;
+    serverPath?: string | null;
   },
 ) => Promise<ProjectDetailActionResult>;
 

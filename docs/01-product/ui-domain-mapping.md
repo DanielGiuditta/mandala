@@ -35,7 +35,9 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - "Complete Checklist Item" → update `ChecklistItem.completed`
 - "Start Work" / "Stop" → manage the self-only `ActiveWorkSession` through the lightweight sidebar tracker; stopping, switching after confirmation, or idle pause writes the finalized elapsed time as a manual `TimeEntry`
 - "View Project Time" → read `TimeEntry`
-- "Upload Document" → create `ResourceDocument`
+- "Upload Document" / "Add Resource" → create `ResourceDocument` metadata with either `fileUrl` or `serverPath`
+- "Open File" → open the resource location from `ResourceDocument`
+- "Copy Path" → copy `ResourceDocument.serverPath` for Windows Explorer or another local application
 - "Grant Client Access" → create `ClientProjectAccess`
 - "Change Project Stage" → update `Project.stage`
 

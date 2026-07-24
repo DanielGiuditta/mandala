@@ -36,6 +36,9 @@ export function ResourcesListFilters({
       params.delete("category")
 
       const next = params.toString()
+      if (next === searchParams.toString()) {
+        return
+      }
       router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false })
     }, 180)
 

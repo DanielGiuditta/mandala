@@ -127,7 +127,11 @@ export function ProjectCreateModal({
           title={disabledReason}
         />
       ) : (
-        <ProjectAddButton onClick={() => setIsOpen(true)} />
+        <ProjectAddButton
+          disabled={disabled}
+          onClick={() => setIsOpen(true)}
+          title={disabledReason}
+        />
       )}
 
       {isOpen ? (

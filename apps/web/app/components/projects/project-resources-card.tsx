@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import type { ProjectDocumentItem } from "@mandala/db";
 
 import { ResourceDocumentIcon } from "../resources/resource-document-icon";
+import { ResourceDocumentActions } from "../resources/resource-document-actions";
 import { formatDateTime } from "./project-detail-utils";
 import { ProjectCardHeader } from "./project-card-header";
 
@@ -14,9 +15,10 @@ interface ProjectResourcesCardProps {
     category?: string | null;
     description?: string | null;
     fileType?: string | null;
-    fileUrl: string;
+    fileUrl?: string | null;
     name: string;
     projectId: string;
+    serverPath?: string | null;
   }) => Promise<{ error: string | null; ok: boolean }>;
   documents: ProjectDocumentItem[];
   canAddResources: boolean;
@@ -53,12 +55,13 @@ export function ProjectResourcesCard({
             const formData = new FormData(event.currentTarget);
             const name = String(formData.get("name") ?? "").trim();
             const fileUrl = String(formData.get("fileUrl") ?? "").trim();
+            const serverPath = String(formData.get("serverPath") ?? "").trim();
             const fileType = String(formData.get("fileType") ?? "").trim();
             const category = String(formData.get("category") ?? "").trim();
             const description = String(formData.get("description") ?? "").trim();
 
-            if (!name || !fileUrl) {
-              setFormError("Name and file URL are required.");
+            if (!name || (Boolean(fileUrl) === Boolean(serverPath))) {
+              setFormError("Name and exactly one URL or LAN server path are required.");
               return;
             }
 
@@ -71,6 +74,7 @@ export function ProjectResourcesCard({
                 fileUrl,
                 name,
                 projectId,
+                serverPath,
               });
               if (!result.ok) {
                 setFormError(result.error ?? "Unable to add resource.");
@@ -83,7 +87,8 @@ export function ProjectResourcesCard({
           }}
         >
           <input name="name" placeholder="Resource name" required type="text" />
-          <input name="fileUrl" placeholder="https://..." required type="url" />
+          <input name="fileUrl" placeholder="HTTPS URL (optional)" type="text" />
+          <input name="serverPath" placeholder="\\\\Server\\Share\\Folder\\File.ext (optional)" type="text" />
           <input name="fileType" placeholder="File type (optional)" type="text" />
           <input name="category" placeholder="Category (optional)" type="text" />
           <input name="description" placeholder="Description (optional)" type="text" />
@@ -104,9 +109,17 @@ export function ProjectResourcesCard({
               <div className="pd-list-item-main">
                 <ResourceDocumentIcon fileType={document.fileType} />
                 <div className="pd-list-item-main-column">
-                  <a className="pd-link" href={document.fileUrl} rel="noreferrer" target="_blank">
-                    {document.name}
-                  </a>
+                  {document.fileUrl ? (
+                    <a className="pd-link" href={document.fileUrl} rel="noreferrer" target="_blank">
+                      {document.name}
+                    </a>
+                  ) : (
+                    <span className="pd-link">{document.name}</span>
+                  )}
+                  <ResourceDocumentActions
+                    fileUrl={document.fileUrl}
+                    serverPath={document.serverPath}
+                  />
                   <p className="pd-meta-text">
                     {document.fileType ?? "Unknown type"} · {document.category ?? "Uncategorized"}
                   </p>

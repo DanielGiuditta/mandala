@@ -138,7 +138,10 @@ export function ProjectCreateForm({
       setIsSubmitting(true);
 
       if (nextInput.photoFile) {
-        nextInput.photoUrl = await readFileAsDataUrl(nextInput.photoFile);
+        nextInput.photoUrl = await readFileAsDataUrl(nextInput.photoFile, {
+          maxBytes: 140 * 1024,
+          maxDimension: 640,
+        });
       }
 
       const payload = mapCreateProjectPayload(nextInput);

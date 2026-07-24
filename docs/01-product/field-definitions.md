@@ -104,9 +104,14 @@ If present, the document belongs to a project. If null, it belongs to the shared
 Document grouping label such as drawing, brief, template, or reference.
 
 ### `fileUrl`
-HTTPS URL for the document or library asset.
+Optional HTTPS URL for the document or library asset. Use this when the asset is hosted on an HTTPS-accessible system.
 
 The URL must not include embedded credentials.
+
+### `serverPath`
+Optional Windows UNC path for a document or library asset stored on the office LAN, such as `\\Server\\Studio 2 Projects\\Some Project\\Drawings\\A101.dwg`.
+
+Exactly one of `fileUrl` or `serverPath` must be present. Mandala stores this path as metadata and does not upload or proxy the file.
 
 ## ChecklistItem
 

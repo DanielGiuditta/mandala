@@ -60,25 +60,67 @@ export function getProjectFallbackStyle(name: string) {
   return getProjectFallbackAvatarStyle(name, "project");
 }
 
-export function readFileAsDataUrl(file: File): Promise<string> {
+interface PhotoOptimizationOptions {
+  maxBytes?: number;
+  maxDimension?: number;
+}
+
+function getDataUrlByteLength(dataUrl: string): number {
+  const encoded = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  return Math.ceil((encoded.length * 3) / 4);
+}
+
+function loadPhoto(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
 
-    reader.onload = () => {
-      const result = reader.result;
-
-      if (typeof result === "string") {
-        resolve(result);
-        return;
-      }
-
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
       reject(new Error("Unable to read the selected photo."));
     };
-
-    reader.onerror = () => {
-      reject(new Error("Unable to read the selected photo."));
-    };
-
-    reader.readAsDataURL(file);
+    image.src = objectUrl;
   });
+}
+
+export async function readFileAsDataUrl(
+  file: File,
+  {
+    maxBytes = 140 * 1024,
+    maxDimension = 640,
+  }: PhotoOptimizationOptions = {},
+): Promise<string> {
+  const image = await loadPhoto(file);
+  let scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+  let bestResult = "";
+
+  for (let resizeAttempt = 0; resizeAttempt < 5; resizeAttempt += 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Unable to prepare the selected photo.");
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    for (let quality = 0.82; quality >= 0.42; quality -= 0.1) {
+      const result = canvas.toDataURL("image/webp", quality);
+      bestResult = result;
+
+      if (getDataUrlByteLength(result) <= maxBytes) {
+        return result;
+      }
+    }
+
+    scale *= 0.8;
+  }
+
+  return bestResult;
 }

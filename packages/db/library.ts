@@ -19,7 +19,8 @@ import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 interface ResourceDocumentRow {
   id: string
   name: string
-  file_url: string
+  file_url: string | null
+  server_path?: string | null
   file_type: string | null
   project_id: string | null
   category: string | null
@@ -53,6 +54,7 @@ function toResourceDocument(row: ResourceDocumentRow): ResourceDocument {
     id: row.id,
     name: row.name,
     fileUrl: row.file_url,
+    serverPath: row.server_path,
     fileType: row.file_type,
     projectId: row.project_id,
     category: row.category,
@@ -75,6 +77,7 @@ function matchesFilters(
       row.category ?? "",
       row.description ?? "",
       row.file_type ?? "",
+      row.server_path ?? "",
       projectName ?? "",
     ]
     return haystacks.some((value) => value.toLowerCase().includes(query))
@@ -183,7 +186,7 @@ export async function listLibraryDocuments(
   const { data, error } = await client
     .from("resource_documents")
     .select(
-      "id, name, file_url, file_type, project_id, category, description, uploaded_by_person_id, created_at",
+      "id, name, file_url, server_path, file_type, project_id, category, description, uploaded_by_person_id, created_at",
     )
     .order("created_at", { ascending: false })
 

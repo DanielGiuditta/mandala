@@ -257,7 +257,10 @@ export function PersonCreateForm({
       setIsSubmitting(true);
 
       if (nextInput.photoFile) {
-        nextInput.photoUrl = await readFileAsDataUrl(nextInput.photoFile);
+        nextInput.photoUrl = await readFileAsDataUrl(nextInput.photoFile, {
+          maxBytes: 80 * 1024,
+          maxDimension: 320,
+        });
       }
 
       const payload = mapCreatePersonPayload(nextInput);

@@ -239,7 +239,8 @@ Represents a document attached to a project or the shared library.
 
 - `id`
 - `name`
-- `fileUrl`
+- `fileUrl` (optional HTTPS location)
+- `serverPath` (optional LAN UNC location)
 - `fileType`
 - `projectId`
 - `category`
@@ -250,6 +251,8 @@ Represents a document attached to a project or the shared library.
 ### Notes
 
 - if `projectId` is null, the document belongs to the shared library
+- exactly one of `fileUrl` or `serverPath` is required
+- `serverPath` points to the existing office file server; Mandala stores the reference and never uploads or proxies the file
 - this is the meaning of "resource" in the product
 
 ## ChecklistItem

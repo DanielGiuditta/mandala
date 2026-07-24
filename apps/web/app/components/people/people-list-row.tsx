@@ -28,6 +28,7 @@ import {
   formatCreatePersonPermissionLabel,
   PERSON_CREATE_PERMISSION_OPTIONS,
 } from "./person-create-utils";
+import { PersonSourcedProjects } from "./person-sourced-projects";
 
 interface PeopleListRowProps {
   ensureProjectOptions: () => Promise<void>;
@@ -56,11 +57,6 @@ export function PeopleListRow({
   rowIndex,
   supervisorOptions,
 }: PeopleListRowProps) {
-  const visibleStaffedProjects = person.staffedProjects.slice(0, 2);
-  const remainingStaffedProjects = Math.max(
-    0,
-    person.staffedProjects.length - visibleStaffedProjects.length,
-  );
   const officeSelectOptions = officeOptions.map((office) => ({
     label: office.name,
     value: office.id,
@@ -155,38 +151,6 @@ export function PeopleListRow({
     );
   }
 
-  function renderStaffedProjectChip(project: PersonListItem["staffedProjects"][number]) {
-    return (
-      <EntityReturnLink
-        className="people-project-chip entity-content-link"
-        href={`/projects/${project.projectId}`}
-        key={project.projectId}
-        scope="projects"
-      >
-        {project.projectPhotoUrl ? (
-          <img
-            alt=""
-            aria-hidden
-            className="people-project-chip-avatar"
-            loading="lazy"
-            src={project.projectPhotoUrl}
-          />
-        ) : (
-          <span
-            aria-hidden
-            className="people-project-chip-fallback"
-            style={getProjectFallbackAvatarStyle(project.projectName, project.projectId)}
-          >
-            {getFallbackAvatarInitial(project.projectName)}
-          </span>
-        )}
-        <span className="people-cell-value entity-content-link-label">
-          {project.projectName}
-        </span>
-      </EntityReturnLink>
-    );
-  }
-
   return (
     <article
       className={`people-list-row ${rowIndex % 2 === 0 ? "people-list-row-light" : "people-list-row-base"}`}
@@ -220,17 +184,13 @@ export function PeopleListRow({
         </EntityReturnLink>
       </div>
 
-      <div className="people-cell">
+      <div className="people-cell people-project-cell">
         {person.staffedProjects.length > 0 ? (
-          <div
-            className="people-project-chips"
-            title={person.staffedProjects.map((project) => project.projectName).join(", ")}
-          >
-            {visibleStaffedProjects.map((project) => renderStaffedProjectChip(project))}
-            {remainingStaffedProjects > 0 ? (
-              <span className="people-project-overflow">+{remainingStaffedProjects}</span>
-            ) : null}
-          </div>
+          <PersonSourcedProjects
+            personName={person.fullName}
+            projects={person.staffedProjects}
+            variant="list"
+          />
         ) : person.canEdit ? (
           renderProjectPickerPill()
         ) : (

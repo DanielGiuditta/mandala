@@ -4,7 +4,10 @@ import Script from "next/script"
 
 import { AppFrame } from "./components/app-frame"
 import { THEME_INIT_SCRIPT } from "./components/theme"
-import { getAppSessionState } from "../lib/auth/session"
+import {
+  getAppSessionState,
+  getViewerRequestContext,
+} from "../lib/auth/session"
 
 import "./globals.css"
 
@@ -18,11 +21,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const session = await getAppSessionState()
-  const viewerAccess = await getCurrentViewerAccess({
-    accessToken: session.accessToken,
-    sessionEmail: session.sessionEmail,
-  })
+  const [session, viewerContext] = await Promise.all([
+    getAppSessionState(),
+    getViewerRequestContext(),
+  ])
+  const viewerAccess =
+    viewerContext.viewerAccess ??
+    await getCurrentViewerAccess(viewerContext)
 
   return (
     <html lang="en" suppressHydrationWarning>
