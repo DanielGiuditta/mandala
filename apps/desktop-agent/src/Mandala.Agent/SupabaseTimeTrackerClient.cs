@@ -59,7 +59,10 @@ public sealed class SupabaseTimeTrackerClient
         }
         catch (HttpRequestException exception)
         {
-            warning = $"Projects loaded, but the active timer could not be checked: {exception.Message}";
+            warning = AgentDiagnostics.Format(
+                "AGENT-TIMER-PAUSE-001",
+                "Projects loaded, but the active timer could not be checked.",
+                exception);
         }
 
         List<ActiveSessionResponse> sessions = [];
@@ -70,7 +73,10 @@ public sealed class SupabaseTimeTrackerClient
         }
         catch (HttpRequestException exception)
         {
-            warning = $"Projects loaded, but the active timer could not be checked: {exception.Message}";
+            warning = AgentDiagnostics.Format(
+                "AGENT-TIMER-SESSION-001",
+                "Projects loaded, but the active timer could not be checked.",
+                exception);
         }
 
         var active = sessions.FirstOrDefault();
@@ -104,7 +110,17 @@ public sealed class SupabaseTimeTrackerClient
             // Keep the RPC as a compatibility fallback for older deployments.
         }
 
-        return await RpcAsync<List<ProjectResponse>>("list_time_tracker_projects_for_current_user", new { });
+        try
+        {
+            return await RpcAsync<List<ProjectResponse>>("list_time_tracker_projects_for_current_user", new { });
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new AgentDiagnosticException(
+                "AGENT-PROJECTS-001",
+                "Mandala could not load the project list.",
+                exception);
+        }
     }
 
     public async Task StartAsync(string projectId, string localDate, bool confirmSwitch) =>

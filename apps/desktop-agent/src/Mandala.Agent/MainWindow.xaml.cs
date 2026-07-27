@@ -30,7 +30,9 @@ public partial class MainWindow : Window
     {
         if (!_configuration.IsConfigured)
         {
-            LoginMessageText.Text = "This installation is missing its Mandala connection configuration. Ask IT to reinstall the approved installer.";
+            LoginMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-CONFIG-001",
+                "This installation is missing its Mandala connection configuration. Ask IT to reinstall the approved installer.");
             SignInButton.IsEnabled = false;
             return;
         }
@@ -38,8 +40,16 @@ public partial class MainWindow : Window
         _client = new SupabaseTimeTrackerClient(_configuration);
         var storedSession = await _sessionStore.LoadAsync();
 
-        if (storedSession is null || !await _client.RestoreAsync(storedSession))
+        if (storedSession is null)
         {
+            return;
+        }
+
+        if (!await _client.RestoreAsync(storedSession))
+        {
+            LoginMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-AUTH-RESTORE-001",
+                "The saved sign-in expired. Sign in again.");
             return;
         }
 
@@ -52,7 +62,9 @@ public partial class MainWindow : Window
     {
         if (_client is null || string.IsNullOrWhiteSpace(EmailTextBox.Text) || string.IsNullOrWhiteSpace(PasswordBox.Password))
         {
-            LoginMessageText.Text = "Enter your Mandala email and password.";
+            LoginMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-AUTH-INPUT-001",
+                "Enter your Mandala email and password.");
             return;
         }
 
@@ -67,7 +79,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            LoginMessageText.Text = ExtractMessage(exception, "Sign-in failed.");
+            LoginMessageText.Text = ExtractMessage(exception, "Sign-in failed.", "AGENT-AUTH-001");
         }
         finally
         {
@@ -79,6 +91,9 @@ public partial class MainWindow : Window
     {
         if (_client is null || ProjectComboBox.SelectedItem is not TimeTrackerProject project || _isSaving)
         {
+            TrackerMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-PROJECT-SELECT-001",
+                "Select a project before starting work.");
             return;
         }
 
@@ -106,7 +121,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            TrackerMessageText.Text = ExtractMessage(exception, "Unable to start work.");
+            TrackerMessageText.Text = ExtractMessage(exception, "Unable to start work.", "AGENT-START-001");
         }
         finally
         {
@@ -143,7 +158,7 @@ public partial class MainWindow : Window
             }
             catch (Exception exception)
             {
-                TrackerMessageText.Text = ExtractMessage(exception, "Unable to record activity.");
+                TrackerMessageText.Text = ExtractMessage(exception, "Unable to record activity.", "AGENT-ACTIVITY-001");
             }
         }
 
@@ -170,7 +185,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.");
+            TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
         }
         finally
         {
@@ -197,7 +212,9 @@ public partial class MainWindow : Window
 
             TrackerMessageText.Text = snapshot.Warning
                 ?? (snapshot.Projects.Count == 0
-                    ? "No active projects were returned. Ask your Mandala admin to confirm this agent is connected to the same workspace as the web app."
+                    ? AgentDiagnostics.Format(
+                        "AGENT-PROJECTS-EMPTY",
+                        "Mandala returned no active projects. Ask your admin to confirm this agent is connected to the same workspace as the web app.")
                     : string.Empty);
 
             _lastInputTick = NativeIdleMonitor.GetLastInputTick();
@@ -206,7 +223,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            TrackerMessageText.Text = ExtractMessage(exception, "Unable to load the time tracker.");
+            TrackerMessageText.Text = ExtractMessage(exception, "Unable to load the time tracker.", "AGENT-LOAD-001");
         }
     }
 
@@ -214,7 +231,10 @@ public partial class MainWindow : Window
     {
         LoginPanel.Visibility = Visibility.Collapsed;
         TrackerPanel.Visibility = Visibility.Visible;
-        SignedInAsText.Text = _client?.Email is { Length: > 0 } email ? $"Signed in as {email}" : string.Empty;
+        var version = typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown";
+        SignedInAsText.Text = _client?.Email is { Length: > 0 } email
+            ? $"Signed in as {email} · Agent v{version}"
+            : $"Agent v{version}";
         _pollTimer.Start();
     }
 
@@ -248,6 +268,8 @@ public partial class MainWindow : Window
 
     private static string GetLocalDate() => DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    private static string ExtractMessage(Exception exception, string fallback) =>
-        string.IsNullOrWhiteSpace(exception.Message) ? fallback : exception.Message;
+    private static string ExtractMessage(Exception exception, string fallback, string code) =>
+        exception is AgentDiagnosticException diagnostic
+            ? AgentDiagnostics.Format(diagnostic.Code, diagnostic.Message, diagnostic.InnerException)
+            : AgentDiagnostics.Format(code, fallback, exception);
 }
