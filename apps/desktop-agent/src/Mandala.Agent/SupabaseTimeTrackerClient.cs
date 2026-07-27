@@ -51,7 +51,7 @@ public sealed class SupabaseTimeTrackerClient
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
         await RpcAsync<JsonElement>("pause_stale_self_work_session", new { entry_date = localDate });
-        var projects = await RpcAsync<List<ProjectResponse>>("list_time_tracker_projects_for_current_user", new { });
+        var projects = await ListProjectsAsync();
         var sessions = await GetAsync<List<ActiveSessionResponse>>("rest/v1/active_work_sessions?select=project_id,started_at");
         var active = sessions.FirstOrDefault();
         var activeProject = active is null
@@ -61,6 +61,29 @@ public sealed class SupabaseTimeTrackerClient
         return new TrackerSnapshot(
             projects.Select(project => new TimeTrackerProject(project.Id, project.Name)).ToList(),
             active is null ? null : new ActiveWorkSession(active.ProjectId, activeProject?.Name ?? "Current project", active.StartedAt));
+    }
+
+    private async Task<List<ProjectResponse>> ListProjectsAsync()
+    {
+        // The projects endpoint already applies the workspace's RLS rules:
+        // admins and partners can see all active projects, while employees see
+        // only projects they are assigned to. This keeps the agent aligned with
+        // the same permission path used by the web app.
+        try
+        {
+            var projects = await GetAsync<List<ProjectResponse>>(
+                "rest/v1/projects?select=id,name&active=eq.true&order=name.asc");
+            if (projects.Count > 0)
+            {
+                return projects;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            // Keep the RPC as a compatibility fallback for older deployments.
+        }
+
+        return await RpcAsync<List<ProjectResponse>>("list_time_tracker_projects_for_current_user", new { });
     }
 
     public async Task StartAsync(string projectId, string localDate, bool confirmSwitch) =>
