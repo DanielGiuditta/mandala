@@ -195,9 +195,10 @@ public partial class MainWindow : Window
                 ProjectComboBox.SelectedItem = snapshot.Projects.FirstOrDefault(project => project.Id == _activeSession.ProjectId);
             }
 
-            TrackerMessageText.Text = snapshot.Projects.Count == 0
-                ? "No active projects were returned. Ask your Mandala admin to confirm this agent is connected to the same workspace as the web app."
-                : string.Empty;
+            TrackerMessageText.Text = snapshot.Warning
+                ?? (snapshot.Projects.Count == 0
+                    ? "No active projects were returned. Ask your Mandala admin to confirm this agent is connected to the same workspace as the web app."
+                    : string.Empty);
 
             _lastInputTick = NativeIdleMonitor.GetLastInputTick();
             _lastHeartbeatAt = DateTimeOffset.UtcNow;

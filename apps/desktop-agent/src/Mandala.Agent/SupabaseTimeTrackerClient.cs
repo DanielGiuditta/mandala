@@ -50,9 +50,29 @@ public sealed class SupabaseTimeTrackerClient
 
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
-        await RpcAsync<JsonElement>("pause_stale_self_work_session", new { entry_date = localDate });
         var projects = await ListProjectsAsync();
-        var sessions = await GetAsync<List<ActiveSessionResponse>>("rest/v1/active_work_sessions?select=project_id,started_at");
+        string? warning = null;
+
+        try
+        {
+            await RpcAsync<JsonElement>("pause_stale_self_work_session", new { entry_date = localDate });
+        }
+        catch (HttpRequestException exception)
+        {
+            warning = $"Projects loaded, but the active timer could not be checked: {exception.Message}";
+        }
+
+        List<ActiveSessionResponse> sessions = [];
+        try
+        {
+            sessions = await GetAsync<List<ActiveSessionResponse>>(
+                "rest/v1/active_work_sessions?select=project_id,started_at");
+        }
+        catch (HttpRequestException exception)
+        {
+            warning = $"Projects loaded, but the active timer could not be checked: {exception.Message}";
+        }
+
         var active = sessions.FirstOrDefault();
         var activeProject = active is null
             ? null
@@ -60,7 +80,8 @@ public sealed class SupabaseTimeTrackerClient
 
         return new TrackerSnapshot(
             projects.Select(project => new TimeTrackerProject(project.Id, project.Name)).ToList(),
-            active is null ? null : new ActiveWorkSession(active.ProjectId, activeProject?.Name ?? "Current project", active.StartedAt));
+            active is null ? null : new ActiveWorkSession(active.ProjectId, activeProject?.Name ?? "Current project", active.StartedAt),
+            warning);
     }
 
     private async Task<List<ProjectResponse>> ListProjectsAsync()
@@ -214,4 +235,7 @@ public sealed class SupabaseTimeTrackerClient
 
 public sealed record TimeTrackerProject(string Id, string Name);
 public sealed record ActiveWorkSession(string ProjectId, string ProjectName, DateTimeOffset StartedAt);
-public sealed record TrackerSnapshot(IReadOnlyList<TimeTrackerProject> Projects, ActiveWorkSession? ActiveSession);
+public sealed record TrackerSnapshot(
+    IReadOnlyList<TimeTrackerProject> Projects,
+    ActiveWorkSession? ActiveSession,
+    string? Warning);
