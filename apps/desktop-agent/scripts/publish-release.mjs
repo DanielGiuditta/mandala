@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises"
 import { basename } from "node:path"
 
-const [installerPath, destination = "latest/MandalaAgentSetup.exe"] = process.argv.slice(2)
+const [installerPath, requestedDestination] = process.argv.slice(2)
+const version = process.env.MANDALA_AGENT_VERSION?.trim()
+const destination = requestedDestination ||
+  (version ? `latest/MandalaAgentSetup-${version}.exe` : "latest/MandalaAgentSetup.exe")
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "")
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 

@@ -49,7 +49,7 @@ node .\apps\desktop-agent\scripts\publish-release.mjs `
   .\apps\desktop-agent\release\MandalaAgentSetup.exe
 ```
 
-The default object key is `latest/MandalaAgentSetup.exe`. The web app uses `DESKTOP_AGENT_RELEASE_PATH` if a different release key is required.
+When `MANDALA_AGENT_VERSION` is set, publishing uses a versioned object key such as `latest/MandalaAgentSetup-1.0.3.exe`. The web app automatically selects the newest versioned installer, or uses `DESKTOP_AGENT_RELEASE_PATH` when explicitly configured.
 
 ## IT installation instructions
 
