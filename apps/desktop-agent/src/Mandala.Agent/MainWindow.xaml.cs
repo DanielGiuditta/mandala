@@ -210,6 +210,11 @@ public partial class MainWindow : Window
                 ProjectComboBox.SelectedItem = snapshot.Projects.FirstOrDefault(project => project.Id == _activeSession.ProjectId);
             }
 
+            var version = typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown";
+            SignedInAsText.Text = _client.Email is { Length: > 0 } email
+                ? $"Signed in as {email} · Agent v{version} · Projects returned: {snapshot.Projects.Count}"
+                : $"Agent v{version} · Projects returned: {snapshot.Projects.Count}";
+
             TrackerMessageText.Text = snapshot.Warning
                 ?? (snapshot.Projects.Count == 0
                     ? AgentDiagnostics.Format(

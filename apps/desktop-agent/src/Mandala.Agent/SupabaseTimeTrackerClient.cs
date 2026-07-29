@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Mandala.Agent;
 
@@ -51,7 +52,14 @@ public sealed class SupabaseTimeTrackerClient
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
         var projects = await ListProjectsAsync();
-        string? warning = null;
+        var warnings = new List<string>();
+
+        if (projects.Count > 0 && projects.All(project => string.IsNullOrWhiteSpace(project.Name)))
+        {
+            warnings.Add(AgentDiagnostics.Format(
+                "AGENT-PROJECTS-NAMES-001",
+                $"Mandala returned {projects.Count} projects, but no project names were readable."));
+        }
 
         try
         {
@@ -59,10 +67,10 @@ public sealed class SupabaseTimeTrackerClient
         }
         catch (HttpRequestException exception)
         {
-            warning = AgentDiagnostics.Format(
+            warnings.Add(AgentDiagnostics.Format(
                 "AGENT-TIMER-PAUSE-001",
                 "Projects loaded, but the active timer could not be checked.",
-                exception);
+                exception));
         }
 
         List<ActiveSessionResponse> sessions = [];
@@ -73,10 +81,10 @@ public sealed class SupabaseTimeTrackerClient
         }
         catch (HttpRequestException exception)
         {
-            warning = AgentDiagnostics.Format(
+            warnings.Add(AgentDiagnostics.Format(
                 "AGENT-TIMER-SESSION-001",
                 "Projects loaded, but the active timer could not be checked.",
-                exception);
+                exception));
         }
 
         var active = sessions.FirstOrDefault();
@@ -87,7 +95,7 @@ public sealed class SupabaseTimeTrackerClient
         return new TrackerSnapshot(
             projects.Select(project => new TimeTrackerProject(project.Id, project.Name)).ToList(),
             active is null ? null : new ActiveWorkSession(active.ProjectId, activeProject?.Name ?? "Current project", active.StartedAt),
-            warning);
+            warnings.Count == 0 ? null : string.Join(" ", warnings));
     }
 
     private async Task<List<ProjectResponse>> ListProjectsAsync()
@@ -236,20 +244,29 @@ public sealed class SupabaseTimeTrackerClient
         public string RefreshToken => refresh_token;
     }
 
-    private sealed record ProjectResponse(string id, string name)
+    private sealed class ProjectResponse
     {
-        public string Id => id;
-        public string Name => name;
+        [JsonPropertyName("id")]
+        public string Id { get; init; } = string.Empty;
+
+        [JsonPropertyName("name")]
+        public string Name { get; init; } = string.Empty;
     }
 
-    private sealed record ActiveSessionResponse(string project_id, DateTimeOffset started_at)
+    private sealed class ActiveSessionResponse
     {
-        public string ProjectId => project_id;
-        public DateTimeOffset StartedAt => started_at;
+        [JsonPropertyName("project_id")]
+        public string ProjectId { get; init; } = string.Empty;
+
+        [JsonPropertyName("started_at")]
+        public DateTimeOffset StartedAt { get; init; }
     }
 }
 
-public sealed record TimeTrackerProject(string Id, string Name);
+public sealed record TimeTrackerProject(string Id, string Name)
+{
+    public override string ToString() => Name;
+}
 public sealed record ActiveWorkSession(string ProjectId, string ProjectName, DateTimeOffset StartedAt);
 public sealed record TrackerSnapshot(
     IReadOnlyList<TimeTrackerProject> Projects,
