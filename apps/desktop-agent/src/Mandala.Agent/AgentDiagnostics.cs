@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace Mandala.Agent;
 
 public sealed class AgentDiagnosticException : Exception
