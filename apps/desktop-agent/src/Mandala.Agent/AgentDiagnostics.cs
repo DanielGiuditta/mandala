@@ -18,7 +18,7 @@ public static class AgentDiagnostics
     private static readonly object LogLock = new();
 
     public static string LogPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Mandala Agent",
         "agent.log");
 
@@ -57,6 +57,14 @@ public static class AgentDiagnostics
         {
             return $"Mandala Agent diagnostics{Environment.NewLine}Log: {LogPath}{Environment.NewLine}Unable to read log: {Compact(exception.Message)}";
         }
+    }
+
+    public static string SaveReportToDesktop()
+    {
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var path = Path.Combine(desktop, $"MandalaAgentDiagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+        File.WriteAllText(path, Report());
+        return path;
     }
 
     public static string Format(string code, string message, Exception? exception = null)

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
@@ -244,8 +245,33 @@ public partial class MainWindow : Window
 
     private void CopyDiagnosticsButton_Click(object sender, RoutedEventArgs e)
     {
-        Clipboard.SetText(AgentDiagnostics.Report());
-        TrackerMessageText.Text = "Diagnostics copied. Paste the copied text into WhatsApp for IT.";
+        try
+        {
+            var report = AgentDiagnostics.Report();
+            var path = AgentDiagnostics.SaveReportToDesktop();
+            var clipboardCopied = false;
+            try
+            {
+                Clipboard.SetText(report);
+                clipboardCopied = true;
+            }
+            catch (Exception exception)
+            {
+                AgentDiagnostics.Record("diagnostics-clipboard-failure", AgentDiagnostics.Compact(exception.ToString()));
+            }
+
+            TrackerMessageText.Text = clipboardCopied
+                ? $"Diagnostics copied and saved to Desktop: {Path.GetFileName(path)}"
+                : $"Diagnostics saved to Desktop: {Path.GetFileName(path)}. Please attach that file to WhatsApp.";
+        }
+        catch (Exception exception)
+        {
+            AgentDiagnostics.Record("diagnostics-export-failure", AgentDiagnostics.Compact(exception.ToString()));
+            TrackerMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-DIAGNOSTICS-EXPORT-001",
+                "Could not create the diagnostics file. Please tell IT this code.",
+                exception);
+        }
     }
 
     private void ShowTracker()

@@ -16,7 +16,7 @@ It signs employees in with their existing Mandala account, uses the shared Supab
 
 - The agent verifies that a new `TimeEntry` exists after Stop and after a confirmed project switch before treating the save as successful.
 - If the timer stops without a confirmed saved entry, the agent shows a diagnostic code instead of silently clearing the state.
-- **Copy diagnostics for IT** copies the recent diagnostic report to the clipboard. The same log is stored at `%ProgramData%\Mandala Agent\agent.log`.
+- **Save / copy diagnostics for IT** saves a report to the Desktop and copies it to the clipboard when Windows allows it. The same log is stored at `%LOCALAPPDATA%\Mandala Agent\agent.log`.
 
 ## Build a release on Windows
 
