@@ -138,6 +138,9 @@ public sealed class SupabaseTimeTrackerClient
     private async Task StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
     {
         AgentDiagnostics.Record("start-request", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}; email={Email}");
+        var entriesBeforeSwitch = confirmSwitch
+            ? await GetTimeEntryIdsAsync(localDate)
+            : null;
         try
         {
             await RpcAsync<JsonElement>("start_self_work_session", new
@@ -147,6 +150,21 @@ public sealed class SupabaseTimeTrackerClient
                 confirm_switch = confirmSwitch,
             });
             AgentDiagnostics.Record("start-success", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}");
+
+            if (entriesBeforeSwitch is not null)
+            {
+                var entriesAfterSwitch = await GetTimeEntryIdsAsync(localDate);
+                var switchEntry = entriesAfterSwitch.FirstOrDefault(id => !entriesBeforeSwitch.Contains(id));
+                if (switchEntry is null)
+                {
+                    AgentDiagnostics.Record("switch-not-saved", $"date={localDate}; entriesBefore={entriesBeforeSwitch.Count}; entriesAfter={entriesAfterSwitch.Count}; newProjectId={projectId}");
+                    throw new AgentDiagnosticException(
+                        "AGENT-SWITCH-NOT-SAVED-001",
+                        "The project switched, but Mandala did not confirm the previous project’s time was saved. Please report this code to IT.");
+                }
+
+                AgentDiagnostics.Record("switch-saved", $"date={localDate}; entryId={switchEntry}; entriesBefore={entriesBeforeSwitch.Count}; entriesAfter={entriesAfterSwitch.Count}; newProjectId={projectId}");
+            }
         }
         catch (Exception exception)
         {
