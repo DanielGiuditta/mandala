@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AgentDiagnostics.Record("startup", $"version={typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown"}");
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _pollTimer.Tick += async (_, _) => await PollAsync();
         Loaded += async (_, _) => await RestoreSessionAsync();
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
         {
             SetSaving(true);
             await _client.SignInAsync(EmailTextBox.Text.Trim(), PasswordBox.Password);
+            AgentDiagnostics.Record("sign-in-success", $"email={_client.Email}");
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             PasswordBox.Clear();
             ShowTracker();
@@ -79,6 +81,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            AgentDiagnostics.Record("sign-in-failure", AgentDiagnostics.Compact(exception.ToString()));
             LoginMessageText.Text = ExtractMessage(exception, "Sign-in failed.", "AGENT-AUTH-001");
         }
         finally
@@ -121,6 +124,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            AgentDiagnostics.Record("start-ui-failure", AgentDiagnostics.Compact(exception.ToString()));
             TrackerMessageText.Text = ExtractMessage(exception, "Unable to start work.", "AGENT-START-001");
         }
         finally
@@ -175,16 +179,19 @@ public partial class MainWindow : Window
         try
         {
             SetSaving(true);
-            await _client.StopAsync(GetLocalDate());
+            var saveResult = await _client.StopAsync(GetLocalDate());
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             _activeSession = null;
             UpdateTrackerStatus();
             TrackerMessageText.Text = pausedForIdle
                 ? "Timer paused after 5 minutes without Windows activity. Start Work to resume."
-                : string.Empty;
+                : $"Time saved successfully. Reference: {saveResult.TimeEntryId[..8]}";
         }
         catch (Exception exception)
         {
+            AgentDiagnostics.Record("stop-ui-failure", AgentDiagnostics.Compact(exception.ToString()));
+            TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
+            await LoadTrackerAsync();
             TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
         }
         finally
@@ -222,14 +229,23 @@ public partial class MainWindow : Window
                         "Mandala returned no active projects. Ask your admin to confirm this agent is connected to the same workspace as the web app.")
                     : string.Empty);
 
+            AgentDiagnostics.Record("tracker-loaded", $"email={_client.Email}; projects={snapshot.Projects.Count}; activeProject={snapshot.ActiveSession?.ProjectId ?? "none"}; warning={snapshot.Warning ?? "none"}");
+
             _lastInputTick = NativeIdleMonitor.GetLastInputTick();
             _lastHeartbeatAt = DateTimeOffset.UtcNow;
             UpdateTrackerStatus();
         }
         catch (Exception exception)
         {
+            AgentDiagnostics.Record("tracker-load-failure", AgentDiagnostics.Compact(exception.ToString()));
             TrackerMessageText.Text = ExtractMessage(exception, "Unable to load the time tracker.", "AGENT-LOAD-001");
         }
+    }
+
+    private void CopyDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        Clipboard.SetText(AgentDiagnostics.Report());
+        TrackerMessageText.Text = "Diagnostics copied. Paste the copied text into WhatsApp for IT.";
     }
 
     private void ShowTracker()

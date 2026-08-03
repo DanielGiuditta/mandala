@@ -17,6 +17,7 @@ public sealed class SupabaseTimeTrackerClient
         _configuration = configuration;
         _httpClient = new HttpClient { BaseAddress = new Uri($"{configuration.SupabaseUrl}/") };
         _httpClient.DefaultRequestHeaders.Add("apikey", configuration.SupabaseAnonKey);
+        AgentDiagnostics.Record("client-created", $"backend={configuration.SupabaseUrl}");
     }
 
     public string? Email => _session?.Email;
@@ -132,15 +133,56 @@ public sealed class SupabaseTimeTrackerClient
     }
 
     public async Task StartAsync(string projectId, string localDate, bool confirmSwitch) =>
-        await RpcAsync<JsonElement>("start_self_work_session", new
-        {
-            target_project_id = projectId,
-            entry_date = localDate,
-            confirm_switch = confirmSwitch,
-        });
+        await StartAndRecordAsync(projectId, localDate, confirmSwitch);
 
-    public async Task StopAsync(string localDate) =>
-        await RpcAsync<JsonElement>("stop_self_work_session", new { entry_date = localDate });
+    private async Task StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
+    {
+        AgentDiagnostics.Record("start-request", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}; email={Email}");
+        try
+        {
+            await RpcAsync<JsonElement>("start_self_work_session", new
+            {
+                target_project_id = projectId,
+                entry_date = localDate,
+                confirm_switch = confirmSwitch,
+            });
+            AgentDiagnostics.Record("start-success", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}");
+        }
+        catch (Exception exception)
+        {
+            AgentDiagnostics.Record("start-failure", AgentDiagnostics.Compact(exception.ToString()));
+            throw;
+        }
+    }
+
+    public async Task<TimeEntrySaveResult> StopAsync(string localDate)
+    {
+        AgentDiagnostics.Record("stop-request", $"date={localDate}; email={Email}");
+        var before = await GetTimeEntryIdsAsync(localDate);
+        try
+        {
+            await RpcAsync<JsonElement>("stop_self_work_session", new { entry_date = localDate });
+            AgentDiagnostics.Record("stop-rpc-success", $"date={localDate}; entriesBefore={before.Count}");
+        }
+        catch (Exception exception)
+        {
+            AgentDiagnostics.Record("stop-rpc-failure", AgentDiagnostics.Compact(exception.ToString()));
+            throw;
+        }
+
+        var after = await GetTimeEntryIdsAsync(localDate);
+        var newEntry = after.FirstOrDefault(id => !before.Contains(id));
+        if (newEntry is null)
+        {
+            AgentDiagnostics.Record("stop-not-saved", $"date={localDate}; entriesBefore={before.Count}; entriesAfter={after.Count}");
+            throw new AgentDiagnosticException(
+                "AGENT-STOP-NOT-SAVED-001",
+                "The timer stopped, but Mandala did not confirm a saved time entry. Please report this code to IT.");
+        }
+
+        AgentDiagnostics.Record("stop-saved", $"date={localDate}; entryId={newEntry}; entriesBefore={before.Count}; entriesAfter={after.Count}");
+        return new TimeEntrySaveResult(newEntry);
+    }
 
     public async Task TouchAsync() =>
         await RpcAsync<JsonElement>("touch_self_work_session", new { });
@@ -151,6 +193,31 @@ public sealed class SupabaseTimeTrackerClient
     private async Task<T> GetAsync<T>(string path)
     {
         return await SendAuthorizedAsync<T>(() => CreateRequest(HttpMethod.Get, path));
+    }
+
+    private async Task<HashSet<string>> GetTimeEntryIdsAsync(string localDate)
+    {
+        if (string.IsNullOrWhiteSpace(Email))
+        {
+            throw new AgentDiagnosticException(
+                "AGENT-STOP-IDENTITY-001",
+                "The signed-in person could not be confirmed before checking the saved time entry.");
+        }
+
+        var people = await GetAsync<List<PersonResponse>>(
+            $"rest/v1/people?select=id&email=eq.{Uri.EscapeDataString(Email)}&active=eq.true");
+        var person = people.SingleOrDefault();
+        if (person is null)
+        {
+            throw new AgentDiagnosticException(
+                "AGENT-STOP-IDENTITY-002",
+                "The signed-in account is not linked to one active Mandala person record.");
+        }
+
+        var entries = await GetAsync<List<TimeEntryResponse>>(
+            $"rest/v1/time_entries?select=id&person_id=eq.{person.Id}&date=eq.{Uri.EscapeDataString(localDate)}");
+        AgentDiagnostics.Record("time-entry-check", $"date={localDate}; personId={person.Id}; count={entries.Count}");
+        return entries.Select(entry => entry.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object body)
@@ -261,6 +328,18 @@ public sealed class SupabaseTimeTrackerClient
         [JsonPropertyName("started_at")]
         public DateTimeOffset StartedAt { get; init; }
     }
+
+    private sealed class PersonResponse
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; init; } = string.Empty;
+    }
+
+    private sealed class TimeEntryResponse
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; init; } = string.Empty;
+    }
 }
 
 public sealed record TimeTrackerProject(string Id, string Name)
@@ -268,6 +347,7 @@ public sealed record TimeTrackerProject(string Id, string Name)
     public override string ToString() => Name;
 }
 public sealed record ActiveWorkSession(string ProjectId, string ProjectName, DateTimeOffset StartedAt);
+public sealed record TimeEntrySaveResult(string TimeEntryId);
 public sealed record TrackerSnapshot(
     IReadOnlyList<TimeTrackerProject> Projects,
     ActiveWorkSession? ActiveSession,
