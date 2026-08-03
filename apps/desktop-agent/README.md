@@ -12,6 +12,12 @@ It signs employees in with their existing Mandala account, uses the shared Supab
 - The agent checks Windows-wide keyboard and mouse activity every second with `GetLastInputInfo`. It pauses the timer after five minutes without activity, including while the agent is minimized or another Windows application is focused.
 - The timer does not resume until the employee selects a project and clicks **Start Work**.
 
+## Diagnostics
+
+- The agent verifies that a new `TimeEntry` exists after Stop and after a confirmed project switch before treating the save as successful.
+- If the timer stops without a confirmed saved entry, the agent shows a diagnostic code instead of silently clearing the state.
+- **Copy diagnostics for IT** copies the recent diagnostic report to the clipboard. The same log is stored at `%ProgramData%\Mandala Agent\agent.log`.
+
 ## Build a release on Windows
 
 Install the .NET 8 SDK and Inno Setup, then run from the repository root:
