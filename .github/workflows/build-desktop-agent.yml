@@ -26,6 +26,17 @@ jobs:
           dotnet-version: 8.0.x
       - name: Install Inno Setup
         run: choco install innosetup --no-progress --yes
+      - name: Verify production Supabase target
+        env:
+          MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+        shell: pwsh
+        run: |
+          $expectedProjectRef = "nzlajptokbcgeaifgnoq"
+          $actualProjectRef = ([Uri]$env:MANDALA_SUPABASE_URL).Host.Split('.')[0]
+          if ($actualProjectRef -ne $expectedProjectRef) {
+            throw "The Windows agent build target is $actualProjectRef, but production is $expectedProjectRef. Refusing to build an installer for the wrong backend."
+          }
+          Write-Host "Supabase production target verified: $actualProjectRef"
       - name: Build, sign, and optionally publish
         env:
           MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
