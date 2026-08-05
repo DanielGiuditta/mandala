@@ -29,6 +29,7 @@ jobs:
       - name: Verify production Supabase target
         env:
           MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
         shell: pwsh
         run: |
           $expectedProjectRef = "nzlajptokbcgeaifgnoq"
@@ -36,13 +37,20 @@ jobs:
           if ($actualProjectRef -ne $expectedProjectRef) {
             throw "The Windows agent build target is $actualProjectRef, but production is $expectedProjectRef. Refusing to build an installer for the wrong backend."
           }
+          try {
+            Invoke-WebRequest `
+              -Uri "$($env:MANDALA_SUPABASE_URL.TrimEnd('/'))/auth/v1/settings" `
+              -Headers @{ apikey = $env:MANDALA_SUPABASE_ANON_KEY } `
+              -Method Get `
+              -UseBasicParsing | Out-Null
+          } catch {
+            throw "The configured anonymous key was rejected by production Supabase. Refusing to build. $($_.Exception.Message)"
+          }
           Write-Host "Supabase production target verified: $actualProjectRef"
-      - name: Build, sign, and optionally publish
+      - name: Build and sign
         env:
           MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
           MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MANDALA_DESKTOP_SIGNING_PFX_BASE64: ${{ secrets.MANDALA_DESKTOP_SIGNING_PFX_BASE64 }}
           MANDALA_DESKTOP_SIGNING_PFX_PASSWORD: ${{ secrets.MANDALA_DESKTOP_SIGNING_PFX_PASSWORD }}
           MANDALA_AGENT_VERSION: ${{ inputs.version }}
@@ -64,6 +72,55 @@ jobs:
               -SupabaseAnonKey $env:MANDALA_SUPABASE_ANON_KEY
           }
 
+      - name: Audit the finished installer
+        env:
+          MANDALA_AGENT_VERSION: ${{ inputs.version }}
+          MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
+        shell: pwsh
+        run: |
+          $expectedProjectRef = "nzlajptokbcgeaifgnoq"
+          $installerPath = Resolve-Path ".\apps\desktop-agent\release\MandalaAgentSetup-$env:MANDALA_AGENT_VERSION.exe"
+          $installDirectory = Join-Path $env:RUNNER_TEMP "Mandala Agent Audit"
+          $process = Start-Process `
+            -FilePath $installerPath `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=`"$installDirectory`"" `
+            -Wait `
+            -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Installer audit failed to install the package. Exit code: $($process.ExitCode)"
+          }
+
+          $installedExe = Join-Path $installDirectory "Mandala.Agent.exe"
+          $installedConfigPath = Join-Path $env:ProgramData "Mandala Agent\agent.config.json"
+          if (-not (Test-Path $installedExe) -or -not (Test-Path $installedConfigPath)) {
+            throw "Installer audit could not find the installed executable or connection configuration."
+          }
+
+          $installedVersion = (Get-Item $installedExe).VersionInfo.ProductVersion
+          if (-not $installedVersion.StartsWith($env:MANDALA_AGENT_VERSION)) {
+            throw "Installed Agent version $installedVersion does not match requested version $env:MANDALA_AGENT_VERSION."
+          }
+
+          $installedConfig = Get-Content $installedConfigPath -Raw | ConvertFrom-Json
+          $installedProjectRef = ([Uri]$installedConfig.supabaseUrl).Host.Split('.')[0]
+          if ($installedProjectRef -ne $expectedProjectRef) {
+            throw "Installed Agent backend $installedProjectRef does not match production $expectedProjectRef."
+          }
+          if ($installedConfig.supabaseAnonKey -ne $env:MANDALA_SUPABASE_ANON_KEY) {
+            throw "Installed Agent anonymous key does not match the approved production key."
+          }
+
+          $hash = (Get-FileHash $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Installer audit passed: version=$installedVersion backend=$installedProjectRef sha256=$hash"
+      - name: Publish the audited installer
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MANDALA_DESKTOP_SIGNING_PFX_BASE64: ${{ secrets.MANDALA_DESKTOP_SIGNING_PFX_BASE64 }}
+          MANDALA_AGENT_VERSION: ${{ inputs.version }}
+        shell: pwsh
+        run: |
           $publishUnsigned = "${{ inputs.publish_unsigned }}" -eq "true"
           if ($publishUnsigned -and -not $env:SUPABASE_SERVICE_ROLE_KEY) {
             throw "The publish_unsigned option requires SUPABASE_SERVICE_ROLE_KEY."
@@ -73,12 +130,13 @@ jobs:
             if ($publishUnsigned -and -not $env:MANDALA_DESKTOP_SIGNING_PFX_BASE64) {
               Write-Warning "Publishing an unsigned pre-launch installer. Windows may show a publisher warning during installation."
             }
-            node .\apps\desktop-agent\scripts\publish-release.mjs .\apps\desktop-agent\release\MandalaAgentSetup.exe
+            $installerPath = ".\apps\desktop-agent\release\MandalaAgentSetup-$env:MANDALA_AGENT_VERSION.exe"
+            node .\apps\desktop-agent\scripts\publish-release.mjs $installerPath
           } else {
             Write-Host "Installer was not published because signing or storage credentials are missing."
           }
       - uses: actions/upload-artifact@v4
         with:
           name: MandalaAgentSetup-${{ inputs.version }}
-          path: apps/desktop-agent/release/MandalaAgentSetup.exe
+          path: apps/desktop-agent/release/MandalaAgentSetup-${{ inputs.version }}.exe
           if-no-files-found: error

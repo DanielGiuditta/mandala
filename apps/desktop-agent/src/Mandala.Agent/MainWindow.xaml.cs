@@ -22,7 +22,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        AgentDiagnostics.Record("startup", $"version={typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown"}");
+        var version = GetVersion();
+        var backend = _configuration.ProjectRef ?? "unconfigured";
+        BuildIdentityText.Text = $"Agent v{version} · Backend {backend}";
+        AgentDiagnostics.Record("startup", $"version={version}; backend={_configuration.SupabaseUrl}");
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _pollTimer.Tick += async (_, _) => await PollAsync();
         Loaded += async (_, _) => await RestoreSessionAsync();
@@ -36,6 +39,18 @@ public partial class MainWindow : Window
                 "AGENT-CONFIG-001",
                 "This installation is missing its Mandala connection configuration. Ask IT to reinstall the approved installer.");
             SignInButton.IsEnabled = false;
+            return;
+        }
+
+        if (!_configuration.IsProductionTarget)
+        {
+            LoginMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-CONFIG-BACKEND-001",
+                $"This is an outdated or invalid installer connected to backend {_configuration.ProjectRef ?? "unknown"}. Production requires {AppConfiguration.ProductionProjectRef}. Ask IT to install the current approved version.");
+            SignInButton.IsEnabled = false;
+            AgentDiagnostics.Record(
+                "backend-blocked",
+                $"actual={_configuration.ProjectRef ?? "unknown"}; expected={AppConfiguration.ProductionProjectRef}");
             return;
         }
 
@@ -218,7 +233,7 @@ public partial class MainWindow : Window
                 ProjectComboBox.SelectedItem = snapshot.Projects.FirstOrDefault(project => project.Id == _activeSession.ProjectId);
             }
 
-            var version = typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown";
+            var version = GetVersion();
             SignedInAsText.Text = _client.Email is { Length: > 0 } email
                 ? $"Signed in as {email} · Agent v{version} · Projects returned: {snapshot.Projects.Count}"
                 : $"Agent v{version} · Projects returned: {snapshot.Projects.Count}";
@@ -278,7 +293,7 @@ public partial class MainWindow : Window
     {
         LoginPanel.Visibility = Visibility.Collapsed;
         TrackerPanel.Visibility = Visibility.Visible;
-        var version = typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown";
+        var version = GetVersion();
         SignedInAsText.Text = _client?.Email is { Length: > 0 } email
             ? $"Signed in as {email} · Agent v{version}"
             : $"Agent v{version}";
@@ -314,6 +329,9 @@ public partial class MainWindow : Window
     }
 
     private static string GetLocalDate() => DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static string GetVersion() =>
+        typeof(MainWindow).Assembly.GetName().Version?.ToString() ?? "unknown";
 
     private static string ExtractMessage(Exception exception, string fallback, string code) =>
         exception is AgentDiagnosticException diagnostic

@@ -12,6 +12,7 @@
     <StackPanel Grid.Row="0" Margin="0,0,0,22">
       <TextBlock FontSize="24" FontWeight="SemiBold" Text="Mandala Agent" />
       <TextBlock Foreground="#5B6472" Margin="0,6,0,0" Text="Project time tracking for this workstation." TextWrapping="Wrap" />
+      <TextBlock x:Name="BuildIdentityText" Foreground="#5B6472" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
     </StackPanel>
 
     <Grid Grid.Row="1">

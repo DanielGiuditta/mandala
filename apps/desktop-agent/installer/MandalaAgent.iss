@@ -5,15 +5,20 @@
 AppId={{F2E1F144-4E47-4E47-8206-163C6BCA6D89}
 AppName={#AppName}
 AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+VersionInfoVersion={#AppVersion}.0
+VersionInfoProductVersion={#AppVersion}
 DefaultDirName={autopf}\Mandala Agent
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=..\release
-OutputBaseFilename=MandalaAgentSetup
+OutputBaseFilename=MandalaAgentSetup-{#AppVersion}
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
+CloseApplications=force
+RestartApplications=no
 
 [Files]
 Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

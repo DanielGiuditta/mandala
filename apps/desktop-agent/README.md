@@ -29,7 +29,9 @@ Install the .NET 8 SDK and Inno Setup, then run from the repository root:
   -SupabaseAnonKey "your-anon-key"
 ```
 
-This produces `apps/desktop-agent/release/MandalaAgentSetup.exe`. The installer is self-contained for 64-bit Windows and does not require a separate .NET runtime installation.
+This produces a versioned installer such as `apps/desktop-agent/release/MandalaAgentSetup-1.0.10.exe`. The installer is self-contained for 64-bit Windows and does not require a separate .NET runtime installation.
+
+The build refuses to run unless the supplied Supabase URL targets production project `nzlajptokbcgeaifgnoq` and the supplied anonymous key is accepted by that project. CI installs the finished package into a temporary Windows directory and verifies the installed version, backend, and key before publishing.
 
 Before publishing a production installer, sign it with the organization's Windows code-signing certificate:
 
@@ -52,18 +54,34 @@ Set `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the environmen
 
 ```powershell
 node .\apps\desktop-agent\scripts\publish-release.mjs `
-  .\apps\desktop-agent\release\MandalaAgentSetup.exe
+  .\apps\desktop-agent\release\MandalaAgentSetup-1.0.10.exe
 ```
 
-When `MANDALA_AGENT_VERSION` is set, publishing uses a versioned object key such as `latest/MandalaAgentSetup-1.0.3.exe`. The web app automatically selects the newest versioned installer, or uses `DESKTOP_AGENT_RELEASE_PATH` when explicitly configured.
+Publishing uses a versioned object key such as `latest/MandalaAgentSetup-1.0.10.exe` and writes `latest/release.json` containing the approved version, filename, backend project, byte size, and SHA-256 checksum. The web app refuses to issue a download unless that manifest is valid and targets production.
 
 ## IT installation instructions
 
 1. A partner or admin signs in to Mandala and selects **Windows agent** in the sidebar.
 2. Select **Download Windows installer**. The link is a short-lived, private download and is unavailable to other roles.
-3. Run `MandalaAgentSetup.exe` as an administrator. It installs for all Windows users and adds the agent to the common startup folder.
+3. Confirm the filename contains the expected version, then run it while a Windows administrator is present. Administrator approval is mandatory because the Agent installs for all Windows users and adds itself to the common startup folder.
 4. At the employee’s next sign-in, Mandala Agent opens. The employee signs in with their existing Mandala email and password, selects a project, then selects **Start Work**.
 5. Confirm that Windows shows the organization as the verified publisher before broad deployment. Do not deploy an unsigned installer to employee devices.
+
+## Verify a downloaded installer on macOS
+
+After the release workflow completes, copy the version, SHA-256, and byte size from the successful `Audit the finished installer` log. Then run:
+
+```bash
+node apps/desktop-agent/scripts/verify-downloaded-release.mjs \
+  ~/Downloads/MandalaAgentSetup-1.0.10.exe \
+  1.0.10 \
+  <sha256-from-the-release-workflow> \
+  <size-in-bytes>
+```
+
+The verifier fails if the filename, Windows executable signature, size, or checksum differs from the audited CI artifact. A pass proves the web download is byte-for-byte identical to the installer that passed the Windows installation audit.
+
+On Windows, the Agent shows its version and backend project before sign-in. It disables sign-in and displays `AGENT-CONFIG-BACKEND-001` if a package targets anything except production project `nzlajptokbcgeaifgnoq`.
 
 ## Automated release build
 

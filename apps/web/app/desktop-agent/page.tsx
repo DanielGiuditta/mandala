@@ -3,6 +3,7 @@ import { canDownloadDesktopAgent } from "@mandala/domain"
 import { redirect } from "next/navigation"
 
 import { getViewerRequestContext } from "../../lib/auth/session"
+import { getDesktopAgentRelease } from "../../lib/desktop-agent-release"
 import { EntityHeader } from "../components/entity-header"
 
 export const dynamic = "force-dynamic"
@@ -14,6 +15,8 @@ export default async function DesktopAgentPage() {
   if (!viewerAccess.viewer || !canDownloadDesktopAgent(viewerAccess.viewer)) {
     redirect("/projects")
   }
+
+  const release = await getDesktopAgentRelease()
 
   return (
     <main className="pd-page">
@@ -55,12 +58,18 @@ export default async function DesktopAgentPage() {
               <div className="pd-card-header">
                 <h3 className="pd-card-title">Download</h3>
               </div>
-              <p className="pd-empty">Download the companion installer for an employee workstation.</p>
-              <a className="pd-primary-button" href="/api/desktop-agent/download">
-                Download Windows installer
-              </a>
+              <p className="pd-empty">
+                {release
+                  ? `Current approved installer: ${release.filename}`
+                  : "No verified Windows installer is currently available."}
+              </p>
+              {release ? (
+                <a className="pd-primary-button" href="/api/desktop-agent/download">
+                  Download {release.filename}
+                </a>
+              ) : null}
               <p className="pd-meta-text">
-                Available to admins and partners. The installer includes the connection configuration required for employee sign-in.
+                Available to admins and partners. Installation always requires a Windows administrator to approve it.
               </p>
             </section>
 
@@ -78,7 +87,9 @@ export default async function DesktopAgentPage() {
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
                     <h4>2. Run setup</h4>
-                    <p className="pd-meta-text">Open MandalaAgentSetup.exe and approve the Windows prompt if one appears.</p>
+                    <p className="pd-meta-text">
+                      Open the exact versioned filename shown above. A Windows administrator must approve the installation.
+                    </p>
                   </div>
                 </article>
                 <article className="pd-list-item">
@@ -111,8 +122,8 @@ export default async function DesktopAgentPage() {
                 </article>
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>Windows prevents installation</h4>
-                    <p className="pd-meta-text">Confirm the installer came from this page. If the warning continues, send IT a screenshot before bypassing it.</p>
+                    <h4>Windows administrator is unavailable</h4>
+                    <p className="pd-meta-text">Download the file now, but wait for IT to enter the administrator credentials before running setup.</p>
                   </div>
                 </article>
                 <article className="pd-list-item">

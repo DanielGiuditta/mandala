@@ -5,16 +5,38 @@ namespace Mandala.Agent;
 
 public sealed record AppConfiguration(string SupabaseUrl, string SupabaseAnonKey)
 {
+    public const string ProductionProjectRef = "nzlajptokbcgeaifgnoq";
+
+    public string? ProjectRef
+    {
+        get
+        {
+            if (!Uri.TryCreate(SupabaseUrl, UriKind.Absolute, out var uri) ||
+                !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var suffix = ".supabase.co";
+            return uri.Host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                ? uri.Host[..^suffix.Length]
+                : null;
+        }
+    }
+
     public bool IsConfigured =>
         Uri.TryCreate(SupabaseUrl, UriKind.Absolute, out _) &&
         !string.IsNullOrWhiteSpace(SupabaseAnonKey);
+
+    public bool IsProductionTarget =>
+        string.Equals(ProjectRef, ProductionProjectRef, StringComparison.OrdinalIgnoreCase);
 
     public static AppConfiguration Load()
     {
         var paths = new[]
         {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mandala Agent", "agent.config.json"),
             Path.Combine(AppContext.BaseDirectory, "agent.config.json"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mandala Agent", "agent.config.json"),
         };
 
         foreach (var path in paths)
