@@ -141,7 +141,7 @@ export function ProjectWorklogCard({
                         ˅
                       </span>
                     </span>
-                    <input defaultValue={entry.hours} min={0} name="hours" required step={0.1} type="number" />
+                    <input defaultValue={entry.hours} min={0} name="hours" required step={0.01} type="number" />
                     <input defaultValue={entry.notes ?? ""} name="notes" placeholder="Notes" type="text" />
                     <SelectDropdownField
                       ariaLabel="Assignment"
