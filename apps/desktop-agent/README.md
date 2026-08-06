@@ -16,7 +16,15 @@ It signs employees in with their existing Mandala account, uses the shared Supab
 
 - The agent verifies that a new `TimeEntry` exists after Stop and after a confirmed project switch before treating the save as successful.
 - If the timer stops without a confirmed saved entry, the agent shows a diagnostic code instead of silently clearing the state.
+- Successful activity heartbeats may return an empty HTTP response; the agent treats that as success instead of attempting to parse JSON.
+- Stop and idle-pause confirmations remain visible through tracker refreshes and diagnostics export.
 - **Save / copy diagnostics for IT** saves a report to the Desktop and copies it to the clipboard when Windows allows it. The same log is stored at `%LOCALAPPDATA%\Mandala Agent\agent.log`.
+
+Run the cross-platform regression checks with:
+
+```powershell
+dotnet run --project .\apps\desktop-agent\tests\Mandala.Agent.RegressionTests\Mandala.Agent.RegressionTests.csproj -c Release
+```
 
 ## Build a release on Windows
 

@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private readonly AppConfiguration _configuration = AppConfiguration.Load();
     private readonly SecureSessionStore _sessionStore = new();
     private readonly DispatcherTimer _pollTimer;
+    private readonly TrackerMessageState _trackerMessageState = new();
     private SupabaseTimeTrackerClient? _client;
     private ActiveWorkSession? _activeSession;
     private uint _lastInputTick;
@@ -134,6 +135,7 @@ public partial class MainWindow : Window
         try
         {
             SetSaving(true);
+            _trackerMessageState.ClearPersistent();
             await _client.StartAsync(project.Id, GetLocalDate(), switchingProject);
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             await LoadTrackerAsync();
@@ -199,9 +201,13 @@ public partial class MainWindow : Window
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             _activeSession = null;
             UpdateTrackerStatus();
-            TrackerMessageText.Text = pausedForIdle
+            var confirmation = pausedForIdle
                 ? "Timer paused after 5 minutes without Windows activity. Start Work to resume."
                 : $"Time saved successfully. Reference: {saveResult.TimeEntryId[..8]}";
+            TrackerMessageText.Text = _trackerMessageState.ShowPersistent(confirmation);
+            AgentDiagnostics.Record(
+                pausedForIdle ? "idle-confirmation-shown" : "stop-confirmation-shown",
+                $"entryId={saveResult.TimeEntryId}; message={AgentDiagnostics.Compact(confirmation)}");
         }
         catch (Exception exception)
         {
@@ -238,12 +244,12 @@ public partial class MainWindow : Window
                 ? $"Signed in as {email} · Agent v{version} · Projects returned: {snapshot.Projects.Count}"
                 : $"Agent v{version} · Projects returned: {snapshot.Projects.Count}";
 
-            TrackerMessageText.Text = snapshot.Warning
-                ?? (snapshot.Projects.Count == 0
+            var fallbackMessage = snapshot.Projects.Count == 0
                     ? AgentDiagnostics.Format(
                         "AGENT-PROJECTS-EMPTY",
                         "Mandala returned no active projects. Ask your admin to confirm this agent is connected to the same workspace as the web app.")
-                    : string.Empty);
+                    : string.Empty;
+            TrackerMessageText.Text = _trackerMessageState.ResolveAfterLoad(snapshot.Warning, fallbackMessage);
 
             AgentDiagnostics.Record("tracker-loaded", $"email={_client.Email}; projects={snapshot.Projects.Count}; activeProject={snapshot.ActiveSession?.ProjectId ?? "none"}; warning={snapshot.Warning ?? "none"}");
 
@@ -275,9 +281,10 @@ public partial class MainWindow : Window
                 AgentDiagnostics.Record("diagnostics-clipboard-failure", AgentDiagnostics.Compact(exception.ToString()));
             }
 
-            TrackerMessageText.Text = clipboardCopied
+            var diagnosticsMessage = clipboardCopied
                 ? $"Diagnostics copied and saved to Desktop: {Path.GetFileName(path)}"
                 : $"Diagnostics saved to Desktop: {Path.GetFileName(path)}. Please attach that file to WhatsApp.";
+            TrackerMessageText.Text = _trackerMessageState.CombineWithPersistent(diagnosticsMessage);
         }
         catch (Exception exception)
         {

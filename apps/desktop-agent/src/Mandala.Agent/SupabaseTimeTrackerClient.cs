@@ -203,7 +203,7 @@ public sealed class SupabaseTimeTrackerClient
     }
 
     public async Task TouchAsync() =>
-        await RpcAsync<JsonElement>("touch_self_work_session", new { });
+        await SendWithoutResponseAsync(HttpMethod.Post, "rest/v1/rpc/touch_self_work_session", new { });
 
     private async Task<T> RpcAsync<T>(string functionName, object body) =>
         await SendAsync<T>(HttpMethod.Post, $"rest/v1/rpc/{functionName}", body);
@@ -248,6 +248,16 @@ public sealed class SupabaseTimeTrackerClient
         });
     }
 
+    private async Task SendWithoutResponseAsync(HttpMethod method, string path, object body)
+    {
+        await SendAuthorizedWithoutResponseAsync(() =>
+        {
+            var request = CreateRequest(method, path);
+            request.Content = JsonContent.Create(body, options: AppConfiguration.JsonOptions);
+            return request;
+        });
+    }
+
     private async Task<T> SendAuthorizedAsync<T>(Func<HttpRequestMessage> createRequest)
     {
         using var response = await SendRequestAsync(createRequest);
@@ -263,6 +273,25 @@ public sealed class SupabaseTimeTrackerClient
 
         using var retryResponse = await SendRequestAsync(createRequest);
         return await ReadResponseAsync<T>(retryResponse);
+    }
+
+    private async Task SendAuthorizedWithoutResponseAsync(Func<HttpRequestMessage> createRequest)
+    {
+        using var response = await SendRequestAsync(createRequest);
+        if (response.StatusCode != System.Net.HttpStatusCode.Unauthorized)
+        {
+            await AgentHttpResponse.EnsureSuccessAsync(response);
+            return;
+        }
+
+        if (!await RefreshSessionAsync())
+        {
+            await AgentHttpResponse.EnsureSuccessAsync(response);
+            return;
+        }
+
+        using var retryResponse = await SendRequestAsync(createRequest);
+        await AgentHttpResponse.EnsureSuccessAsync(retryResponse);
     }
 
     private async Task<HttpResponseMessage> SendRequestAsync(Func<HttpRequestMessage> createRequest)
@@ -304,24 +333,8 @@ public sealed class SupabaseTimeTrackerClient
         return request;
     }
 
-    private static async Task<T> ReadResponseAsync<T>(HttpResponseMessage response)
-    {
-        if (!response.IsSuccessStatusCode)
-        {
-            var message = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException(string.IsNullOrWhiteSpace(message)
-                ? "Mandala could not complete the request."
-                : message);
-        }
-
-        var payload = await response.Content.ReadFromJsonAsync<T>(AppConfiguration.JsonOptions);
-        if (payload is null)
-        {
-            throw new HttpRequestException("Mandala returned an empty response.");
-        }
-
-        return payload;
-    }
+    private static async Task<T> ReadResponseAsync<T>(HttpResponseMessage response) =>
+        await AgentHttpResponse.ReadRequiredJsonAsync<T>(response, AppConfiguration.JsonOptions);
 
     private sealed record AuthResponse(string access_token, string refresh_token)
     {

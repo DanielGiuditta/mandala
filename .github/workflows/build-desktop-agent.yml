@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - name: Run desktop agent regression checks
+        run: dotnet run --project .\apps\desktop-agent\tests\Mandala.Agent.RegressionTests\Mandala.Agent.RegressionTests.csproj -c Release
       - name: Install Inno Setup
         run: choco install innosetup --no-progress --yes
       - name: Verify production Supabase target
