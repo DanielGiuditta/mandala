@@ -7,34 +7,10 @@ import { canDownloadDesktopAgent } from "@mandala/domain"
 import { NextResponse } from "next/server"
 
 import { getViewerRequestContext } from "../../../../lib/auth/session"
-
-const DESKTOP_AGENT_BUCKET = "desktop-agent-releases"
-
-async function resolveReleasePath(
-  client: NonNullable<ReturnType<typeof createServiceRoleSupabaseClient>>,
-) {
-  const configuredPath = process.env.DESKTOP_AGENT_RELEASE_PATH?.trim()
-  if (configuredPath) {
-    return configuredPath
-  }
-
-  const { data: releases, error } = await client.storage
-    .from(DESKTOP_AGENT_BUCKET)
-    .list("latest", {
-      limit: 100,
-      sortBy: { column: "created_at", order: "desc" },
-    })
-
-  const newestVersionedRelease = releases?.find((release) =>
-    /^MandalaAgentSetup-\d+\.\d+\.\d+\.exe$/i.test(release.name),
-  )
-
-  if (!error && newestVersionedRelease) {
-    return `latest/${newestVersionedRelease.name}`
-  }
-
-  return "latest/MandalaAgentSetup.exe"
-}
+import {
+  DESKTOP_AGENT_BUCKET,
+  getDesktopAgentRelease,
+} from "../../../../lib/desktop-agent-release"
 
 export async function GET() {
   const viewerContext = await getViewerRequestContext()
@@ -54,10 +30,17 @@ export async function GET() {
     return NextResponse.json({ error: "Desktop agent download service is unavailable." }, { status: 503 })
   }
 
-  const releasePath = await resolveReleasePath(client)
+  const release = await getDesktopAgentRelease()
+  if (!release) {
+    return NextResponse.json(
+      { error: "No verified Windows agent installer has been published yet." },
+      { status: 404 },
+    )
+  }
+
   const { data, error } = await client.storage
     .from(DESKTOP_AGENT_BUCKET)
-    .createSignedUrl(releasePath, 60)
+    .createSignedUrl(release.objectPath, 60)
 
   if (error || !data?.signedUrl) {
     return NextResponse.json(

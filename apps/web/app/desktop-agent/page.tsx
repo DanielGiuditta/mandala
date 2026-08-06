@@ -3,6 +3,7 @@ import { canDownloadDesktopAgent } from "@mandala/domain"
 import { redirect } from "next/navigation"
 
 import { getViewerRequestContext } from "../../lib/auth/session"
+import { getDesktopAgentRelease } from "../../lib/desktop-agent-release"
 import { EntityHeader } from "../components/entity-header"
 
 export const dynamic = "force-dynamic"
@@ -14,6 +15,8 @@ export default async function DesktopAgentPage() {
   if (!viewerAccess.viewer || !canDownloadDesktopAgent(viewerAccess.viewer)) {
     redirect("/projects")
   }
+
+  const release = await getDesktopAgentRelease()
 
   return (
     <main className="pd-page">
@@ -55,12 +58,18 @@ export default async function DesktopAgentPage() {
               <div className="pd-card-header">
                 <h3 className="pd-card-title">Download</h3>
               </div>
-              <p className="pd-empty">Download the companion installer for an employee workstation.</p>
-              <a className="pd-primary-button" href="/api/desktop-agent/download">
-                Download Windows installer
-              </a>
+              <p className="pd-empty">
+                {release
+                  ? `Current approved installer: ${release.filename}`
+                  : "No verified Windows installer is currently available."}
+              </p>
+              {release ? (
+                <a className="pd-primary-button" href="/api/desktop-agent/download">
+                  Download {release.filename}
+                </a>
+              ) : null}
               <p className="pd-meta-text">
-                Available to admins and partners. The installer includes the connection configuration required for employee sign-in.
+                Available to admins and partners. Installation always requires a Windows administrator to approve it.
               </p>
             </section>
 
@@ -71,26 +80,34 @@ export default async function DesktopAgentPage() {
               <div className="pd-list">
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>1. Download the installer</h4>
-                    <p className="pd-meta-text">Download it on the Windows computer that will run the companion.</p>
+                    <h4>1. Move old installers out of Downloads</h4>
+                    <p className="pd-meta-text">
+                      Remove or move every older MandalaAgentSetup file first. Keep only the exact approved filename shown above.
+                    </p>
                   </div>
                 </article>
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>2. Run setup</h4>
-                    <p className="pd-meta-text">Open MandalaAgentSetup.exe and approve the Windows prompt if one appears.</p>
+                    <h4>2. Download and run setup</h4>
+                    <p className="pd-meta-text">
+                      Download the installer on the Windows computer, open the exact versioned filename, and have a Windows administrator approve installation.
+                    </p>
                   </div>
                 </article>
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>3. Open the companion</h4>
-                    <p className="pd-meta-text">Finish setup, then open Mandala Windows Companion from the Start menu.</p>
+                    <h4>3. Verify the Agent before sign-in</h4>
+                    <p className="pd-meta-text">
+                      Before entering a password, confirm Agent v{release?.version ?? "the approved version"} and Backend {release?.backendProjectRef ?? "the production project"} are visible. Stop and contact IT if either value differs.
+                    </p>
                   </div>
                 </article>
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>4. Start tracking</h4>
-                    <p className="pd-meta-text">Have the employee sign in, choose their project, and select Start Work.</p>
+                    <h4>4. Complete one save check</h4>
+                    <p className="pd-meta-text">
+                      Sign in, select the correct project, choose Start Work, then Stop. Record the save reference. If no reference appears, save diagnostics for IT before trying again.
+                    </p>
                   </div>
                 </article>
               </div>
@@ -111,14 +128,14 @@ export default async function DesktopAgentPage() {
                 </article>
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>Windows prevents installation</h4>
-                    <p className="pd-meta-text">Confirm the installer came from this page. If the warning continues, send IT a screenshot before bypassing it.</p>
+                    <h4>Windows administrator is unavailable</h4>
+                    <p className="pd-meta-text">Download the file now, but wait for IT to enter the administrator credentials before running setup.</p>
                   </div>
                 </article>
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
                     <h4>The employee cannot sign in</h4>
-                    <p className="pd-meta-text">Confirm they are using the same email and password as the Mandala web app.</p>
+                    <p className="pd-meta-text">First re-check the version and backend shown before sign-in. Only then confirm they are using the same email and password as the Mandala web app.</p>
                   </div>
                 </article>
                 <article className="pd-list-item">
@@ -136,7 +153,7 @@ export default async function DesktopAgentPage() {
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
                     <h4>IT needs to investigate</h4>
-                    <p className="pd-meta-text">Send the employee email, computer name, the time of the issue, and a screenshot of any displayed error.</p>
+                    <p className="pd-meta-text">Select Save / copy diagnostics for IT before repeating the test. Send the diagnostics file, employee email, computer name, exact local time, project, and a screenshot of the displayed error.</p>
                   </div>
                 </article>
               </div>
