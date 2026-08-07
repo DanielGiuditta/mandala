@@ -132,12 +132,24 @@ public partial class MainWindow : Window
             }
         }
 
+        var previousProjectName = _activeSession?.ProjectName;
         try
         {
             SetSaving(true);
             _trackerMessageState.ClearPersistent();
-            await _client.StartAsync(project.Id, GetLocalDate(), switchingProject);
+            var saveResult = await _client.StartAsync(project.Id, GetLocalDate(), switchingProject);
             await _sessionStore.SaveAsync(_client.GetStoredSession());
+            if (switchingProject && saveResult is not null && previousProjectName is not null)
+            {
+                var confirmation = TrackerConfirmationMessages.ProjectSwitch(
+                    previousProjectName,
+                    project.Name,
+                    saveResult.TimeEntryId);
+                _trackerMessageState.ShowPersistent(confirmation);
+                AgentDiagnostics.Record(
+                    "switch-confirmation-shown",
+                    $"entryId={saveResult.TimeEntryId}; message={AgentDiagnostics.Compact(confirmation)}");
+            }
             await LoadTrackerAsync();
         }
         catch (Exception exception)
@@ -202,8 +214,8 @@ public partial class MainWindow : Window
             _activeSession = null;
             UpdateTrackerStatus();
             var confirmation = pausedForIdle
-                ? "Timer paused after 5 minutes without Windows activity. Start Work to resume."
-                : $"Time saved successfully. Reference: {saveResult.TimeEntryId[..8]}";
+                ? TrackerConfirmationMessages.IdlePause(saveResult.TimeEntryId)
+                : TrackerConfirmationMessages.ManualStop(saveResult.TimeEntryId);
             TrackerMessageText.Text = _trackerMessageState.ShowPersistent(confirmation);
             AgentDiagnostics.Record(
                 pausedForIdle ? "idle-confirmation-shown" : "stop-confirmation-shown",

@@ -5,6 +5,7 @@ using Mandala.Agent;
 await AcceptsSuccessfulEmptyHeartbeatResponse();
 await PreservesServerErrorDetails();
 PreservesSaveConfirmationAcrossReloadAndDiagnosticsExport();
+FormatsEveryFinalizedSessionWithAReference();
 
 Console.WriteLine("PASS: Mandala Agent regression checks");
 
@@ -46,6 +47,24 @@ static void PreservesSaveConfirmationAcrossReloadAndDiagnosticsExport()
 
     messages.ClearPersistent();
     AssertEqual(string.Empty, messages.ResolveAfterLoad(null, string.Empty), "clear on a new start");
+}
+
+static void FormatsEveryFinalizedSessionWithAReference()
+{
+    const string entryId = "abc12345-6789-4abc-def0-123456789abc";
+
+    AssertEqual(
+        "Time saved successfully. Reference: abc12345",
+        TrackerConfirmationMessages.ManualStop(entryId),
+        "manual stop reference");
+    AssertEqual(
+        "Timer paused after 5 minutes without Windows activity. Time saved successfully. Reference: abc12345. Start Work to resume.",
+        TrackerConfirmationMessages.IdlePause(entryId),
+        "idle pause reference");
+    AssertEqual(
+        "Gold Shop time saved successfully. Reference: abc12345. Now tracking Stapati test 1.",
+        TrackerConfirmationMessages.ProjectSwitch("Gold Shop", "Stapati test 1", entryId),
+        "project switch reference");
 }
 
 static void AssertEqual(string expected, string actual, string scenario)

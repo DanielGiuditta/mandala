@@ -132,10 +132,10 @@ public sealed class SupabaseTimeTrackerClient
         }
     }
 
-    public async Task StartAsync(string projectId, string localDate, bool confirmSwitch) =>
+    public async Task<TimeEntrySaveResult?> StartAsync(string projectId, string localDate, bool confirmSwitch) =>
         await StartAndRecordAsync(projectId, localDate, confirmSwitch);
 
-    private async Task StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
+    private async Task<TimeEntrySaveResult?> StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
     {
         AgentDiagnostics.Record("start-request", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}; email={Email}");
         var entriesBeforeSwitch = confirmSwitch
@@ -164,7 +164,10 @@ public sealed class SupabaseTimeTrackerClient
                 }
 
                 AgentDiagnostics.Record("switch-saved", $"date={localDate}; entryId={switchEntry}; entriesBefore={entriesBeforeSwitch.Count}; entriesAfter={entriesAfterSwitch.Count}; newProjectId={projectId}");
+                return new TimeEntrySaveResult(switchEntry);
             }
+
+            return null;
         }
         catch (Exception exception)
         {
