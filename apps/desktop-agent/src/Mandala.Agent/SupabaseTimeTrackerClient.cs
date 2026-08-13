@@ -8,8 +8,10 @@ namespace Mandala.Agent;
 
 public sealed class SupabaseTimeTrackerClient
 {
+    private const int SaveReconciliationAttempts = 4;
     private readonly AppConfiguration _configuration;
     private readonly HttpClient _httpClient;
+    private PendingSaveCheck? _pendingSaveCheck;
     private StoredSession? _session;
 
     public SupabaseTimeTrackerClient(AppConfiguration configuration)
@@ -21,6 +23,7 @@ public sealed class SupabaseTimeTrackerClient
     }
 
     public string? Email => _session?.Email;
+    public bool HasPendingSave => _pendingSaveCheck is not null;
 
     public async Task SignInAsync(string email, string password)
     {
@@ -138,9 +141,25 @@ public sealed class SupabaseTimeTrackerClient
     private async Task<TimeEntrySaveResult?> StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
     {
         AgentDiagnostics.Record("start-request", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}; email={Email}");
+        if (confirmSwitch)
+        {
+            var pendingResult = await TryResolvePendingSaveAsync(localDate, projectId);
+            if (pendingResult is not null)
+            {
+                return pendingResult;
+            }
+        }
+
         var entriesBeforeSwitch = confirmSwitch
             ? await GetTimeEntryIdsAsync(localDate)
             : null;
+        Exception? operationFailure = null;
+
+        if (entriesBeforeSwitch is not null)
+        {
+            _pendingSaveCheck = new PendingSaveCheck(localDate, entriesBeforeSwitch, projectId, "switch");
+        }
+
         try
         {
             await RpcAsync<JsonElement>("start_self_work_session", new
@@ -150,36 +169,55 @@ public sealed class SupabaseTimeTrackerClient
                 confirm_switch = confirmSwitch,
             });
             AgentDiagnostics.Record("start-success", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}");
-
-            if (entriesBeforeSwitch is not null)
-            {
-                var entriesAfterSwitch = await GetTimeEntryIdsAsync(localDate);
-                var switchEntry = entriesAfterSwitch.FirstOrDefault(id => !entriesBeforeSwitch.Contains(id));
-                if (switchEntry is null)
-                {
-                    AgentDiagnostics.Record("switch-not-saved", $"date={localDate}; entriesBefore={entriesBeforeSwitch.Count}; entriesAfter={entriesAfterSwitch.Count}; newProjectId={projectId}");
-                    throw new AgentDiagnosticException(
-                        "AGENT-SWITCH-NOT-SAVED-001",
-                        "The project switched, but Mandala did not confirm the previous project’s time was saved. Please report this code to IT.");
-                }
-
-                AgentDiagnostics.Record("switch-saved", $"date={localDate}; entryId={switchEntry}; entriesBefore={entriesBeforeSwitch.Count}; entriesAfter={entriesAfterSwitch.Count}; newProjectId={projectId}");
-                return new TimeEntrySaveResult(switchEntry);
-            }
-
-            return null;
         }
         catch (Exception exception)
         {
             AgentDiagnostics.Record("start-failure", AgentDiagnostics.Compact(exception.ToString()));
-            throw;
+            operationFailure = exception;
         }
+
+        if (entriesBeforeSwitch is null)
+        {
+            if (operationFailure is not null)
+            {
+                throw operationFailure;
+            }
+
+            return null;
+        }
+
+        var switchResult = await ReconcileSaveAsync(
+            _pendingSaveCheck!,
+            SaveReconciliationAttempts);
+        if (switchResult is not null)
+        {
+            return switchResult;
+        }
+
+        if (operationFailure is not null)
+        {
+            throw operationFailure;
+        }
+
+        AgentDiagnostics.Record("switch-not-saved", $"date={localDate}; entriesBefore={entriesBeforeSwitch.Count}; newProjectId={projectId}");
+        throw new AgentDiagnosticException(
+            "AGENT-SWITCH-NOT-SAVED-001",
+            "The project switched, but Mandala did not confirm the previous project’s time was saved. Please report this code to IT.");
     }
 
     public async Task<TimeEntrySaveResult> StopAsync(string localDate)
     {
         AgentDiagnostics.Record("stop-request", $"date={localDate}; email={Email}");
+        var pendingResult = await TryResolvePendingSaveAsync(localDate, expectedActiveProjectId: null);
+        if (pendingResult is not null)
+        {
+            return pendingResult;
+        }
+
         var before = await GetTimeEntryIdsAsync(localDate);
+        _pendingSaveCheck = new PendingSaveCheck(localDate, before, ExpectedActiveProjectId: null, "stop");
+        Exception? operationFailure = null;
+
         try
         {
             await RpcAsync<JsonElement>("stop_self_work_session", new { entry_date = localDate });
@@ -188,21 +226,108 @@ public sealed class SupabaseTimeTrackerClient
         catch (Exception exception)
         {
             AgentDiagnostics.Record("stop-rpc-failure", AgentDiagnostics.Compact(exception.ToString()));
-            throw;
+            operationFailure = exception;
         }
 
-        var after = await GetTimeEntryIdsAsync(localDate);
-        var newEntry = after.FirstOrDefault(id => !before.Contains(id));
-        if (newEntry is null)
+        var stopResult = await ReconcileSaveAsync(
+            _pendingSaveCheck,
+            SaveReconciliationAttempts);
+        if (stopResult is not null)
         {
-            AgentDiagnostics.Record("stop-not-saved", $"date={localDate}; entriesBefore={before.Count}; entriesAfter={after.Count}");
-            throw new AgentDiagnosticException(
-                "AGENT-STOP-NOT-SAVED-001",
-                "The timer stopped, but Mandala did not confirm a saved time entry. Please report this code to IT.");
+            return stopResult;
         }
 
-        AgentDiagnostics.Record("stop-saved", $"date={localDate}; entryId={newEntry}; entriesBefore={before.Count}; entriesAfter={after.Count}");
-        return new TimeEntrySaveResult(newEntry);
+        if (operationFailure is not null)
+        {
+            throw operationFailure;
+        }
+
+        AgentDiagnostics.Record("stop-not-saved", $"date={localDate}; entriesBefore={before.Count}");
+        throw new AgentDiagnosticException(
+            "AGENT-STOP-NOT-SAVED-001",
+            "The timer stopped, but Mandala did not confirm a saved time entry. Please report this code to IT.");
+    }
+
+    private async Task<TimeEntrySaveResult?> TryResolvePendingSaveAsync(
+        string localDate,
+        string? expectedActiveProjectId)
+    {
+        var pending = _pendingSaveCheck;
+        if (pending is null ||
+            !string.Equals(pending.LocalDate, localDate, StringComparison.Ordinal) ||
+            !string.Equals(
+                pending.ExpectedActiveProjectId,
+                expectedActiveProjectId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        AgentDiagnostics.Record(
+            "save-reconciliation-resume",
+            $"operation={pending.Operation}; date={pending.LocalDate}; expectedActiveProject={pending.ExpectedActiveProjectId ?? "none"}");
+        return await ReconcileSaveAsync(pending, SaveReconciliationAttempts);
+    }
+
+    public async Task<TimeEntrySaveResult?> ReconcilePendingSaveAsync()
+    {
+        var pending = _pendingSaveCheck;
+        if (pending is null)
+        {
+            return null;
+        }
+
+        AgentDiagnostics.Record(
+            "save-reconciliation-background",
+            $"operation={pending.Operation}; date={pending.LocalDate}; expectedActiveProject={pending.ExpectedActiveProjectId ?? "none"}");
+        return await ReconcileSaveAsync(pending, SaveReconciliationAttempts);
+    }
+
+    private async Task<TimeEntrySaveResult?> ReconcileSaveAsync(
+        PendingSaveCheck pending,
+        int attempts)
+    {
+        for (var attempt = 1; attempt <= attempts; attempt += 1)
+        {
+            if (attempt > 1)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(350 * attempt));
+            }
+
+            try
+            {
+                var entriesAfter = await GetTimeEntryIdsAsync(pending.LocalDate);
+                var activeProjectId = await GetActiveSessionProjectIdAsync();
+                var recoveredEntry = TimeEntrySaveReconciliation.FindRecoveredEntry(
+                    pending.EntriesBefore,
+                    entriesAfter,
+                    activeProjectId,
+                    pending.ExpectedActiveProjectId);
+
+                AgentDiagnostics.Record(
+                    "save-reconciliation-check",
+                    $"operation={pending.Operation}; attempt={attempt}; date={pending.LocalDate}; entriesBefore={pending.EntriesBefore.Count}; entriesAfter={entriesAfter.Count}; activeProject={activeProjectId ?? "none"}; expectedActiveProject={pending.ExpectedActiveProjectId ?? "none"}; recoveredEntry={recoveredEntry ?? "none"}");
+
+                if (recoveredEntry is null)
+                {
+                    continue;
+                }
+
+                _pendingSaveCheck = null;
+                AgentDiagnostics.Record(
+                    $"{pending.Operation}-saved",
+                    $"date={pending.LocalDate}; entryId={recoveredEntry}; recovered={attempt > 1}; entriesBefore={pending.EntriesBefore.Count}; entriesAfter={entriesAfter.Count}");
+                return new TimeEntrySaveResult(recoveredEntry);
+            }
+            catch (Exception exception)
+            {
+                AgentDiagnostics.Record(
+                    "save-reconciliation-failure",
+                    $"operation={pending.Operation}; attempt={attempt}; {AgentDiagnostics.Compact(exception.ToString())}");
+            }
+        }
+
+        return null;
     }
 
     public async Task TouchAsync() =>
@@ -239,6 +364,13 @@ public sealed class SupabaseTimeTrackerClient
             $"rest/v1/time_entries?select=id&person_id=eq.{person.Id}&date=eq.{Uri.EscapeDataString(localDate)}");
         AgentDiagnostics.Record("time-entry-check", $"date={localDate}; personId={person.Id}; count={entries.Count}");
         return entries.Select(entry => entry.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<string?> GetActiveSessionProjectIdAsync()
+    {
+        var sessions = await GetAsync<List<ActiveSessionResponse>>(
+            "rest/v1/active_work_sessions?select=project_id");
+        return sessions.SingleOrDefault()?.ProjectId;
     }
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object body)
@@ -362,6 +494,12 @@ public sealed class SupabaseTimeTrackerClient
         [JsonPropertyName("started_at")]
         public DateTimeOffset StartedAt { get; init; }
     }
+
+    private sealed record PendingSaveCheck(
+        string LocalDate,
+        HashSet<string> EntriesBefore,
+        string? ExpectedActiveProjectId,
+        string Operation);
 
     private sealed class PersonResponse
     {

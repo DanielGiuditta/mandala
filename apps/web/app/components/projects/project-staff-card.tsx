@@ -22,6 +22,10 @@ interface ProjectStaffCardProps {
     people: PeopleOptionRow[];
   }>;
   projectId: string;
+  removeStaffAction: (input: {
+    personId: string;
+    projectId: string;
+  }) => Promise<{ error: string | null; ok: boolean }>;
   staffedPeople: ProjectStaffPerson[];
 }
 
@@ -30,12 +34,14 @@ export function ProjectStaffCard({
   canAssignPeople,
   loadPeopleOptionsAction,
   projectId,
+  removeStaffAction,
   staffedPeople,
 }: ProjectStaffCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [removingPersonId, setRemovingPersonId] = useState<string | null>(null);
   const [peopleOptions, setPeopleOptions] = useState<PeopleOptionRow[]>([]);
   const [peopleOptionsStatus, setPeopleOptionsStatus] = useState<
     "idle" | "loading" | "ready" | "unavailable" | "error"
@@ -142,20 +148,59 @@ export function ProjectStaffCard({
       {sortedStaffedPeople.length === 0 ? <p className="pd-empty">No staffed people yet.</p> : null}
       <div className="pd-pill-wrap">
         {sortedStaffedPeople.map((staffedPerson) => (
-          <EntityReturnLink
-            className="pd-staff-pill entity-content-link"
-            href={`/people/${staffedPerson.personId}`}
-            key={staffedPerson.personId}
-            scope="people"
-          >
-            <Avatar
-              fallbackKey={staffedPerson.personId}
-              label={staffedPerson.personName}
-              photoUrl={staffedPerson.personPhotoUrl}
-            />
-            <strong>{staffedPerson.personTitle ?? "Staff"}:</strong>
-            <span className="entity-content-link-label">{staffedPerson.personName}</span>
-          </EntityReturnLink>
+          <div className="pd-staff-pill-group" key={staffedPerson.personId}>
+            <EntityReturnLink
+              className="pd-staff-pill entity-content-link"
+              href={`/people/${staffedPerson.personId}`}
+              scope="people"
+            >
+              <Avatar
+                fallbackKey={staffedPerson.personId}
+                label={staffedPerson.personName}
+                photoUrl={staffedPerson.personPhotoUrl}
+              />
+              <strong>{staffedPerson.personTitle ?? "Staff"}:</strong>
+              <span className="entity-content-link-label">{staffedPerson.personName}</span>
+              {!staffedPerson.hasAssignment && staffedPerson.hasTrackedTime ? (
+                <span className="pd-staff-history-label">past staff</span>
+              ) : null}
+            </EntityReturnLink>
+            {canAssignPeople && staffedPerson.hasAssignment ? (
+              <button
+                className="pd-staff-remove-button"
+                disabled={isPending || removingPersonId !== null}
+                onClick={() => {
+                  const confirmed = window.confirm(
+                    `Remove ${staffedPerson.personName} from this project? This ends only their project assignment. Their Mandala account and existing time history will remain active.`,
+                  );
+
+                  if (!confirmed) {
+                    return;
+                  }
+
+                  setFormError(null);
+                  setRemovingPersonId(staffedPerson.personId);
+                  startTransition(async () => {
+                    const result = await removeStaffAction({
+                      personId: staffedPerson.personId,
+                      projectId,
+                    });
+                    setRemovingPersonId(null);
+                    if (!result.ok) {
+                      setFormError(result.error ?? "Unable to remove staff from the project.");
+                      return;
+                    }
+
+                    router.refresh();
+                  });
+                }}
+                title="Remove from this project only"
+                type="button"
+              >
+                {removingPersonId === staffedPerson.personId ? "Removing…" : "Remove from project"}
+              </button>
+            ) : null}
+          </div>
         ))}
       </div>
     </section>

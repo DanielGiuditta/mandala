@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private ActiveWorkSession? _activeSession;
     private uint _lastInputTick;
     private DateTimeOffset _lastHeartbeatAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastPendingSaveRetryAt = DateTimeOffset.MinValue;
     private bool _isSaving;
 
     public MainWindow()
@@ -167,7 +168,43 @@ public partial class MainWindow : Window
 
     private async Task PollAsync()
     {
-        if (_client is null || _activeSession is null || _isSaving)
+        if (_client is null || _isSaving)
+        {
+            return;
+        }
+
+        if (_client.HasPendingSave &&
+            DateTimeOffset.UtcNow - _lastPendingSaveRetryAt >= TimeSpan.FromSeconds(10))
+        {
+            _lastPendingSaveRetryAt = DateTimeOffset.UtcNow;
+            try
+            {
+                SetSaving(true);
+                var recovered = await _client.ReconcilePendingSaveAsync();
+                if (recovered is not null)
+                {
+                    var confirmation = TrackerConfirmationMessages.ManualStop(recovered.TimeEntryId);
+                    _trackerMessageState.ShowPersistent(confirmation);
+                    AgentDiagnostics.Record(
+                        "pending-save-confirmation-shown",
+                        $"entryId={recovered.TimeEntryId}; message={AgentDiagnostics.Compact(confirmation)}");
+                    await LoadTrackerAsync();
+                    return;
+                }
+            }
+            catch (Exception exception)
+            {
+                AgentDiagnostics.Record(
+                    "pending-save-background-failure",
+                    AgentDiagnostics.Compact(exception.ToString()));
+            }
+            finally
+            {
+                SetSaving(false);
+            }
+        }
+
+        if (_activeSession is null)
         {
             return;
         }

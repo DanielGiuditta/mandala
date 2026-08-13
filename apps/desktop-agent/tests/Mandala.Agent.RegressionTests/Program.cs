@@ -6,6 +6,9 @@ await AcceptsSuccessfulEmptyHeartbeatResponse();
 await PreservesServerErrorDetails();
 PreservesSaveConfirmationAcrossReloadAndDiagnosticsExport();
 FormatsEveryFinalizedSessionWithAReference();
+RecoversAStopAfterTheServerSavedButTheResponseWasLost();
+RecoversAProjectSwitchAfterTheServerSavedButTheResponseWasLost();
+FailsClosedWhenTheRecoveredSaveIsAmbiguousOrTheSessionStateIsWrong();
 
 Console.WriteLine("PASS: Mandala Agent regression checks");
 
@@ -65,6 +68,50 @@ static void FormatsEveryFinalizedSessionWithAReference()
         "Gold Shop time saved successfully. Reference: abc12345. Now tracking Stapati test 1.",
         TrackerConfirmationMessages.ProjectSwitch("Gold Shop", "Stapati test 1", entryId),
         "project switch reference");
+}
+
+static void RecoversAStopAfterTheServerSavedButTheResponseWasLost()
+{
+    var before = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "existing-entry" };
+    var after = new[] { "existing-entry", "saved-after-sleep" };
+
+    AssertEqual(
+        "saved-after-sleep",
+        TimeEntrySaveReconciliation.FindRecoveredEntry(before, after, activeProjectId: null, expectedActiveProjectId: null) ?? string.Empty,
+        "recover stop after a lost response");
+}
+
+static void RecoversAProjectSwitchAfterTheServerSavedButTheResponseWasLost()
+{
+    var before = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "existing-entry" };
+    var after = new[] { "existing-entry", "saved-before-switch" };
+
+    AssertEqual(
+        "saved-before-switch",
+        TimeEntrySaveReconciliation.FindRecoveredEntry(before, after, "new-project", "new-project") ?? string.Empty,
+        "recover switch after a lost response");
+}
+
+static void FailsClosedWhenTheRecoveredSaveIsAmbiguousOrTheSessionStateIsWrong()
+{
+    var before = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "existing-entry" };
+
+    AssertEqual(
+        string.Empty,
+        TimeEntrySaveReconciliation.FindRecoveredEntry(
+            before,
+            new[] { "existing-entry", "new-entry-one", "new-entry-two" },
+            activeProjectId: null,
+            expectedActiveProjectId: null) ?? string.Empty,
+        "reject an ambiguous recovered save");
+    AssertEqual(
+        string.Empty,
+        TimeEntrySaveReconciliation.FindRecoveredEntry(
+            before,
+            new[] { "existing-entry", "new-entry" },
+            activeProjectId: "old-project",
+            expectedActiveProjectId: "new-project") ?? string.Empty,
+        "reject a switch with the wrong active project");
 }
 
 static void AssertEqual(string expected, string actual, string scenario)

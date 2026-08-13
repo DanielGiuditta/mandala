@@ -350,6 +350,11 @@ export interface CreateProjectAssignmentInput {
   startDate?: string | null;
 }
 
+export interface RemoveProjectAssignmentInput {
+  personId: string;
+  projectId: string;
+}
+
 export interface CreateProjectChecklistItemInput {
   assignedPersonId?: string | null;
   projectId: string;
@@ -2019,6 +2024,41 @@ export async function createProjectAssignment(
     personPhotoUrl: person.photo_url,
     personTitle: person.title,
   };
+}
+
+export async function removeProjectAssignment(
+  input: RemoveProjectAssignmentInput,
+  context: ViewerRequestContext = {},
+): Promise<void> {
+  const { client, projectRow, viewer } = await resolveProjectMutationContext(
+    input.projectId,
+    context,
+  );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
+
+  if (!canAssignPeopleToProject(viewer, toProjectPermissionSubject(projectRow))) {
+    throw new Error("You do not have permission to change project staffing.");
+  }
+
+  const personId = normalizeRequiredText(input.personId, "Person");
+  const { data, error } = await client
+    .from("assignments")
+    .update({ active: false })
+    .eq("project_id", projectRow.id)
+    .eq("person_id", personId)
+    .eq("active", true)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error("This person is not actively assigned to the project.");
+  }
+
+  invalidateProjectReadCaches();
+  await invalidatePersonViewerCaches([personId]);
 }
 
 export async function createProjectChecklistItem(

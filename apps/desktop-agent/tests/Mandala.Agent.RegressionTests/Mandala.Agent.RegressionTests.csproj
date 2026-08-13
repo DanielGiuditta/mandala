@@ -9,5 +9,6 @@
     <Compile Include="../../src/Mandala.Agent/AgentHttpResponse.cs" Link="AgentHttpResponse.cs" />
     <Compile Include="../../src/Mandala.Agent/TrackerConfirmationMessages.cs" Link="TrackerConfirmationMessages.cs" />
     <Compile Include="../../src/Mandala.Agent/TrackerMessageState.cs" Link="TrackerMessageState.cs" />
+    <Compile Include="../../src/Mandala.Agent/TimeEntrySaveReconciliation.cs" Link="TimeEntrySaveReconciliation.cs" />
   </ItemGroup>
 </Project>

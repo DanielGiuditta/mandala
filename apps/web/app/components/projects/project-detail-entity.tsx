@@ -6,6 +6,7 @@ import {
   addTaskAction,
   editWorklogAction,
   quickAddStaffAction,
+  removeStaffAction,
   updateTaskAction,
 } from "../../projects/[projectId]/project-detail-actions";
 
@@ -209,6 +210,7 @@ export function ProjectDetailEntity({
                 canAssignPeople={data.canAssignPeople}
                 loadPeopleOptionsAction={loadPeopleOptionsAction}
                 projectId={projectId}
+                removeStaffAction={removeStaffAction}
                 staffedPeople={data.staffedPeople}
               />
               <ProjectResourcesCard

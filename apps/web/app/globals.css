@@ -4850,6 +4850,34 @@ th {
     calc(6px * var(--entity-ui-scale));
 }
 
+.pd-staff-pill-group {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pd-staff-history-label {
+  color: var(--figma-color-text-tertiary);
+  font-weight: 500;
+}
+
+.pd-staff-remove-button {
+  background: transparent;
+  border: 0;
+  color: var(--figma-color-text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pd-staff-remove-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .pd-staff-pill strong,
 .pd-staff-pill span {
   font-size: 14px;
