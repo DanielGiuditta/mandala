@@ -218,7 +218,7 @@ export function PersonCreateForm({
     if (!isConfirmingRemove) {
       setIsConfirmingRemove(true);
       setSubmitMessage(
-        "Removing this person will disable their account and hide them from active people views. Click Confirm Remove to continue.",
+        "This deactivates the person’s entire Mandala account and hides them from all active people and project views. To remove someone from only one project, use ‘Remove from project’ on that project instead. Click Confirm Deactivate Account to continue.",
       );
       return;
     }
@@ -257,7 +257,10 @@ export function PersonCreateForm({
       setIsSubmitting(true);
 
       if (nextInput.photoFile) {
-        nextInput.photoUrl = await readFileAsDataUrl(nextInput.photoFile);
+        nextInput.photoUrl = await readFileAsDataUrl(nextInput.photoFile, {
+          maxBytes: 80 * 1024,
+          maxDimension: 320,
+        });
       }
 
       const payload = mapCreatePersonPayload(nextInput);
@@ -441,7 +444,11 @@ export function PersonCreateForm({
             title={removeDisabledReason}
             type="button"
           >
-            {isRemoving ? "Removing..." : isConfirmingRemove ? "Confirm Remove" : "Remove"}
+            {isRemoving
+              ? "Deactivating..."
+              : isConfirmingRemove
+                ? "Confirm Deactivate Account"
+                : "Deactivate Account"}
           </button>
         ) : null}
         <button

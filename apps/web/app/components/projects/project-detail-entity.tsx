@@ -6,6 +6,7 @@ import {
   addTaskAction,
   editWorklogAction,
   quickAddStaffAction,
+  removeStaffAction,
   updateTaskAction,
 } from "../../projects/[projectId]/project-detail-actions";
 
@@ -65,9 +66,10 @@ type AddResourceAction = (
     category?: string | null;
     description?: string | null;
     fileType?: string | null;
-    fileUrl: string;
+    fileUrl?: string | null;
     name: string;
     projectId: string;
+    serverPath?: string | null;
   },
 ) => Promise<ProjectDetailActionResult>;
 
@@ -208,6 +210,7 @@ export function ProjectDetailEntity({
                 canAssignPeople={data.canAssignPeople}
                 loadPeopleOptionsAction={loadPeopleOptionsAction}
                 projectId={projectId}
+                removeStaffAction={removeStaffAction}
                 staffedPeople={data.staffedPeople}
               />
               <ProjectResourcesCard

@@ -23,6 +23,13 @@ The standalone time-tracker workspace remains an elevated internal surface for p
 
 A monorepo avoids duplicating domain types, permission enums, workflow keys, and design-system primitives.
 
+## Hosted production topology
+
+- The production Supabase project is `Kolam Production India` in Mumbai (`ap-south-1`).
+- Production Vercel functions run in Mumbai (`bom1`) so server-rendered routes and API handlers stay close to Postgres, Auth, and Storage.
+- Keep the application and database regions co-located. A region change requires a controlled Supabase project migration; changing only the Vercel region would reintroduce a long cross-region database hop.
+- Supabase project credentials remain deployment environment variables and must not be committed.
+
 ## Build strategy
 
 Lay the core model down first, then build vertical slices:

@@ -30,11 +30,17 @@ export function ProjectsDomainList({
   loadPeopleOptionsAction,
   onUpdateProjectAction,
 }: ProjectsDomainListProps) {
+  const projectCreateDisabledReason = data.activeWorkProjectId
+    ? `You are currently tracking ${data.activeWorkProjectName ?? "another project"}. Stop work before creating a project.`
+    : undefined;
+
   return (
     <section className="projects-domain">
       <EntityHeader
         action={
           <ProjectCreateModal
+            disabled={Boolean(data.activeWorkProjectId)}
+            disabledReason={projectCreateDisabledReason}
             loadLeadOptionsAction={loadPeopleOptionsAction}
             officeOptions={data.offices}
             onCreateProjectAction={createProjectAction}
@@ -52,6 +58,14 @@ export function ProjectsDomainList({
         onUpdateProjectAction={onUpdateProjectAction}
         projects={data.projects}
       />
+
+      {data.activeWorkProjectId ? (
+        <div className="projects-notice-dock">
+          <div className="notice">
+            Viewing only outside {data.activeWorkProjectName ?? "the active project"}.
+          </div>
+        </div>
+      ) : null}
 
       {!data.configured && data.configMessage ? (
         <div className="projects-notice-dock">

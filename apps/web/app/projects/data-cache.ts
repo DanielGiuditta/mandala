@@ -16,8 +16,35 @@ const PROJECTS_TAG = "projects";
 const PEOPLE_OPTIONS_TAG = "people-options";
 const PROJECTS_REVALIDATE_SECONDS = 300;
 
-function normalizeFilterValue(value?: string | null): string {
-  return value?.trim().toLowerCase() ?? "";
+function filterProjects(
+  data: ProjectListData,
+  filters: ProjectListFilters,
+): ProjectListData {
+  const query = filters.query?.trim().toLowerCase();
+
+  return {
+    ...data,
+    filters,
+    projects: data.projects.filter((project) => {
+      if (filters.stage && project.stage !== filters.stage) {
+        return false;
+      }
+
+      if (
+        filters.officeId &&
+        project.originatingOfficeId !== filters.officeId &&
+        project.managingOfficeId !== filters.officeId
+      ) {
+        return false;
+      }
+
+      return !query || [
+        project.name,
+        project.clientName ?? "",
+        project.description ?? "",
+      ].some((value) => value.toLowerCase().includes(query));
+    }),
+  };
 }
 
 function getViewerCacheKey(context: ViewerRequestContext): string {
@@ -40,20 +67,16 @@ export async function getCachedProjects(
   filters: ProjectListFilters,
   context: ViewerRequestContext,
 ): Promise<ProjectListData> {
-  return unstable_cache(
-    async () => listProjects(filters, context),
-    [
-      "projects-list",
-      getViewerCacheKey(context),
-      normalizeFilterValue(filters.officeId),
-      normalizeFilterValue(filters.query),
-      filters.stage ?? "",
-    ],
+  const data = await unstable_cache(
+    async () => listProjects({}, context),
+    ["projects-list", getViewerCacheKey(context)],
     {
       revalidate: PROJECTS_REVALIDATE_SECONDS,
       tags: [PROJECTS_TAG],
     },
   )();
+
+  return filterProjects(data, filters);
 }
 
 export async function getCachedProjectDetail(

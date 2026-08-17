@@ -11,6 +11,7 @@ import {
   getProjectFallbackAvatarStyle,
 } from "../projects/project-avatar-utils"
 import { ResourceDocumentIcon } from "./resource-document-icon"
+import { ResourceDocumentActions } from "./resource-document-actions"
 
 interface ResourcesListTableProps {
   configured: boolean
@@ -171,12 +172,7 @@ export function ResourcesListTable({
             key={document.id}
           >
             <div className="resources-cell resources-cell-document">
-              <a
-                className="resources-document-link"
-                href={document.fileUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
+              <div className="resources-document-link">
                 <ResourceDocumentIcon fileType={document.fileType} />
                 <span className="resources-document-copy">
                   <span className="resources-cell-value resources-document-name">
@@ -188,7 +184,11 @@ export function ResourcesListTable({
                     </span>
                   ) : null}
                 </span>
-              </a>
+                <ResourceDocumentActions
+                  fileUrl={document.fileUrl}
+                  serverPath={document.serverPath}
+                />
+              </div>
             </div>
 
             <div className="resources-cell resources-cell-project">

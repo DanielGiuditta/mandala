@@ -1,1 +1,14 @@
+.codex/
+.env
+.env.*
+.git/
+.next/
+.next.stale.*/
+.turbo/
+.vercel/
+coverage/
+dist/
+local-resources/
+node_modules/
 test-results/
+*.tsbuildinfo

@@ -52,7 +52,10 @@ import {
   getDatabaseStatus,
 } from "./supabaseServer";
 import { createPerfTrace } from "./perf";
-import { getSelfActiveWorkSession } from "./timeTracker";
+import {
+  getSelfActiveWorkSession,
+  type SelfTimeTrackerActiveSession,
+} from "./timeTracker";
 
 const PROJECT_READ_CACHE_TTL_MS = 300_000;
 
@@ -101,7 +104,8 @@ interface ChecklistItemRow {
 interface ResourceDocumentRow {
   id: string;
   name: string;
-  file_url: string;
+  file_url: string | null;
+  server_path?: string | null;
   file_type: string | null;
   project_id: string | null;
   category: string | null;
@@ -153,9 +157,7 @@ interface CacheEntry<T> {
   value: T;
 }
 
-const projectListCache = new Map<string, CacheEntry<ProjectListData>>();
 const projectRailCache = new Map<string, CacheEntry<ProjectRailData>>();
-const projectDetailCache = new Map<string, CacheEntry<ProjectDetailData>>();
 let projectDetailContextFunctionAvailable: boolean | null = null;
 
 function getCachedValue<T>(store: Map<string, CacheEntry<T>>, key: string): T | null {
@@ -187,45 +189,12 @@ function normalizeCacheEmail(context: ViewerRequestContext): string | null {
   return sessionEmail || null;
 }
 
-function getProjectListCacheKey(
-  filters: ProjectListFilters,
-  context: ViewerRequestContext,
-): string | null {
-  const sessionEmail = normalizeCacheEmail(context);
-
-  if (!sessionEmail) {
-    return null;
-  }
-
-  return JSON.stringify({
-    officeId: filters.officeId ?? "",
-    query: filters.query?.trim().toLowerCase() ?? "",
-    sessionEmail,
-    stage: filters.stage ?? "",
-  });
-}
-
 function getProjectRailCacheKey(context: ViewerRequestContext): string | null {
   return normalizeCacheEmail(context);
 }
 
-function getProjectDetailCacheKey(
-  projectId: string,
-  context: ViewerRequestContext,
-): string | null {
-  const sessionEmail = normalizeCacheEmail(context);
-
-  if (!sessionEmail) {
-    return null;
-  }
-
-  return `${sessionEmail}:${projectId}`;
-}
-
 export function invalidateProjectReadCaches(): void {
-  projectListCache.clear();
   projectRailCache.clear();
-  projectDetailCache.clear();
 }
 
 export interface ProjectOfficeFilter {
@@ -343,6 +312,8 @@ export interface ProjectRailData {
 }
 
 export interface ProjectListData {
+  activeWorkProjectId: string | null;
+  activeWorkProjectName: string | null;
   accessMessage: string | null;
   configured: boolean;
   configMessage: string | null;
@@ -379,6 +350,11 @@ export interface CreateProjectAssignmentInput {
   startDate?: string | null;
 }
 
+export interface RemoveProjectAssignmentInput {
+  personId: string;
+  projectId: string;
+}
+
 export interface CreateProjectChecklistItemInput {
   assignedPersonId?: string | null;
   projectId: string;
@@ -397,9 +373,10 @@ export interface CreateProjectDocumentInput {
   category?: string | null;
   description?: string | null;
   fileType?: string | null;
-  fileUrl: string;
+  fileUrl?: string | null;
   name: string;
   projectId: string;
+  serverPath?: string | null;
 }
 
 export interface UpdateProjectTimeEntryInput {
@@ -418,7 +395,7 @@ const ASSIGNMENT_ROW_SELECT =
 const CHECKLIST_ROW_SELECT =
   "id, project_id, title, assigned_person_id, completed, created_at, completed_at";
 const RESOURCE_DOCUMENT_ROW_SELECT =
-  "id, name, file_url, file_type, project_id, category, description, uploaded_by_person_id, created_at";
+  "id, name, file_url, server_path, file_type, project_id, category, description, uploaded_by_person_id, created_at";
 const TIME_ENTRY_ROW_SELECT =
   "id, person_id, project_id, assignment_id, date, hours, notes, source";
 
@@ -463,6 +440,14 @@ function normalizeDocumentFileUrl(value: string): string {
   }
 
   return parsed.toString();
+}
+
+function normalizeDocumentServerPath(value: string): string {
+  const normalized = normalizeRequiredText(value, "Document server path");
+  if (!/^\\\\[^\\/]+\\[^\\]+/.test(normalized) || /[\r\n\t]/.test(normalized)) {
+    throw new Error("Document server path must be a valid UNC path.");
+  }
+  return normalized;
 }
 
 function isIsoDate(value: string | null | undefined): value is string {
@@ -675,6 +660,7 @@ function toResourceDocument(row: ResourceDocumentRow): ResourceDocument {
     id: row.id,
     name: row.name,
     fileUrl: row.file_url,
+    serverPath: row.server_path,
     fileType: row.file_type,
     projectId: row.project_id,
     category: row.category,
@@ -922,6 +908,8 @@ function emptyProjectListData(
   forbidden: boolean,
 ): ProjectListData {
   return {
+    activeWorkProjectId: null,
+    activeWorkProjectName: null,
     accessMessage,
     configured,
     configMessage,
@@ -1090,6 +1078,7 @@ function buildProjectMetrics(
 function listPreviewProjects(
   filters: ProjectListFilters,
   viewer: NonNullable<CurrentViewerAccess["viewer"]>,
+  activeWorkSession: SelfTimeTrackerActiveSession | null = null,
 ): ProjectListData {
   const filteredProjectRows = [...previewProjects]
     .filter((row) => matchesFilters(row, filters))
@@ -1120,10 +1109,13 @@ function listPreviewProjects(
     previewPeople
       .filter((person) => [...leadIds, ...metricPeopleIds].includes(person.id))
       .map((person) => [person.id, person]),
-  );
+    );
   const metricsByProjectId = buildProjectMetrics(timeEntryRows, peopleById);
+  const activeWorkProjectId = activeWorkSession?.projectId ?? null;
 
   return {
+    activeWorkProjectId,
+    activeWorkProjectName: activeWorkSession?.projectName ?? null,
     accessMessage: null,
     configured: false,
     configMessage: PREVIEW_CONFIG_MESSAGE,
@@ -1133,19 +1125,24 @@ function listPreviewProjects(
       id: office.id,
       name: office.name,
     })),
-    projects: visibleProjectRows.map((row) =>
-      buildProjectListItem(
+    projects: visibleProjectRows.map((row) => {
+      const projectSubject = toProjectPermissionSubject(row);
+      const isReadOnlyWhileWorkingElsewhere = Boolean(
+        activeWorkProjectId && activeWorkProjectId !== row.id,
+      );
+
+      return buildProjectListItem(
         row,
         officesById,
         peopleById,
         metricsByProjectId.get(row.id) ?? null,
-        !canViewInternalProject(viewer, toProjectPermissionSubject(row)),
-        canEditProject(viewer, toProjectPermissionSubject(row)),
-        canChangeProjectStage(viewer, toProjectPermissionSubject(row)),
-        canSetProjectLead(viewer, toProjectPermissionSubject(row)),
-        canViewProjectFinancials(viewer, toProjectPermissionSubject(row)),
-      ),
-    ),
+        !canViewInternalProject(viewer, projectSubject),
+        !isReadOnlyWhileWorkingElsewhere && canEditProject(viewer, projectSubject),
+        !isReadOnlyWhileWorkingElsewhere && canChangeProjectStage(viewer, projectSubject),
+        !isReadOnlyWhileWorkingElsewhere && canSetProjectLead(viewer, projectSubject),
+        canViewProjectFinancials(viewer, projectSubject),
+      );
+    }),
     viewerLabel: null,
   };
 }
@@ -1414,16 +1411,6 @@ export async function listProjects(
     hasQuery: Boolean(filters.query?.trim()),
     stage: filters.stage ?? null,
   });
-  const cacheKey = getProjectListCacheKey(filters, context);
-  const cachedValue = cacheKey ? getCachedValue(projectListCache, cacheKey) : null;
-
-  if (cachedValue) {
-    trace.finish({
-      cacheHit: true,
-      projectCount: cachedValue.projects.length,
-    });
-    return cachedValue;
-  }
 
   const status = getDatabaseStatus();
   const client = status.configured
@@ -1484,7 +1471,12 @@ export async function listProjects(
   }
 
   if (!client) {
-    const previewData = listPreviewProjects(filters, viewerAccess.viewer);
+    const activeWorkSession = await getSelfActiveWorkSession(context);
+    const previewData = listPreviewProjects(
+      filters,
+      viewerAccess.viewer,
+      activeWorkSession,
+    );
 
     const previewResult = {
       ...previewData,
@@ -1499,9 +1491,7 @@ export async function listProjects(
       result: "preview",
     });
 
-    return cacheKey
-      ? setCachedValue(projectListCache, cacheKey, previewResult)
-      : previewResult;
+    return previewResult;
   }
 
   const baseQueriesResult = baseQueriesPromise
@@ -1563,9 +1553,10 @@ export async function listProjects(
       )
     : Promise.resolve({ data: [], error: null });
 
-  const [people, metricsResponse] = await Promise.all([
+  const [people, metricsResponse, activeWorkSession] = await Promise.all([
     leadPeoplePromise,
     metricsPromise,
+    getSelfActiveWorkSession(context),
   ]);
 
   if (metricsResponse.error) {
@@ -1583,30 +1574,41 @@ export async function listProjects(
       });
       return map;
     }, new Map<string, { totalHours: number; totalLaborCost: number }>());
+  const activeWorkProjectId = activeWorkSession?.projectId ?? null;
 
   const result = {
+    activeWorkProjectId,
+    activeWorkProjectName: activeWorkSession?.projectName ?? null,
     accessMessage: viewerAccess.accessMessage,
     configured: status.configured,
     configMessage: status.message,
     filters,
     forbidden: false,
     offices: offices.map((office) => ({ id: office.id, name: office.name })),
-    projects: visibleProjectRows.map((row) =>
-      buildProjectListItem(
+    projects: visibleProjectRows.map((row) => {
+      const projectSubject = toProjectPermissionSubject(row);
+      const isReadOnlyWhileWorkingElsewhere = Boolean(
+        activeWorkProjectId && activeWorkProjectId !== row.id,
+      );
+
+      return buildProjectListItem(
         row,
         officesById,
         peopleById,
         metricsByProjectId.get(row.id) ?? null,
         !canViewInternalProject(
           viewerAccess.viewer!,
-          toProjectPermissionSubject(row),
+          projectSubject,
         ),
-        canEditProject(viewerAccess.viewer!, toProjectPermissionSubject(row)),
-        canChangeProjectStage(viewerAccess.viewer!, toProjectPermissionSubject(row)),
-        canSetProjectLead(viewerAccess.viewer!, toProjectPermissionSubject(row)),
-        canViewProjectFinancials(viewerAccess.viewer!, toProjectPermissionSubject(row)),
-      ),
-    ),
+        !isReadOnlyWhileWorkingElsewhere &&
+          canEditProject(viewerAccess.viewer!, projectSubject),
+        !isReadOnlyWhileWorkingElsewhere &&
+          canChangeProjectStage(viewerAccess.viewer!, projectSubject),
+        !isReadOnlyWhileWorkingElsewhere &&
+          canSetProjectLead(viewerAccess.viewer!, projectSubject),
+        canViewProjectFinancials(viewerAccess.viewer!, projectSubject),
+      );
+    }),
     viewerLabel,
   };
 
@@ -1620,7 +1622,7 @@ export async function listProjects(
     visibleProjectCount: visibleProjectRows.length,
   });
 
-  return cacheKey ? setCachedValue(projectListCache, cacheKey, result) : result;
+  return result;
 }
 
 export async function listProjectRailData(
@@ -1761,6 +1763,13 @@ export async function createProject(
   if (!canCreateOrUpdateProjects(viewerAccess.viewer, managingOfficeId)) {
     throw new Error(
       "You do not have permission to create projects for this office.",
+    );
+  }
+
+  const activeWorkSession = await getSelfActiveWorkSession(context);
+  if (activeWorkSession) {
+    throw new Error(
+      `You are currently tracking ${activeWorkSession.projectName ?? "another project"}. Stop work before creating a project.`,
     );
   }
 
@@ -2017,6 +2026,41 @@ export async function createProjectAssignment(
   };
 }
 
+export async function removeProjectAssignment(
+  input: RemoveProjectAssignmentInput,
+  context: ViewerRequestContext = {},
+): Promise<void> {
+  const { client, projectRow, viewer } = await resolveProjectMutationContext(
+    input.projectId,
+    context,
+  );
+  await assertViewerCanWorkOnProject(projectRow.id, context);
+
+  if (!canAssignPeopleToProject(viewer, toProjectPermissionSubject(projectRow))) {
+    throw new Error("You do not have permission to change project staffing.");
+  }
+
+  const personId = normalizeRequiredText(input.personId, "Person");
+  const { data, error } = await client
+    .from("assignments")
+    .update({ active: false })
+    .eq("project_id", projectRow.id)
+    .eq("person_id", personId)
+    .eq("active", true)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error("This person is not actively assigned to the project.");
+  }
+
+  invalidateProjectReadCaches();
+  await invalidatePersonViewerCaches([personId]);
+}
+
 export async function createProjectChecklistItem(
   input: CreateProjectChecklistItemInput,
   context: ViewerRequestContext = {},
@@ -2156,7 +2200,13 @@ export async function createProjectDocument(
   }
 
   const name = normalizeRequiredText(input.name, "Document name");
-  const fileUrl = normalizeDocumentFileUrl(input.fileUrl);
+  const fileUrlInput = input.fileUrl?.trim() ?? "";
+  const serverPathInput = input.serverPath?.trim() ?? "";
+  if (Boolean(fileUrlInput) === Boolean(serverPathInput)) {
+    throw new Error("Provide either a document URL or a LAN server path.");
+  }
+  const fileUrl = fileUrlInput ? normalizeDocumentFileUrl(fileUrlInput) : null;
+  const serverPath = serverPathInput ? normalizeDocumentServerPath(serverPathInput) : null;
   const uploader = viewer.personId
     ? (await fetchPeopleRows([viewer.personId], { client }))[0] ?? null
     : null;
@@ -2169,6 +2219,7 @@ export async function createProjectDocument(
       file_url: fileUrl,
       name,
       project_id: projectRow.id,
+      server_path: serverPath,
       uploaded_by_person_id: uploader?.id ?? null,
     })
     .select(RESOURCE_DOCUMENT_ROW_SELECT)
@@ -2314,13 +2365,6 @@ export async function getProjectDetail(
   projectId: string,
   context: ViewerRequestContext = {},
 ): Promise<ProjectDetailData> {
-  const cacheKey = getProjectDetailCacheKey(projectId, context);
-  const cachedValue = cacheKey ? getCachedValue(projectDetailCache, cacheKey) : null;
-
-  if (cachedValue) {
-    return cachedValue;
-  }
-
   const status = getDatabaseStatus();
   const client = status.configured
     ? createServerSupabaseClient({ accessToken: context.accessToken })
@@ -2434,9 +2478,7 @@ export async function getProjectDetail(
       viewerLabel,
     };
 
-    return cacheKey
-      ? setCachedValue(projectDetailCache, cacheKey, previewResult)
-      : previewResult;
+    return previewResult;
   }
 
   let detailContext: LoadedProjectDetailContext;
@@ -2577,9 +2619,7 @@ export async function getProjectDetail(
       viewerLabel,
     };
 
-    return cacheKey
-      ? setCachedValue(projectDetailCache, cacheKey, summaryOnlyResult)
-      : summaryOnlyResult;
+    return summaryOnlyResult;
   }
 
   const staffing = assignmentRows.map((assignmentRow) => {
@@ -2719,5 +2759,5 @@ export async function getProjectDetail(
     viewerLabel,
   };
 
-  return cacheKey ? setCachedValue(projectDetailCache, cacheKey, result) : result;
+  return result;
 }

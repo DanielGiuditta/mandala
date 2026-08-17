@@ -807,6 +807,26 @@ a {
   font-weight: 600;
 }
 
+.app-sidebar-link-pending {
+  background: var(--figma-color-background-hover);
+}
+
+.app-navigation-spinner {
+  animation: app-navigation-spin 700ms linear infinite;
+  border: 2px solid var(--figma-color-border-default);
+  border-radius: 50%;
+  border-top-color: var(--figma-color-text-primary);
+  height: 14px;
+  margin-left: auto;
+  width: 14px;
+}
+
+@keyframes app-navigation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .app-sidebar-nav-label {
   white-space: nowrap;
 }
@@ -917,6 +937,41 @@ a {
 
 .app-time-tracker-error {
   margin: 0;
+}
+
+.app-active-work-floating {
+  align-items: center;
+  background: var(--figma-color-text-primary);
+  border: 1px solid var(--figma-color-border-default);
+  border-radius: 999px;
+  bottom: 16px;
+  box-shadow: 0 8px 24px var(--app-shadow-soft-color);
+  color: var(--figma-color-background-base);
+  display: inline-flex;
+  gap: 8px;
+  left: 68px;
+  max-width: min(420px, calc(100vw - 84px));
+  min-height: 40px;
+  padding: 0 14px;
+  position: fixed;
+  z-index: 70;
+}
+
+.app-active-work-kicker {
+  color: color-mix(in srgb, var(--figma-color-background-base) 74%, transparent);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.app-active-work-copy {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-profile-avatar {
@@ -1573,6 +1628,11 @@ th {
   justify-content: center;
   user-select: none;
   width: 32px;
+}
+
+.projects-add-button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .projects-add-icon {
@@ -2330,6 +2390,11 @@ th {
 .entity-inline-text-link:hover,
 .entity-inline-text-link:focus-visible {
   text-decoration: underline;
+}
+
+.entity-navigation-pending {
+  opacity: 0.58;
+  pointer-events: none;
 }
 
 .entity-inline-text-link {
@@ -3554,6 +3619,10 @@ th {
   max-width: 100%;
 }
 
+.people-project-cell {
+  overflow: visible;
+}
+
 .people-project-chip {
   align-items: center;
   background: var(--figma-color-background-wash);
@@ -3598,6 +3667,40 @@ th {
   color: var(--figma-color-text-primary);
   flex: 0 0 auto;
   font-weight: 600;
+}
+
+.people-project-overflow-menu {
+  flex: 0 0 auto;
+}
+
+.people-project-overflow-trigger {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 2px;
+  min-height: 24px;
+  padding: 0 2px;
+  width: auto;
+}
+
+.people-project-overflow-trigger:hover {
+  background: var(--figma-color-background-hover);
+}
+
+.people-project-overflow-trigger .dropdown-trigger-chevron {
+  flex-basis: 14px;
+  height: 14px;
+  width: 14px;
+}
+
+.people-project-overflow-trigger .dropdown-trigger-chevron-icon {
+  height: 14px;
+  width: 14px;
+}
+
+.people-project-overflow-surface .dropdown-list {
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .people-project-chip .people-cell-value {
@@ -4351,6 +4454,60 @@ th {
   gap: 8px;
 }
 
+.pd-glance-projects {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.pd-glance-project-links {
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pd-glance-project-overflow {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.pd-glance-project-overflow-trigger {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 2px;
+  min-height: 24px;
+  padding: 0 2px;
+  width: auto;
+}
+
+.pd-glance-project-overflow-trigger:hover {
+  background: var(--figma-color-background-hover);
+}
+
+.pd-glance-project-overflow-trigger .dropdown-trigger-chevron {
+  flex-basis: 14px;
+  height: 14px;
+  width: 14px;
+}
+
+.pd-glance-project-overflow-trigger .dropdown-trigger-chevron-icon {
+  height: 14px;
+  width: 14px;
+}
+
+.pd-glance-project-overflow-surface .dropdown-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
 .pd-person-chip {
   align-items: center;
   background: var(--figma-color-background-wash-light);
@@ -4693,6 +4850,34 @@ th {
     calc(6px * var(--entity-ui-scale));
 }
 
+.pd-staff-pill-group {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pd-staff-history-label {
+  color: var(--figma-color-text-tertiary);
+  font-weight: 500;
+}
+
+.pd-staff-remove-button {
+  background: transparent;
+  border: 0;
+  color: var(--figma-color-text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pd-staff-remove-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .pd-staff-pill strong,
 .pd-staff-pill span {
   font-size: 14px;
@@ -4866,6 +5051,13 @@ th {
 
   .app-logo-name {
     font-size: 24px;
+  }
+
+  .app-active-work-floating {
+    justify-content: center;
+    left: 12px;
+    max-width: none;
+    right: 12px;
   }
 
   .pd-page {

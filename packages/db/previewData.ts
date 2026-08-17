@@ -91,10 +91,11 @@ interface PreviewResourceDocumentRow {
   created_at: string
   description: string
   file_type: string
-  file_url: string
+  file_url: string | null
   id: string
   name: string
   project_id: string | null
+  server_path?: string | null
   uploaded_by_person_id: string
 }
 

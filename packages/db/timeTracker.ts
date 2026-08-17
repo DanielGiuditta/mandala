@@ -64,6 +64,14 @@ interface ProjectHoursRow {
 
 interface ActiveWorkSessionRow {
   project_id: string;
+  projects:
+    | {
+        name: string;
+      }
+    | Array<{
+        name: string;
+      }>
+    | null;
   started_at: string;
 }
 
@@ -540,7 +548,7 @@ async function getLiveActiveWorkSession(
 
   const { data, error } = await client
     .from("active_work_sessions")
-    .select("project_id, started_at")
+    .select("project_id, started_at, projects(name)")
     .eq("person_id", personId)
     .maybeSingle();
 
@@ -554,22 +562,13 @@ async function getLiveActiveWorkSession(
     return null;
   }
 
-  const { data: projectData, error: projectError } = await client
-    .from("projects")
-    .select("name")
-    .eq("id", session.project_id)
-    .maybeSingle();
-
-  if (projectError) {
-    throw projectError;
-  }
+  const project = Array.isArray(session.projects)
+    ? session.projects[0] ?? null
+    : session.projects;
 
   return {
     projectId: session.project_id,
-    projectName:
-      projectData && typeof projectData === "object" && "name" in projectData
-        ? String(projectData.name)
-        : null,
+    projectName: project?.name ?? null,
     startedAt: session.started_at,
   };
 }
@@ -776,44 +775,61 @@ export async function getSelfTimeTrackerData(
     );
   }
 
-  if (personId) {
-    const { error: pauseError } = await client.rpc("pause_stale_self_work_session", {
+  const pauseStaleSessionPromise = personId
+    ? client.rpc("pause_stale_self_work_session", {
       entry_date: input.localDate,
-    });
-
-    if (pauseError) {
-      throw pauseError;
-    }
-  }
-
-  const projects = await trace.measure("listTrackableProjectRows", () =>
+    })
+    : Promise.resolve({ error: null });
+  const projectsPromise = trace.measure("listTrackableProjectRows", () =>
     listTrackableProjectRows(client, trackerViewer),
   );
-  const todayHoursByProjectId = personId
-    ? await trace.measure("getTodayHoursByProjectId", () =>
+  const canViewTrackerCosts = canViewFinancialData(trackerViewer);
+  const hourlyCostPromise = personId && canViewTrackerCosts
+    ? trace.measure("getTrackerHourlyCost", () =>
+        getTrackerHourlyCost(client, personId),
+      )
+    : Promise.resolve(0);
+  const { error: pauseError } = await pauseStaleSessionPromise;
+
+  if (pauseError) {
+    throw pauseError;
+  }
+
+  const activeSessionPromise = trace.measure("getLiveActiveWorkSession", () =>
+    getLiveActiveWorkSession(client, personId),
+  );
+  const projects = await projectsPromise;
+  const projectIds = projects.map((project) => project.id);
+  const todayHoursPromise = personId
+    ? trace.measure("getTodayHoursByProjectId", () =>
         getTrackedHoursByProjectId(
           client,
           personId,
-          projects.map((project) => project.id),
+          projectIds,
           input.localDate,
         ),
       )
-    : new Map<string, number>();
-  const totalHoursByProjectId = personId
-    ? await trace.measure("getTotalHoursByProjectId", () =>
+    : Promise.resolve(new Map<string, number>());
+  const totalHoursPromise = personId
+    ? trace.measure("getTotalHoursByProjectId", () =>
         getTrackedHoursByProjectId(
           client,
           personId,
-          projects.map((project) => project.id),
+          projectIds,
         ),
       )
-    : new Map<string, number>();
-  const canViewTrackerCosts = canViewFinancialData(trackerViewer);
-  const hourlyCost = personId && canViewTrackerCosts
-    ? await trace.measure("getTrackerHourlyCost", () =>
-        getTrackerHourlyCost(client, personId),
-      )
-    : 0;
+    : Promise.resolve(new Map<string, number>());
+  const [
+    activeSession,
+    hourlyCost,
+    todayHoursByProjectId,
+    totalHoursByProjectId,
+  ] = await Promise.all([
+    activeSessionPromise,
+    hourlyCostPromise,
+    todayHoursPromise,
+    totalHoursPromise,
+  ]);
 
   trace.finish({
     hasPersonId: Boolean(personId),
@@ -823,7 +839,7 @@ export async function getSelfTimeTrackerData(
   });
 
   return {
-    activeSession: await getLiveActiveWorkSession(client, personId),
+    activeSession,
     accessMessage: personId
       ? null
       : "Finish account setup to record time.",

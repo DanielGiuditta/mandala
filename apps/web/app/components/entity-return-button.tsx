@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type ReactNode } from "react";
+import { useState } from "react";
 
 import {
   getEntityReturnUrl,
@@ -26,16 +28,21 @@ export function EntityReturnButton({
   label,
   scope,
 }: EntityReturnButtonProps) {
+  const router = useRouter();
+  const [isPending, setIsPending] = useState(false);
   const returnUrl = getEntityReturnUrl(scope) ?? fallbackHref;
 
   function handleClick() {
-    window.location.replace(returnUrl);
+    setIsPending(true);
+    router.replace(returnUrl);
   }
 
   return (
     <button
       aria-label={ariaLabel ?? label}
-      className={className}
+      aria-busy={isPending || undefined}
+      className={`${className ?? ""}${isPending ? " entity-navigation-pending" : ""}`}
+      disabled={isPending}
       onClick={handleClick}
       type="button"
     >

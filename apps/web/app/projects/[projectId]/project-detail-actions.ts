@@ -4,6 +4,7 @@ import type {
   CreateProjectAssignmentInput,
   CreateProjectChecklistItemInput,
   CreateProjectDocumentInput,
+  RemoveProjectAssignmentInput,
   UpdateProjectChecklistItemInput,
   UpdateProjectTimeEntryInput,
 } from "@mandala/db";
@@ -13,6 +14,7 @@ import {
   createProjectDocument,
   invalidatePeopleReadCaches,
   invalidateProjectReadCaches,
+  removeProjectAssignment,
   updateProjectChecklistItem,
   updateProjectTimeEntry,
 } from "@mandala/db";
@@ -74,6 +76,18 @@ export async function quickAddStaffAction(input: {
     personId: input.personId,
     projectId: input.projectId,
   });
+}
+
+export async function removeStaffAction(
+  input: RemoveProjectAssignmentInput,
+): Promise<ProjectDetailActionResult> {
+  try {
+    const viewerContext = await getViewerRequestContext();
+    await removeProjectAssignment(input, viewerContext);
+    return actionSuccess(input.projectId);
+  } catch (error) {
+    return actionFailure(error);
+  }
 }
 
 export async function addTaskAction(

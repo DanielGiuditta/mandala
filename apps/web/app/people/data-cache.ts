@@ -18,8 +18,27 @@ const PEOPLE_TAG = "people";
 const PEOPLE_OPTIONS_TAG = "people-options";
 const PEOPLE_REVALIDATE_SECONDS = 300;
 
-function normalizeFilterValue(value?: string | null): string {
-  return value?.trim().toLowerCase() ?? "";
+function filterPeople(
+  data: PeopleListData,
+  filters: PeopleListFilters,
+): PeopleListData {
+  const query = filters.query?.trim().toLowerCase();
+
+  return {
+    ...data,
+    filters,
+    people: data.people.filter((person) => {
+      if (filters.officeId && person.officeId !== filters.officeId) {
+        return false;
+      }
+
+      return !query || [
+        person.fullName,
+        person.title ?? "",
+        person.email ?? "",
+      ].some((value) => value.toLowerCase().includes(query));
+    }),
+  };
 }
 
 function getViewerCacheKey(context: ViewerRequestContext): string {
@@ -38,19 +57,16 @@ export async function getCachedPeople(
   filters: PeopleListFilters,
   context: ViewerRequestContext,
 ): Promise<PeopleListData> {
-  return unstable_cache(
-    async () => listPeople(filters, context),
-    [
-      "people-list",
-      getViewerCacheKey(context),
-      normalizeFilterValue(filters.officeId),
-      normalizeFilterValue(filters.query),
-    ],
+  const data = await unstable_cache(
+    async () => listPeople({}, context),
+    ["people-list", getViewerCacheKey(context)],
     {
       revalidate: PEOPLE_REVALIDATE_SECONDS,
       tags: [PEOPLE_TAG],
     },
   )();
+
+  return filterPeople(data, filters);
 }
 
 export async function getCachedPersonDetail(
