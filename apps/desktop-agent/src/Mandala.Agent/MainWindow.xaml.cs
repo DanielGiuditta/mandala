@@ -9,6 +9,7 @@ public partial class MainWindow : Window
 {
     private static readonly TimeSpan IdleLimit = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ActivityHeartbeatInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan WakeNetworkGracePeriod = TimeSpan.FromSeconds(5);
 
     private readonly AppConfiguration _configuration = AppConfiguration.Load();
     private readonly SecureSessionStore _sessionStore = new();
@@ -19,6 +20,9 @@ public partial class MainWindow : Window
     private uint _lastInputTick;
     private DateTimeOffset _lastHeartbeatAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastPendingSaveRetryAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastPollAt = DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastWakeSaveAttemptAt = DateTimeOffset.MinValue;
+    private bool _wakeIdleStopPending;
     private bool _isSaving;
 
     public MainWindow()
@@ -168,6 +172,10 @@ public partial class MainWindow : Window
 
     private async Task PollAsync()
     {
+        var polledAt = DateTimeOffset.UtcNow;
+        var previousPollAt = _lastPollAt;
+        _lastPollAt = polledAt;
+
         if (_client is null || _isSaving)
         {
             return;
@@ -206,13 +214,35 @@ public partial class MainWindow : Window
 
         if (_activeSession is null)
         {
+            _wakeIdleStopPending = false;
             return;
         }
 
         var idleDuration = NativeIdleMonitor.GetIdleDuration();
-        if (idleDuration >= IdleLimit)
+        if (!_wakeIdleStopPending &&
+            IdlePauseDecision.ShouldPause(idleDuration, previousPollAt, polledAt, IdleLimit))
         {
-            await StopTrackingAsync(true);
+            _wakeIdleStopPending = true;
+            _lastWakeSaveAttemptAt = polledAt;
+            TrackerMessageText.Text = AgentDiagnostics.Format(
+                "AGENT-WAKE-SAVE-001",
+                "Windows was inactive for at least 5 minutes. The timer is paused and Mandala is waiting for the network to save the time.");
+            AgentDiagnostics.Record(
+                "wake-idle-detected",
+                $"windowsIdleSeconds={idleDuration.TotalSeconds:0}; pollGapSeconds={(polledAt - previousPollAt).TotalSeconds:0}; projectId={_activeSession.ProjectId}");
+            UpdateTrackerStatus();
+            return;
+        }
+
+        if (_wakeIdleStopPending)
+        {
+            if (polledAt - _lastWakeSaveAttemptAt >= WakeNetworkGracePeriod)
+            {
+                _lastWakeSaveAttemptAt = polledAt;
+                await StopTrackingAsync(true);
+            }
+
+            UpdateTrackerStatus();
             return;
         }
 
@@ -236,11 +266,11 @@ public partial class MainWindow : Window
         UpdateTrackerStatus();
     }
 
-    private async Task StopTrackingAsync(bool pausedForIdle)
+    private async Task<bool> StopTrackingAsync(bool pausedForIdle)
     {
         if (_client is null || _activeSession is null || _isSaving)
         {
-            return;
+            return false;
         }
 
         try
@@ -249,6 +279,7 @@ public partial class MainWindow : Window
             var saveResult = await _client.StopAsync(GetLocalDate());
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             _activeSession = null;
+            _wakeIdleStopPending = false;
             UpdateTrackerStatus();
             var confirmation = pausedForIdle
                 ? TrackerConfirmationMessages.IdlePause(saveResult.TimeEntryId)
@@ -257,13 +288,26 @@ public partial class MainWindow : Window
             AgentDiagnostics.Record(
                 pausedForIdle ? "idle-confirmation-shown" : "stop-confirmation-shown",
                 $"entryId={saveResult.TimeEntryId}; message={AgentDiagnostics.Compact(confirmation)}");
+            return true;
         }
         catch (Exception exception)
         {
             AgentDiagnostics.Record("stop-ui-failure", AgentDiagnostics.Compact(exception.ToString()));
-            TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
-            await LoadTrackerAsync();
-            TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
+            if (pausedForIdle && _wakeIdleStopPending)
+            {
+                TrackerMessageText.Text = AgentDiagnostics.Format(
+                    "AGENT-WAKE-SAVE-001",
+                    "The timer is paused. Mandala is still waiting for the network and will retry the save automatically.");
+                AgentDiagnostics.Record("wake-idle-save-retry", AgentDiagnostics.Compact(exception.Message));
+            }
+            else
+            {
+                TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
+                await LoadTrackerAsync();
+                TrackerMessageText.Text = ExtractMessage(exception, "Unable to stop work.", "AGENT-STOP-001");
+            }
+
+            return false;
         }
         finally
         {
@@ -304,6 +348,10 @@ public partial class MainWindow : Window
 
             _lastInputTick = NativeIdleMonitor.GetLastInputTick();
             _lastHeartbeatAt = DateTimeOffset.UtcNow;
+            if (_activeSession is null)
+            {
+                _wakeIdleStopPending = false;
+            }
             UpdateTrackerStatus();
         }
         catch (Exception exception)
@@ -354,6 +402,7 @@ public partial class MainWindow : Window
             ? $"Signed in as {email} · Agent v{version}"
             : $"Agent v{version}";
         _pollTimer.Start();
+        _lastPollAt = DateTimeOffset.UtcNow;
     }
 
     private void UpdateTrackerStatus()
@@ -364,6 +413,16 @@ public partial class MainWindow : Window
             ElapsedText.Text = "";
             StopButton.IsEnabled = false;
             StartWorkButton.Content = "Start Work";
+            return;
+        }
+
+        if (_wakeIdleStopPending)
+        {
+            ActiveProjectText.Text = $"Paused {_activeSession.ProjectName}";
+            ElapsedText.Text = "Waiting for network to save time";
+            StartWorkButton.IsEnabled = false;
+            StopButton.IsEnabled = false;
+            StartWorkButton.Content = "Paused";
             return;
         }
 
@@ -380,8 +439,8 @@ public partial class MainWindow : Window
     {
         _isSaving = isSaving;
         SignInButton.IsEnabled = !isSaving;
-        StartWorkButton.IsEnabled = !isSaving;
-        StopButton.IsEnabled = !isSaving && _activeSession is not null;
+        StartWorkButton.IsEnabled = !isSaving && !_wakeIdleStopPending;
+        StopButton.IsEnabled = !isSaving && _activeSession is not null && !_wakeIdleStopPending;
     }
 
     private static string GetLocalDate() => DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

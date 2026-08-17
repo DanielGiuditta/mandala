@@ -9,6 +9,7 @@ FormatsEveryFinalizedSessionWithAReference();
 RecoversAStopAfterTheServerSavedButTheResponseWasLost();
 RecoversAProjectSwitchAfterTheServerSavedButTheResponseWasLost();
 FailsClosedWhenTheRecoveredSaveIsAmbiguousOrTheSessionStateIsWrong();
+DetectsSleepEvenWhenUnlockInputResetsTheWindowsIdleClock();
 
 Console.WriteLine("PASS: Mandala Agent regression checks");
 
@@ -112,6 +113,30 @@ static void FailsClosedWhenTheRecoveredSaveIsAmbiguousOrTheSessionStateIsWrong()
             activeProjectId: "old-project",
             expectedActiveProjectId: "new-project") ?? string.Empty,
         "reject a switch with the wrong active project");
+}
+
+static void DetectsSleepEvenWhenUnlockInputResetsTheWindowsIdleClock()
+{
+    var previousPoll = new DateTimeOffset(2026, 8, 17, 18, 0, 0, TimeSpan.FromHours(5.5));
+    var afterWake = previousPoll.AddMinutes(7);
+
+    AssertEqual(
+        "True",
+        IdlePauseDecision.ShouldPause(
+            windowsIdleDuration: TimeSpan.FromSeconds(1),
+            previousPollAt: previousPoll,
+            currentPollAt: afterWake,
+            idleLimit: TimeSpan.FromMinutes(5)).ToString(),
+        "detect sleep after unlock input resets native idle duration");
+
+    AssertEqual(
+        "False",
+        IdlePauseDecision.ShouldPause(
+            windowsIdleDuration: TimeSpan.FromMinutes(4),
+            previousPollAt: previousPoll,
+            currentPollAt: previousPoll.AddSeconds(1),
+            idleLimit: TimeSpan.FromMinutes(5)).ToString(),
+        "keep an active session below the idle limit");
 }
 
 static void AssertEqual(string expected, string actual, string scenario)
