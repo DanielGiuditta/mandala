@@ -3,10 +3,11 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Mandala.Agent;
 
-public sealed class SupabaseTimeTrackerClient
+public sealed partial class SupabaseTimeTrackerClient
 {
     private const int SaveReconciliationAttempts = 4;
     private readonly AppConfiguration _configuration;
@@ -17,13 +18,27 @@ public sealed class SupabaseTimeTrackerClient
     public SupabaseTimeTrackerClient(AppConfiguration configuration)
     {
         _configuration = configuration;
-        _httpClient = new HttpClient { BaseAddress = new Uri($"{configuration.SupabaseUrl}/") };
+        if (!configuration.IsProductionTarget || !configuration.IsValidGateway)
+            throw new InvalidOperationException("AGENT-CONFIG-BACKEND-001: Invalid backend or LAN configuration.");
+        var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
+        if (configuration.UsesLanGateway)
+        {
+            using var certificates = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+            certificates.Open(OpenFlags.ReadOnly);
+            var matches = certificates.Certificates.Find(X509FindType.FindByThumbprint, configuration.DeviceCertificateThumbprint!, validOnly: true);
+            if (matches.Count != 1 || !matches[0].HasPrivateKey)
+                throw new InvalidOperationException("The enrolled LAN device certificate is missing or expired. Contact IT.");
+            handler.ClientCertificates.Add(matches[0]);
+        }
+        _httpClient = new HttpClient(handler) { BaseAddress = new Uri($"{(configuration.UsesLanGateway ? configuration.GatewayUrl!.TrimEnd('/') : configuration.SupabaseUrl)}/"), Timeout = TimeSpan.FromSeconds(10) };
         _httpClient.DefaultRequestHeaders.Add("apikey", configuration.SupabaseAnonKey);
         AgentDiagnostics.Record("client-created", $"backend={configuration.SupabaseUrl}");
     }
 
     public string? Email => _session?.Email;
-    public bool HasPendingSave => _pendingSaveCheck is not null;
+    public bool HasPendingSave => UsesLanGateway
+        ? _journalState?.Session is { } session && (!session.Confirmed || session.StoppedAt is not null)
+        : _pendingSaveCheck is not null;
 
     public async Task SignInAsync(string email, string password)
     {
@@ -33,15 +48,21 @@ public sealed class SupabaseTimeTrackerClient
             AppConfiguration.JsonOptions);
         var payload = await ReadResponseAsync<AuthResponse>(response);
         _session = new StoredSession(payload.AccessToken, payload.RefreshToken, email.Trim().ToLowerInvariant());
+        await LoadJournalAsync();
     }
 
     public async Task<bool> RestoreAsync(StoredSession session)
     {
         _session = session;
+        await LoadJournalAsync();
 
         try
         {
             return await RefreshSessionAsync();
+        }
+        catch (Exception exception) when (UsesLanGateway && _journalState?.Session is not null && IsConnectionFailure(exception))
+        {
+            return true; // Recover this Windows user's pending work; cloud writes still require valid auth.
         }
         catch
         {
@@ -55,6 +76,7 @@ public sealed class SupabaseTimeTrackerClient
 
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
+        if (UsesLanGateway) return await GetLanSnapshotAsync();
         var projects = await ListProjectsAsync();
         var warnings = new List<string>();
 
@@ -136,7 +158,7 @@ public sealed class SupabaseTimeTrackerClient
     }
 
     public async Task<TimeEntrySaveResult?> StartAsync(string projectId, string localDate, bool confirmSwitch) =>
-        await StartAndRecordAsync(projectId, localDate, confirmSwitch);
+        UsesLanGateway ? await StartLanAsync(projectId, localDate, confirmSwitch) : await StartAndRecordAsync(projectId, localDate, confirmSwitch);
 
     private async Task<TimeEntrySaveResult?> StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
     {
@@ -207,6 +229,7 @@ public sealed class SupabaseTimeTrackerClient
 
     public async Task<TimeEntrySaveResult> StopAsync(string localDate)
     {
+        if (UsesLanGateway) return await StopLanAsync();
         AgentDiagnostics.Record("stop-request", $"date={localDate}; email={Email}");
         var pendingResult = await TryResolvePendingSaveAsync(localDate, expectedActiveProjectId: null);
         if (pendingResult is not null)
@@ -271,6 +294,7 @@ public sealed class SupabaseTimeTrackerClient
 
     public async Task<TimeEntrySaveResult?> ReconcilePendingSaveAsync()
     {
+        if (UsesLanGateway) return await ReconcileLanAsync();
         var pending = _pendingSaveCheck;
         if (pending is null)
         {
@@ -330,8 +354,11 @@ public sealed class SupabaseTimeTrackerClient
         return null;
     }
 
-    public async Task TouchAsync() =>
-        await SendWithoutResponseAsync(HttpMethod.Post, "rest/v1/rpc/touch_self_work_session", new { });
+    public async Task TouchAsync()
+    {
+        if (UsesLanGateway) await TouchLanAsync();
+        else await SendWithoutResponseAsync(HttpMethod.Post, "rest/v1/rpc/touch_self_work_session", new { });
+    }
 
     private async Task<T> RpcAsync<T>(string functionName, object body) =>
         await SendAsync<T>(HttpMethod.Post, $"rest/v1/rpc/{functionName}", body);
@@ -513,14 +540,3 @@ public sealed class SupabaseTimeTrackerClient
         public string Id { get; init; } = string.Empty;
     }
 }
-
-public sealed record TimeTrackerProject(string Id, string Name)
-{
-    public override string ToString() => Name;
-}
-public sealed record ActiveWorkSession(string ProjectId, string ProjectName, DateTimeOffset StartedAt);
-public sealed record TimeEntrySaveResult(string TimeEntryId);
-public sealed record TrackerSnapshot(
-    IReadOnlyList<TimeTrackerProject> Projects,
-    ActiveWorkSession? ActiveSession,
-    string? Warning);

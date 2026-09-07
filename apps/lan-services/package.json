@@ -1,0 +1,16 @@
+{
+  "name": "@mandala/lan-services",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "gateway": "node gateway.mjs",
+    "previews": "node previews.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

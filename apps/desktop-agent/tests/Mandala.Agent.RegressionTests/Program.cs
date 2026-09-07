@@ -10,6 +10,9 @@ RecoversAStopAfterTheServerSavedButTheResponseWasLost();
 RecoversAProjectSwitchAfterTheServerSavedButTheResponseWasLost();
 FailsClosedWhenTheRecoveredSaveIsAmbiguousOrTheSessionStateIsWrong();
 DetectsSleepEvenWhenUnlockInputResetsTheWindowsIdleClock();
+RejectsUnsafeGatewayConfiguration();
+CapsDisconnectedTimeAtIdleAndDailyLimits();
+await RecoversProtectedTimeJournalOnWindows();
 
 Console.WriteLine("PASS: Mandala Agent regression checks");
 
@@ -146,4 +149,51 @@ static void AssertEqual(string expected, string actual, string scenario)
         throw new InvalidOperationException(
             $"Regression check failed for {scenario}. Expected '{expected}', received '{actual}'.");
     }
+}
+
+static void RejectsUnsafeGatewayConfiguration()
+{
+    var config = new AppConfiguration($"https://{AppConfiguration.ProductionProjectRef}.supabase.co", "test-public-key")
+        { GatewayUrl = "https://mandala.office.example:8443", DeviceCertificateThumbprint = "1234" };
+    AssertEqual("True", config.IsValidGateway.ToString(), "valid HTTPS LAN transport");
+    foreach (var url in new[] { "http://server", "https://user:password@server", "https://server/path", "https://server?redirect=other", "https://server#fragment" })
+        AssertEqual("False", (config with { GatewayUrl = url }).IsValidGateway.ToString(), "reject unsafe LAN URL");
+    AssertEqual("False", (config with { SupabaseUrl = "https://izddgdizwlwnhjwnojaw.supabase.co" }).IsProductionTarget.ToString(), "reject incident backend");
+    AssertEqual("False", (config with { SupabaseUrl = $"https://{AppConfiguration.ProductionProjectRef}.supabase.co/other" }).IsProductionTarget.ToString(), "reject backend path");
+}
+
+static void CapsDisconnectedTimeAtIdleAndDailyLimits()
+{
+    var started = DateTimeOffset.Parse("2026-09-07T09:00:00+05:30");
+    var session = new DesktopSession("session", "project", "Project", "2026-09-07", started, started.AddMinutes(30), true);
+    AssertEqual(started.AddMinutes(35).ToString("O"), DesktopSessionTiming.StopAt(session, started.AddHours(8)).ToString("O"), "do not count disconnected sleep");
+    AssertEqual(started.AddMinutes(32).ToString("O"), DesktopSessionTiming.StopAt(session, started.AddMinutes(32)).ToString("O"), "exact manual stop");
+    AssertEqual(started.ToString("O"), DesktopSessionTiming.StopAt(session, started.AddHours(-1)).ToString("O"), "clock rollback cannot create negative time");
+    AssertEqual(started.AddHours(24).ToString("O"), DesktopSessionTiming.StopAt(session with { LastActivityAt = started.AddHours(25) }, started.AddHours(26)).ToString("O"), "cap unexpectedly long sessions");
+}
+
+static async Task RecoversProtectedTimeJournalOnWindows()
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.WriteLine("Windows DPAPI journal recovery runs in the existing Windows CI job.");
+        return;
+    }
+    var root = Path.Combine(Path.GetTempPath(), "mandala-journal-" + Guid.NewGuid());
+    try
+    {
+        var store = new DesktopSessionJournal("test@example.test", root);
+        var start = DateTimeOffset.UtcNow;
+        var state = new DesktopJournalState("test@example.test", [], new DesktopSession("session", "project", "Project", "2026-09-07", start, start, true, start.AddMinutes(5)));
+        await store.SaveAsync(state);
+        var restored = await new DesktopSessionJournal("test@example.test", root).LoadAsync("test@example.test");
+        AssertEqual(state.Session!.StoppedAt!.Value.ToString("O"), restored.Session!.StoppedAt!.Value.ToString("O"), "recover exact stopped time after restart");
+        await store.SaveAsync(state with { Session = null });
+        AssertEqual("True", ((await store.LoadAsync("test@example.test")).Session is null).ToString(), "durable acknowledgment");
+        var file = Directory.GetFiles(root, "*.dat").Single();
+        await File.WriteAllTextAsync(file, "corrupted");
+        try { await store.LoadAsync("test@example.test"); throw new InvalidOperationException("Corrupt journal was silently accepted"); }
+        catch (System.Security.Cryptography.CryptographicException) { }
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
 }

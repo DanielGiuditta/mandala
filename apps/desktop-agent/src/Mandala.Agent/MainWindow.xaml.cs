@@ -11,7 +11,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan ActivityHeartbeatInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan WakeNetworkGracePeriod = TimeSpan.FromSeconds(5);
 
-    private readonly AppConfiguration _configuration = AppConfiguration.Load();
+    private readonly AppConfiguration _configuration;
     private readonly SecureSessionStore _sessionStore = new();
     private readonly DispatcherTimer _pollTimer;
     private readonly TrackerMessageState _trackerMessageState = new();
@@ -24,13 +24,20 @@ public partial class MainWindow : Window
     private DateTimeOffset _lastWakeSaveAttemptAt = DateTimeOffset.MinValue;
     private bool _wakeIdleStopPending;
     private bool _isSaving;
+    private bool _isPolling;
 
     public MainWindow()
     {
         InitializeComponent();
+        try { _configuration = AppConfiguration.Load(); }
+        catch (Exception exception)
+        {
+            _configuration = new AppConfiguration("", "");
+            AgentDiagnostics.Record("configuration-unreadable", AgentDiagnostics.Compact(exception.Message));
+        }
         var version = GetVersion();
         var backend = _configuration.ProjectRef ?? "unconfigured";
-        BuildIdentityText.Text = $"Agent v{version} · Backend {backend}";
+        BuildIdentityText.Text = $"Agent v{version} · Backend {backend}" + (_configuration.UsesLanGateway ? $" · LAN {_configuration.GatewayUrl}" : "");
         AgentDiagnostics.Record("startup", $"version={version}; backend={_configuration.SupabaseUrl}");
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _pollTimer.Tick += async (_, _) => await PollAsync();
@@ -60,15 +67,32 @@ public partial class MainWindow : Window
             return;
         }
 
-        _client = new SupabaseTimeTrackerClient(_configuration);
-        var storedSession = await _sessionStore.LoadAsync();
+        StoredSession? storedSession;
+        try
+        {
+            _client = new SupabaseTimeTrackerClient(_configuration);
+            storedSession = await _sessionStore.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            LoginMessageText.Text = ExtractMessage(exception, "Ask IT to check the LAN certificate and configuration.", "AGENT-LAN-CONFIG-001");
+            SignInButton.IsEnabled = false;
+            return;
+        }
 
         if (storedSession is null)
         {
             return;
         }
 
-        if (!await _client.RestoreAsync(storedSession))
+        bool restored;
+        try { restored = await _client.RestoreAsync(storedSession); }
+        catch (Exception exception)
+        {
+            LoginMessageText.Text = ExtractMessage(exception, "Pending time could not be read. Preserve diagnostics for IT.", "AGENT-JOURNAL-001");
+            return;
+        }
+        if (!restored)
         {
             LoginMessageText.Text = AgentDiagnostics.Format(
                 "AGENT-AUTH-RESTORE-001",
@@ -76,9 +100,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        await _sessionStore.SaveAsync(_client.GetStoredSession());
-        ShowTracker();
-        await LoadTrackerAsync();
+        SetSaving(true);
+        try
+        {
+            await _sessionStore.SaveAsync(_client.GetStoredSession());
+            ShowTracker();
+            await LoadTrackerAsync();
+        }
+        finally { SetSaving(false); }
     }
 
     private async void SignInButton_Click(object sender, RoutedEventArgs e)
@@ -146,7 +175,9 @@ public partial class MainWindow : Window
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             if (switchingProject && saveResult is not null && previousProjectName is not null)
             {
-                var confirmation = TrackerConfirmationMessages.ProjectSwitch(
+                var confirmation = saveResult.Pending ? _client.PendingTimeMessage! : saveResult.TooShort
+                    ? "Previous session was shorter than the time-entry rounding threshold. No hours were added."
+                    : TrackerConfirmationMessages.ProjectSwitch(
                     previousProjectName,
                     project.Name,
                     saveResult.TimeEntryId);
@@ -160,6 +191,7 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AgentDiagnostics.Record("start-ui-failure", AgentDiagnostics.Compact(exception.ToString()));
+            if (_client.UsesLanGateway) await LoadTrackerAsync();
             TrackerMessageText.Text = ExtractMessage(exception, "Unable to start work.", "AGENT-START-001");
         }
         finally
@@ -171,6 +203,14 @@ public partial class MainWindow : Window
     private async void StopButton_Click(object sender, RoutedEventArgs e) => await StopTrackingAsync(false);
 
     private async Task PollAsync()
+    {
+        if (_isPolling) return;
+        _isPolling = true;
+        try { await PollCoreAsync(); }
+        finally { _isPolling = false; }
+    }
+
+    private async Task PollCoreAsync()
     {
         var polledAt = DateTimeOffset.UtcNow;
         var previousPollAt = _lastPollAt;
@@ -191,7 +231,9 @@ public partial class MainWindow : Window
                 var recovered = await _client.ReconcilePendingSaveAsync();
                 if (recovered is not null)
                 {
-                    var confirmation = TrackerConfirmationMessages.ManualStop(recovered.TimeEntryId);
+                    var confirmation = recovered.TooShort
+                        ? "Session closed. It was shorter than the time-entry rounding threshold; no hours were added."
+                        : TrackerConfirmationMessages.ManualStop(recovered.TimeEntryId);
                     _trackerMessageState.ShowPersistent(confirmation);
                     AgentDiagnostics.Record(
                         "pending-save-confirmation-shown",
@@ -199,12 +241,15 @@ public partial class MainWindow : Window
                     await LoadTrackerAsync();
                     return;
                 }
+                if (_client.UsesLanGateway) await LoadTrackerAsync();
             }
             catch (Exception exception)
             {
                 AgentDiagnostics.Record(
                     "pending-save-background-failure",
                     AgentDiagnostics.Compact(exception.ToString()));
+                if (_client.UsesLanGateway)
+                    TrackerMessageText.Text = "Pending time remains on this computer. Sync could not be confirmed; use diagnostics if this continues.";
             }
             finally
             {
@@ -254,6 +299,7 @@ public partial class MainWindow : Window
 
             try
             {
+                SetSaving(true);
                 await _client.TouchAsync();
                 await _sessionStore.SaveAsync(_client.GetStoredSession());
             }
@@ -261,6 +307,7 @@ public partial class MainWindow : Window
             {
                 TrackerMessageText.Text = ExtractMessage(exception, "Unable to record activity.", "AGENT-ACTIVITY-001");
             }
+            finally { SetSaving(false); }
         }
 
         UpdateTrackerStatus();
@@ -281,7 +328,9 @@ public partial class MainWindow : Window
             _activeSession = null;
             _wakeIdleStopPending = false;
             UpdateTrackerStatus();
-            var confirmation = pausedForIdle
+            var confirmation = saveResult.Pending ? _client.PendingTimeMessage!
+                : saveResult.TooShort ? "Session closed. It was shorter than the time-entry rounding threshold; no hours were added."
+                : pausedForIdle
                 ? TrackerConfirmationMessages.IdlePause(saveResult.TimeEntryId)
                 : TrackerConfirmationMessages.ManualStop(saveResult.TimeEntryId);
             TrackerMessageText.Text = _trackerMessageState.ShowPersistent(confirmation);
@@ -365,6 +414,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (_client?.UsesLanGateway == true) AgentDiagnostics.Record("lan-journal-summary", _client.LanDiagnosticSummary);
             var report = AgentDiagnostics.Report();
             var path = AgentDiagnostics.SaveReportToDesktop();
             var clipboardCopied = false;
@@ -439,7 +489,7 @@ public partial class MainWindow : Window
     {
         _isSaving = isSaving;
         SignInButton.IsEnabled = !isSaving;
-        StartWorkButton.IsEnabled = !isSaving && !_wakeIdleStopPending;
+        StartWorkButton.IsEnabled = !isSaving && !_wakeIdleStopPending && !(_client?.UsesLanGateway == true && _client.HasPendingSave);
         StopButton.IsEnabled = !isSaving && _activeSession is not null && !_wakeIdleStopPending;
     }
 

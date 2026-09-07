@@ -1,0 +1,28 @@
+[Unit]
+Description=Mandala isolated preview reader
+After=network-online.target
+
+[Service]
+User=mandala-preview-reader
+Group=mandala-preview
+WorkingDirectory=/opt/mandala/apps/lan-services
+EnvironmentFile=/etc/mandala/preview-reader.env
+ExecStart=/usr/bin/node previews.mjs
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadOnlyPaths=/var/lib/mandala-previews
+InaccessiblePaths=/etc/mandala/preview-publisher.env /etc/mandala/publisher.key
+CapabilityBoundingSet=
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

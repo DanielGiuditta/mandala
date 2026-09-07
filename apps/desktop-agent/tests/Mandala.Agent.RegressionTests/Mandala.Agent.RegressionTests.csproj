@@ -6,6 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <Compile Include="../../src/Mandala.Agent/TimeTrackerModels.cs" Link="TimeTrackerModels.cs" />
+    <Compile Include="../../src/Mandala.Agent/DesktopSessionTiming.cs" Link="DesktopSessionTiming.cs" />
+    <Compile Include="../../src/Mandala.Agent/DesktopSessionJournal.cs" Link="DesktopSessionJournal.cs" />
+    <Compile Include="../../src/Mandala.Agent/AppConfiguration.cs" Link="AppConfiguration.cs" />
     <Compile Include="../../src/Mandala.Agent/AgentHttpResponse.cs" Link="AgentHttpResponse.cs" />
     <Compile Include="../../src/Mandala.Agent/IdlePauseDecision.cs" Link="IdlePauseDecision.cs" />
     <Compile Include="../../src/Mandala.Agent/TrackerConfirmationMessages.cs" Link="TrackerConfirmationMessages.cs" />

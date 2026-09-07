@@ -117,6 +117,7 @@ export function ProjectResourcesCard({
                     <span className="pd-link">{document.name}</span>
                   )}
                   <ResourceDocumentActions
+                    resourceId={document.id}
                     fileUrl={document.fileUrl}
                     serverPath={document.serverPath}
                   />

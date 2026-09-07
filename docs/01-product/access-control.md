@@ -21,6 +21,8 @@ This document defines the effective user tiers for V1 and the minimum data neede
 - Compensation visibility is restricted to admins, partners, and the exact-email override.
 - The approved Windows-agent installer is downloadable only by admins, partners, and the exact-email override.
 - Client access is explicit per project and is never inferred from `Project.clientName`.
+- Office file previews are internal-only. Every fetch must check the current active account/person and the existing resource read scope, without a service-role key or cached permission decision. The isolated reader also requires the requesting authentication-user UUID in the publisher's explicit document allowlist. That allowlist must be no broader than the original file's approved readers. External client users do not gain preview access.
+- LAN desktop writes require both enrolled-device mutual TLS at the office gateway and the employee's authenticated self-only database authorization. Device enrollment is not a substitute for employee authentication. Revoked accounts/projects cannot upload pending work; pending local records must be preserved for IT resolution.
 - V1 keeps the global project stage set fixed. Access control governs who can change a project's stage, not who can redefine the stage catalog.
 
 ## Exact-email override

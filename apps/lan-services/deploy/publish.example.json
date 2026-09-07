@@ -1,0 +1,12 @@
+{
+  "publisherUrl": "https://previews.office.example:8445",
+  "exportRoot": "C:\\MandalaApprovedExports",
+  "documents": [
+    {
+      "resourceId": "REPLACE_WITH_RESOURCE_UUID",
+      "serverPath": "\\\\Server\\ApprovedProject\\Drawing.dwg",
+      "previewFile": "Drawing.pdf",
+      "allowedSubjects": ["REPLACE_WITH_EMPLOYEE_AUTH_USER_UUID"]
+    }
+  ]
+}

@@ -5091,3 +5091,7 @@ th {
     width: 100%;
   }
 }
+/* Resource preview reuses the project card and resource action patterns. */
+.resource-preview-page { display: flex; flex-direction: column; min-height: 80vh; }
+.resource-preview-content { min-width: 0; overflow: auto; }
+.resource-preview-image { max-width: 100%; height: auto; }

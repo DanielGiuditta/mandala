@@ -80,6 +80,8 @@ Actual time worked for a project on a given date.
 ### `source`
 Where the time entry originated, such as native Windows checker sync or a manual correction/import path.
 
+LAN desktop sessions use the existing `windows-tracker` value, displayed as Windows checker; existing online/sidebar sessions retain `manual`.
+
 ### `assignmentId`
 Optional link to the related assignment when available.
 
@@ -94,6 +96,9 @@ The person currently working. It is unique so one person cannot have more than o
 
 ### `lastActivityAt`
 The latest recorded keyboard, mouse, scroll, or touch activity for the active session. The tracker pauses after five minutes without activity.
+
+### `desktopSessionId`
+Optional durable session receipt ID. When present, the original LAN agent owns finalization; stale-session processing and another device cannot silently close or replace it.
 
 ## ResourceDocument
 
@@ -111,7 +116,7 @@ The URL must not include embedded credentials.
 ### `serverPath`
 Optional Windows UNC path for a document or library asset stored on the office LAN, such as `\\Server\\Studio 2 Projects\\Some Project\\Drawings\\A101.dwg`.
 
-Exactly one of `fileUrl` or `serverPath` must be present. Mandala stores this path as metadata and does not upload or proxy the file.
+Exactly one of `fileUrl` or `serverPath` must be present. Mandala stores this path as metadata and does not upload or proxy the original file. An approved PDF/image viewing copy may be published separately to the isolated office preview service; its binding and viewer permissions are service metadata described in the domain model.
 
 ## ChecklistItem
 

@@ -1,5 +1,7 @@
 # LAN Resource Links Handoff
 
+> Historical file-link exploration. The implemented LAN time and isolated preview design is documented in [LAN deployment](lan-deployment.md). In particular, do not use an IT person's everyday workstation as the internet gateway, and do not grant the gateway access to original shares. The original-file path-only rule now permits separately published office-only PDF/image preview copies; originals remain untouched. The "Current Repo Mismatch" section below predates the implemented `serverPath` support.
+
 ## Purpose
 
 This handoff explains the current client requirement around resource files and the intended architecture direction.

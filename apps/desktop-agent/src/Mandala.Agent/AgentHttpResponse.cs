@@ -16,7 +16,7 @@ internal static class AgentHttpResponse
         var message = await response.Content.ReadAsStringAsync();
         throw new HttpRequestException(string.IsNullOrWhiteSpace(message)
             ? "Mandala could not complete the request."
-            : message);
+            : message, null, response.StatusCode);
     }
 
     public static async Task<T> ReadRequiredJsonAsync<T>(

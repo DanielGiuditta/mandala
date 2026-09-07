@@ -1,7 +1,6 @@
 "use client"
 
-import { createBrowserClient } from "@supabase/ssr"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 interface AuthHashHandoffProps {
   redirectIfNoHash?: string | null
@@ -21,9 +20,11 @@ export function AuthHashHandoff({
 }: AuthHashHandoffProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+  const handoffParams = useRef<URLSearchParams | null>(null)
+  const handoffRequest = useRef<Promise<{ error: string | null }> | null>(null)
 
   useEffect(() => {
-    const hashParams = readHashParams()
+    const hashParams = handoffParams.current ?? readHashParams()
 
     if (!hashParams) {
       if (redirectIfNoHash) {
@@ -46,33 +47,31 @@ export function AuthHashHandoff({
     if (!accessToken || !refreshToken) {
       return
     }
-
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!url || !key) {
-      setErrorMessage("Supabase auth is not configured for this workspace yet.")
-      return
-    }
+    handoffParams.current = hashParams
 
     let isCancelled = false
 
     setIsProcessing(true)
 
-    const supabase = createBrowserClient(url, key)
-
-    void supabase.auth
-      .setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      })
+    // Remove credentials from browser history before contacting the same-origin server.
+    window.history.replaceState(null, "", window.location.pathname + window.location.search)
+    handoffRequest.current ??= fetch("/auth/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken,
+        refreshToken,
+      }),
+    })
+      .then(response => response.json())
+    void handoffRequest.current
       .then(({ error }) => {
         if (isCancelled) {
           return
         }
 
         if (error) {
-          setErrorMessage(error.message)
+          setErrorMessage(error)
           setIsProcessing(false)
           return
         }
@@ -80,6 +79,12 @@ export function AuthHashHandoff({
         window.location.replace(
           type === "invite" || type === "recovery" ? "/join" : "/projects",
         )
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setErrorMessage("Unable to reach Mandala. Check the office network connection.")
+          setIsProcessing(false)
+        }
       })
 
     return () => {

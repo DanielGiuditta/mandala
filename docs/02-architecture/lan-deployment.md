@@ -1,0 +1,84 @@
+# Office LAN time tracking and isolated previews
+
+Status: implementation and installation templates in this repository. Office installation, firewall verification, production migration, and Windows installer release are separate rollout steps; this document is not evidence that they have happened.
+
+## Network and trust boundaries
+
+Use a dedicated supported Linux gateway/VM for the time relay and the office copy of the web app, plus a separate isolated preview host/VM. Do not place either on the original file server, domain controller, or IT's everyday PC. Separate VMs require firewall separation and no shared original-file mounts. The publishing workstation sits inside the existing trusted file-access network and uses only approved read access to originals/exports. It does not need internet access.
+
+| Initiator | Destination | Allow |
+| --- | --- | --- |
+| Employee Windows agent | Gateway | HTTPS 8443; enrolled device certificate plus employee login |
+| Employee browser | Office Mandala web address | HTTPS 443; employee login |
+| Gateway time relay / web server | Production Supabase | HTTPS 443 to `nzlajptokbcgeaifgnoq.supabase.co` only |
+| Office web server | Isolated preview reader | HTTPS 8444; short-lived signed per-user/resource permits |
+| Internal publishing workstation | Isolated preview receiver | HTTPS 8445; separate publisher CA and enrolled certificate |
+| Dedicated IT management endpoint | Service hosts | Explicit maintenance rule, protected by IT authentication/MFA |
+
+Default-deny everything else, including gateway/preview-initiated connections to employee computers, the original file server, domain controllers, and the publisher workstation. Permit established reply traffic only. Block SMB 445/139, RDP 3389, WinRM 5985/5986 and all other unnecessary access; simply blocking SMB is insufficient. Existing employee-to-file-server access remains under IT's file permissions and endpoint protections. DNS, time synchronization, approved OS updates and certificate maintenance need explicit controlled exceptions. Enforce these rules on the office firewall, outside the hosts themselves. No port forwarding from the public internet and no general internet forwarding for employee PCs.
+
+The preview host needs no outbound internet and no original-share credentials. The gateway has no original-share credentials and no Supabase service-role key. Cloud-only administration/provisioning remains on the existing hosted web app; the LAN web copy is for existing employee accounts. An attacker compromising a gateway may threaten accessible cloud metadata or preview confidentiality; external isolation prevents that host from directly reaching originals. Employee workstations already have their own original-file access, so endpoint protection, minimal share write permissions and tested immutable/offline backups remain necessary.
+
+## Install the office services
+
+1. IT supplies the host addresses, dedicated network segments, internal DNS names and trusted HTTPS certificates. Use dedicated service accounts without interactive/domain-admin permissions and a supported Node.js runtime (22.13+ or 24+ for the web renderer). The supplied systemd templates target Linux; use equivalent OS controls if IT selects another platform.
+2. Copy the reviewed repository to `/opt/mandala` on the relevant hosts. Configuration lives in `/etc/mandala`, never in shared folders. Restrict private keys/environment files to the service that needs them. Create the users/groups named in `apps/lan-services/deploy/*.service`.
+3. For the time gateway, copy `gateway.env.example` to `/etc/mandala/gateway.env` and substitute real addresses, certificate paths and the production **public anonymous** Supabase key. Create `enrolled-devices.json` as a JSON array of accepted certificate SHA-256 fingerprints, in OpenSSL's uppercase colon-separated format. The file is re-read on each request for revocation. It must be writable only by IT. Never reuse a publisher certificate for an employee device.
+4. Generate an Ed25519 preview permit key pair on the office web host. Keep the private key there; copy only its public key to the preview reader. Example: `openssl genpkey -algorithm ED25519 -out preview-permit-private.pem`, then `openssl pkey -in preview-permit-private.pem -pubout -out preview-permit-public.pem`. Install files at the paths in the environment examples with service-specific permissions.
+5. On the preview host, create `/var/lib/mandala-previews` owned by `mandala-preview-publisher:mandala-preview`, mode `0750`. Configure separate reader and publisher TLS certificates/listeners using their environment examples. The reader receives read-only access to this directory; only the publisher account may write it. Use a separate publisher client CA and `enrolled-publishers.json`. Enable the reader/publisher systemd units. Neither service converts documents or mounts original shares.
+6. Build the office web copy with the values in `lan-web.env.example` loaded. `NEXT_PUBLIC_LAN_PREVIEWS_ENABLED=true` is a build-time flag for this office copy only. Keep `NEXT_PUBLIC_SUPABASE_URL` pointing at the exact production cloud origin. Set `MANDALA_WEB_ORIGIN` to the trusted office HTTPS origin. `NODE_EXTRA_CA_CERTS` points to the office CA for the preview reader; never disable TLS verification. Bind Next to loopback on port 3000 and place it behind the supplied HTTPS reverse-proxy example. Office user passwords and invites are processed server-side; the browser does not contact Supabase directly.
+7. Add the office HTTPS auth callback/join URLs to the production Supabase redirect allowlist when office-based invites/recovery are needed. Existing sign-in works through the LAN web server. Ordinary external document URLs or externally hosted project photos still require workstation internet; this implementation does not provide a general asset proxy.
+8. Install firewall rules before enabling access from employee networks. Patch and monitor these hosts under IT's existing process. The systemd examples add process/filesystem restrictions but are not substitutes for external firewall isolation.
+
+## Enroll a Windows workstation
+
+- A new installer must first pass the repository's existing Windows CI installer audit and downloaded-artifact checksum/size checks. The embedded backend must remain `nzlajptokbcgeaifgnoq`; LAN routing never changes that identity. Do not distribute a locally compiled DLL as an installer.
+- **Windows administrator approval is required.** Install the exact audited versioned installer filename. Provision a device client certificate with client-auth usage, a non-exportable private key in the employee's Current User Personal certificate store, and the required office server CA trust. The managed workstation setting names that certificate's Windows thumbprint; IT must enroll each Windows profile that will use the agent. Configure profile/certificate mapping deliberately on shared workstations.
+- On the gateway, add that certificate's **SHA-256 fingerprint** to `enrolled-devices.json`. The agent setting instead uses the Windows **40-character thumbprint**; these identifiers are different.
+- Run `apps/desktop-agent/scripts/configure-lan.ps1 -GatewayUrl https://YOUR_GATEWAY:8443 -DeviceCertificateThumbprint YOUR_WINDOWS_THUMBPRINT` as administrator. This writes protected `ProgramData\Mandala Agent\lan.config.json`. The installer keeps its audited production backend configuration; do not edit it to point at a LAN hostname.
+- Restart the agent. It displays its version, production backend and LAN gateway. Enrolled-device HTTPS and individual employee sign-in are both required. A new session requires a reachable gateway/cloud; no general workstation internet is needed.
+
+## Interrupted-session behavior
+
+After a confirmed start, the agent writes activity checkpoints and the exact local stop to a Windows-user-protected journal using atomic file replacement. A lost LAN connection or gateway internet outage does not discard that session. The UI says that time is saved **on this computer** until the exact backend receipt arrives. Retry uses the same session UUID; acknowledgments return the actual saved `TimeEntry` ID. Sessions below the existing hundredth-hour rounding threshold are closed without claiming an entry exists.
+
+The original agent owns that live session, including while disconnected. The web app or another agent cannot stop/switch it. Once Stop is queued, another session cannot start until synchronization completes. A project switch saves/confirms the old session before starting the new one; failure to start the next project does not undo a confirmed save. Opening a project or original document does not switch the timer.
+
+On app restart, a recovered session is paused using its last durable activity plus at most five minutes; the app never counts the entire unattended interval. A session is capped at 24 hours and its finalized entry uses the local date recorded at start (no new overnight-day splitting behavior). A shutdown may lose up to one 15-second checkpoint of activity; five-minute idle treatment matches the existing tracker. Only one agent process may run per Windows account on a workstation, including across desktop/RDP sessions.
+
+Expired authentication or revoked project/account access leaves pending work intact and reports a sync problem. IT should export diagnostics, preserve the Windows profile/journal, restore valid access or arrange an authorized time correction before clearing an unrecoverable lease. Never delete an active-session row as routine troubleshooting. If the original device/profile is permanently lost, recovery requires an audited database intervention and reconciliation with the employee; there is intentionally no unauthenticated remote takeover endpoint.
+
+## Publish approved viewing copies
+
+The first version accepts PDF, PNG and JPEG exports up to 25 MB. It does not execute Office macros, run CAD converters, crawl shares, or accept a browser-selected filesystem path. File signatures and content hashes are checked; this is not a malware scanner. Export/scan documents using the office's approved, patched tools before publishing. The reader sends restrictive content security headers. The web app uses a locally served PDF.js worker to draw one page at a time to canvas (maximum 500 pages and a 3000-pixel drawing dimension), without document scripting, interactive annotations, attachments, or embedded links. All renderer fonts, character maps and decoding assets come from the office app; there is no CDN dependency. PNG/JPEG copies use a local browser image. Keep this parser and the browsers patched.
+
+Native PDF embedding inside a strictly sandboxed frame is blocked by common browsers ([Chromium issue](https://issues.chromium.org/issues/41028509)); the canvas renderer follows the [PDF.js library pattern](https://mozilla.github.io/pdf.js/examples/) instead. This avoids weakening iframe restrictions just to display a PDF. The canvas preview does not provide selectable document text; use the approved original application when accessible document text is needed.
+
+On the internal publishing workstation:
+
+1. Export approved documents to a restricted staging folder (for example `C:\MandalaApprovedExports`). Give the publishing account only the necessary read access; never domain-admin or share-wide write access.
+2. Copy `deploy/publish.example.json`. For each copy, set the existing Mandala resource UUID, its exact stored UNC `serverPath`, a file relative to the staging folder, and permitted employees' **Supabase authentication-user UUIDs**. These are not Person UUIDs. The allowlist must be no broader than the approved original-file readers, even when Mandala grants broader project access. Publishing to a shared library does not grant employees library visibility.
+3. Set `PUBLISHER_CLIENT_CERT`, `PUBLISHER_CLIENT_KEY`, and `PUBLISHER_SERVER_CA` to the enrolled publisher's protected PEM files, then run `node apps/lan-services/publish-preview.mjs path-to-approved-config.json`. All requests go to the single configured HTTPS publisher origin; redirects are not followed. No source path is fetched from Mandala.
+4. Republish on approved document/reader changes and at least daily if ongoing preview availability is desired. Copies expire after 24 hours without republishing. Publishing an unchanged file refreshes its publication time, not its original file modification date. Source paths are bound by hash; changing a resource path prevents serving an older copy. IT is responsible for updating the preview when original contents change at the same path.
+5. To revoke a publication immediately, publish an item with the same `resourceId` and `"remove": true`. This removes its manifest; immutable orphaned objects are inaccessible via the reader and can be cleaned up through IT retention procedures. Removing a viewer from a republished allowlist also takes effect on subsequent requests. Already downloaded/displayed content cannot be recalled.
+
+In the office web app, **Preview** appears alongside existing **Open file** and **Copy path** actions. Missing, expired, unapproved, unauthorized and unavailable previews show a useful message; there is no fallback that reads an original file. Only published copies cross from the preview host to the office web server. Nothing is uploaded to Supabase/Vercel storage.
+
+For preview-enabled office builds, configure `NEXT_PUBLIC_LAN_FILE_SHARES` as a JSON array of approved UNC folder roots before building. Open/Copy actions fail closed for paths outside those roots or paths containing traversal/device syntax. Configure only the required trusted file servers in office browser/file-link policies, and restrict outbound SMB destinations on employee machines. Do not broadly trust arbitrary intranet file links or accept untrusted UNC destinations. Mandala's links do not replace the original file server's permissions.
+
+## Focused validation and rollout
+
+Local checks are limited to the changed behavior: `npm run test --workspace @mandala/lan-services` (certificate/route restrictions, preview integrity/permissions, and the real SQL session functions in an isolated PostgreSQL fixture), the existing small .NET regression runner with journal/config/timing additions, the Windows application build, and the web type check. Windows DPAPI recovery is exercised in the existing Windows CI run; it cannot execute on macOS. No unrelated full regression suite is required.
+
+Rollout order: review/apply only the new LAN migration to verified production, install isolated office services and certificates, then build/audit the new installer through the existing release process. The checkout may contain unrelated pending migrations; do not blindly push them. This feature does not relax release backend, administrator, manifest, or artifact-checksum guardrails.
+
+One short office acceptance session is still necessary:
+
+1. With workstation internet blocked and LAN allowed, sign in and start work. Record the version/backend/email and IST date/time. Stop after at least 40 seconds and verify its exact new production `time_entries` row.
+2. Start again, disconnect the gateway path, continue briefly and Stop. Confirm the local-pending message. Restart the agent, reconnect, and verify exactly one new entry and its reference. Perform one confirmed project switch and check its previous-session entry.
+3. From the gateway and preview host, IT verifies the original file server is unreachable and the receiver port is unreachable from employee/gateway networks. Confirm a revoked device certificate is refused.
+4. Publish one approved PDF/image. An allowed employee can preview it; an employee outside its publisher allowlist cannot. Removing its publication or changing the source path must stop further viewing. Confirm the original is unchanged.
+
+Keep the diagnostic report if any save lacks its exact reference. A healthy project dropdown is not evidence of successful time registration.
+
+Design reference: reuse `ResourceDocumentActions`, `ProjectResourcesCard`, `.pd-card`, `.pd-meta-text`, `.pd-text-button`, and existing resource action styles. The new preview route uses those patterns, a responsive page canvas with an accessible page label, and previous/next page controls; no new business entities, offices, organizational categories or permission tiers are introduced.

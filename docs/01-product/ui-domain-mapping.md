@@ -38,6 +38,8 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - "Upload Document" / "Add Resource" → create `ResourceDocument` metadata with either `fileUrl` or `serverPath`
 - "Open File" → open the resource location from `ResourceDocument`
 - "Copy Path" → copy `ResourceDocument.serverPath` for Windows Explorer or another local application
+- "Preview" → view the isolated office publication for the existing `ResourceDocument.id`, subject to current resource access and publisher permissions; does not open or modify the original
+- "Time saved on this computer" → durable local session awaiting upload; only an exact server receipt permits "Time saved successfully" and its `TimeEntry` reference
 - "Grant Client Access" → create `ClientProjectAccess`
 - "Change Project Stage" → update `Project.stage`
 

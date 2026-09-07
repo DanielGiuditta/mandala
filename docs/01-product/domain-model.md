@@ -205,6 +205,7 @@ The web app may also expose a lightweight self-only sidebar tracker for any sign
 ### Notes
 
 - `source` distinguishes Windows checker sync from any manual correction or import path
+- finalized LAN-agent sessions use the existing `source='windows-tracker'` label; one session produces at most one entry, dated using the workstation's local date at start. Existing hundredth-hour rounding applies; a session rounding to zero is acknowledged without inventing a time entry.
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
 - the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
@@ -224,12 +225,18 @@ Represents the one live work session allowed for a person. This is supporting ru
 - `projectId`
 - `startedAt`
 - `lastActivityAt`
+- `desktopSessionId` (optional reference to the durable LAN desktop session receipt)
 
 ### Notes
 
 - starting a new project after confirmation closes the previous session and writes its elapsed time as a manual `TimeEntry`
 - after more than five minutes without activity, the session pauses and its elapsed time is written only through the last active minute window
 - active sessions govern project working mode; viewing other projects remains available but is read-only
+- LAN desktop sessions retain exclusive ownership during an outage. Web/legacy trackers cannot stop, switch, touch, or expire a desktop-owned session. The original Windows agent closes it using its durable session identifier. Local recovery caps unattended time at the last recorded activity plus five minutes and caps a session at 24 hours.
+
+## DesktopWorkSession receipt
+
+Supporting synchronization state in `desktop_work_sessions`, not a new reporting entity. Fields: `id` (client-generated UUID), `personId`, `projectId`, `startedAt` (server-confirmed), `lastActivityAt`, `entryDate` (local date at start), `stoppedAt` (nullable until finalized), and `timeEntryId` (nullable for unfinalized or rounded-to-zero sessions). A partial unique index permits only one unfinished receipt per person. Direct client table access is denied; authenticated self-only functions require an active person and application account. Receipts are retained to prevent duplicate uploads. A stopped local session remains queued until its exact receipt is confirmed; authorization failures preserve it for IT.
 
 ## ResourceDocument
 
@@ -252,7 +259,8 @@ Represents a document attached to a project or the shared library.
 
 - if `projectId` is null, the document belongs to the shared library
 - exactly one of `fileUrl` or `serverPath` is required
-- `serverPath` points to the existing office file server; Mandala stores the reference and never uploads or proxies the file
+- `serverPath` points to the existing office file server; Mandala stores the reference and never uploads or proxies the original file
+- an isolated office preview service may hold an explicitly approved viewing copy keyed by the existing resource `id`. No preview URL or new resource entity is stored in Supabase. Its local publication manifest records `resourceId`, `sourceHash` (SHA-256 of the exact original `serverPath`), `digest`, `contentType`, `size`, `publishedAt`, and `allowedSubjects` (explicit permitted authentication-user UUIDs). Changing the resource's original path invalidates the old preview binding. These are service metadata, not business fields.
 - this is the meaning of "resource" in the product
 
 ## ChecklistItem

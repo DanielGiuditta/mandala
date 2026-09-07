@@ -6,6 +6,8 @@ It signs employees in with their existing Mandala account, uses the shared Supab
 
 ## Behavior
 
+For workstations without internet, the optional enrolled-certificate LAN mode uses a dedicated office gateway. It durably retains a confirmed session through outages and confirms uploads using exact backend receipts. Starting another session requires reconnection; other devices cannot take over a pending desktop session. See [LAN deployment and IT handoff](../../docs/02-architecture/lan-deployment.md) for installation, recovery, and the small required acceptance test. This mode requires the new LAN database migration and an audited new installer; existing installers do not gain LAN support from configuration alone.
+
 - One active project timer is shared across the agent and web application.
 - Starting another project asks for confirmation, records the finished project time, and begins the selected project.
 - Opening a project in the web app never switches the active project.

@@ -185,6 +185,7 @@ export function ResourcesListTable({
                   ) : null}
                 </span>
                 <ResourceDocumentActions
+                  resourceId={document.id}
                   fileUrl={document.fileUrl}
                   serverPath={document.serverPath}
                 />

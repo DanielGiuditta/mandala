@@ -5,6 +5,8 @@ apps/desktop-agent/publish/
 apps/desktop-agent/release/
 apps/desktop-agent/src/**/bin/
 apps/desktop-agent/src/**/obj/
+apps/desktop-agent/tests/**/bin/
+apps/desktop-agent/tests/**/obj/
 coverage/
 .next/
 .next.stale.*/

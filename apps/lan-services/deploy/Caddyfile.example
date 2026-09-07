@@ -1,0 +1,6 @@
+# Replace this example hostname and install office-trusted certificates.
+mandala.office.example {
+    tls /etc/mandala/web.crt /etc/mandala/web.key
+    header -Server
+    reverse_proxy 127.0.0.1:3000
+}

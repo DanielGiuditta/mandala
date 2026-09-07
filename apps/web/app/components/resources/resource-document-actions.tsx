@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { isApprovedLanFilePath } from "../../../lib/lan-file-links"
 
 interface ResourceDocumentActionsProps {
+  resourceId?: string
   fileUrl?: string | null
   serverPath?: string | null
 }
@@ -14,15 +16,22 @@ function serverPathToFileUrl(serverPath: string): string {
 }
 
 export function ResourceDocumentActions({
+  resourceId,
   fileUrl,
   serverPath,
 }: ResourceDocumentActionsProps) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
 
   if (serverPath) {
+    const originalAllowed = process.env.NEXT_PUBLIC_LAN_PREVIEWS_ENABLED !== "true" || isApprovedLanFilePath(serverPath)
     return (
       <span className="resource-document-actions">
-        <a
+        {resourceId && process.env.NEXT_PUBLIC_LAN_PREVIEWS_ENABLED === "true" ? (
+          <a className="resource-document-action" href={`/resources/${resourceId}/preview`} rel="noreferrer" target="_blank">
+            Preview
+          </a>
+        ) : null}
+        {originalAllowed ? <><a
           className="resource-document-action"
           href={serverPathToFileUrl(serverPath)}
           rel="noreferrer"
@@ -47,7 +56,7 @@ export function ResourceDocumentActions({
             : copyState === "failed"
               ? "Copy failed"
               : "Copy path"}
-        </button>
+        </button></> : <span className="pd-meta-text">Original file location needs IT approval.</span>}
       </span>
     )
   }

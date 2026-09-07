@@ -80,6 +80,8 @@ The standalone web time-tracker workspace remains limited to partners, admins, a
 
 The approved Windows installer is downloadable from the web application only by partners and admins. Installation is an IT-managed action; employees use the installed agent with their existing Mandala account.
 
+LAN-only workstations may use an IT-enrolled Windows agent through a dedicated HTTPS office gateway. The gateway needs internet access; employee machines do not. Starting a new session requires the gateway and production backend to be reachable. Once confirmed, work and its eventual stop are durably retained on the workstation during outages and synchronized with an idempotent receipt. A pending upload is visibly distinct from a confirmed cloud save. Another device cannot take over that session while it is awaiting synchronization.
+
 Once a person has recorded time on a project, the web app should treat that person as staffed to the project for project and people visibility across the system, even if no planned assignment exists yet.
 
 Time tracking is intended for simple operational tracking and rough project cost visibility.
@@ -109,6 +111,8 @@ Examples include:
 - attachments
 
 Do not use "resource" to mean a person or staffing slot.
+
+At offices with the isolated preview service enabled, employees may view explicitly published PDF, PNG, or JPEG copies inside the web app. Originals remain on the file server. Preview copies remain on a separate office-only service, expire after 24 hours unless republished, and require both current Mandala document access and an IT-maintained per-document viewer allowlist. CAD and Office files must first be exported by an approved internal process; V1 does not run automatic document conversion. Opening originals still uses the employee's existing Windows permissions.
 
 ### 2.8 Stage is a label
 

@@ -1,0 +1,26 @@
+[Unit]
+Description=Mandala LAN time gateway
+After=network-online.target
+
+[Service]
+User=mandala-gateway
+Group=mandala-gateway
+WorkingDirectory=/opt/mandala/apps/lan-services
+EnvironmentFile=/etc/mandala/gateway.env
+ExecStart=/usr/bin/node gateway.mjs
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
