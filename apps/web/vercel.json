@@ -4,5 +4,8 @@
     "deploymentEnabled": {
       "codex/lan-release-1.0.15": false
     }
-  }
+  },
+  "regions": [
+    "bom1"
+  ]
 }
