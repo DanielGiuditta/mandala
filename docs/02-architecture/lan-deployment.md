@@ -1,6 +1,6 @@
 # Office LAN time tracking and isolated previews
 
-Status: implementation and installation templates in this repository. Office installation, firewall verification, production migration, and Windows installer release are separate rollout steps; this document is not evidence that they have happened.
+Status (2026-09-07): the production LAN migration is applied and audited installer `MandalaAgentSetup-1.0.15.exe` is published. Office installation, firewall verification and actual employee acceptance remain pending. Start with one employee on an internet-connected PC, then test the LAN configuration. See the release evidence in `docs/04-delivery/lan-implementation-validation.md`.
 
 ## Network and trust boundaries
 

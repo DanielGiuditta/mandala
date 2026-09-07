@@ -1,6 +1,6 @@
 # LAN implementation validation
 
-This records local implementation checks, not production or office acceptance.
+This records implementation and installer-release checks. Office installation and acceptance are still pending.
 
 Passed:
 
@@ -12,11 +12,18 @@ Passed:
 - Production dependency audit: no reported vulnerabilities after compatible Next.js, PostCSS, and image-library security updates. Existing React and Supabase versions were preserved in the lockfile.
 - Diff formatting check. Domain and UI names reviewed; the existing `windows-tracker` source displays as Windows checker. No division/cost-center concepts or additional business entities were introduced.
 
-Still required before employee use:
+Production release verified on 2026-09-07:
 
-- Apply the LAN migration to the verified production Supabase project.
+- Applied only `20260907090000_add_lan_desktop_sessions.sql` in a transaction to verified production `nzlajptokbcgeaifgnoq`, recording the migration.
+- Windows CI [run 34076879611](https://github.com/DanielGiuditta/mandala/actions/runs/34076879611) passed the existing regression runner (including Windows journal protection/recovery), production backend verification and finished-installer audit.
+- Published unsigned pre-launch `MandalaAgentSetup-1.0.15.exe` from commit `46ff6db14272fcfe1bd34f86771342dc94d04b93`. Live production storage download matched the audit: 51,056,706 bytes; SHA-256 `acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed`. Windows administrator approval and the unsigned-publisher prompt remain prerequisites.
+
+- Authenticated live `/desktop-agent` page displayed 1.0.15 and its exact filename; the live download route selected that version on the production storage backend.
+- Live database checks confirmed the receipt table/migration and denied direct employee inserts and the renamed legacy bypass function.
+
+Still required for office acceptance:
+
 - Install the dedicated office services, trusted certificates, enrolled-device/publisher allowlists, and external firewall rules.
-- Build/publish a versioned installer through the existing Windows CI audit and verify its live-download size/checksum. This work did not produce or distribute an audited installer.
-- Run the short office acceptance session in [LAN deployment](../02-architecture/lan-deployment.md): actual LAN-only start/stop and reconnect/switch with production time-entry references, file-server isolation, and one allowed/denied preview.
+- Start with one employee on an internet-connected PC, confirming start/stop and project-switch entries, then run the short office acceptance session in [LAN deployment](../02-architecture/lan-deployment.md): actual LAN-only start/stop and reconnect/switch with production time-entry references, file-server isolation, and one allowed/denied preview.
 
 Scope limits are deliberate: fresh sessions require connectivity through the gateway; pending time blocks a new session until sync; preview copies are office-only, explicitly published, limited to PDF/PNG/JPEG, and expire after 24 hours without republishing. Originals are never fetched by the gateway or preview host. A permanently lost workstation requires audited recovery rather than an automatic remote takeover.
