@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 
 import { getViewerRequestContext } from "../../lib/auth/session"
 import { getDesktopAgentRelease } from "../../lib/desktop-agent-release"
+import { getGatewayRelease } from "../../lib/gateway-release"
 import { EntityHeader } from "../components/entity-header"
 
 export const dynamic = "force-dynamic"
@@ -16,7 +17,7 @@ export default async function DesktopAgentPage() {
     redirect("/projects")
   }
 
-  const release = await getDesktopAgentRelease()
+  const [release, gatewayRelease] = await Promise.all([getDesktopAgentRelease(), getGatewayRelease()])
 
   return (
     <main className="pd-page">
@@ -47,13 +48,15 @@ export default async function DesktopAgentPage() {
                   Download the simple test checklist
                 </a>
               </p>
+              {gatewayRelease ? (
+                <p className="pd-meta-text">
+                  <a className="pd-text-button" href="/api/desktop-agent/gateway-download">
+                    Download {gatewayRelease.filename} for IT
+                  </a>
+                </p>
+              ) : <p className="pd-meta-text">The verified gateway installer is not yet available.</p>}
               <p className="pd-meta-text">
-                <a className="pd-text-button" href="/mandala-windows-gateway.zip" download="mandala-windows-gateway.zip">
-                  Download Windows gateway setup for IT
-                </a>
-              </p>
-              <p className="pd-meta-text">
-                For LAN-only computers, IT must first configure a separate Windows gateway with internet access. This package includes the launcher and setup instructions; IT supplies the certificates and firewall rules.
+                For LAN-only computers, IT must first configure a separate Windows gateway with internet access. The gateway installer includes Node, so no separate Node installation is needed. IT supplies the certificates and firewall rules. Keep the gateway running during the pilot.
               </p>
             </section>
 
