@@ -27,3 +27,9 @@ Still required for office acceptance:
 - Start with one employee on an internet-connected PC, confirming start/stop and project-switch entries, then run the short office acceptance session in [LAN deployment](../02-architecture/lan-deployment.md): actual LAN-only start/stop and reconnect/switch with production time-entry references, file-server isolation, and one allowed/denied preview.
 
 Scope limits are deliberate: fresh sessions require connectivity through the gateway; pending time blocks a new session until sync; preview copies are office-only, explicitly published, limited to PDF/PNG/JPEG, and expire after 24 hours without republishing. Originals are never fetched by the gateway or preview host. A permanently lost workstation requires audited recovery rather than an automatic remote takeover.
+
+## Windows gateway pilot package
+
+The small `mandala-windows-gateway.zip` is downloadable beside the employee installer. [Windows check 34180597287](https://github.com/DanielGiuditta/mandala/actions/runs/34180597287) passed using Node.js 24 and temporary certificates. It extracted the actual downloadable ZIP, launched its `.cmd` with paths containing spaces, confirmed the production-identity HTTPS health response, rejected a missing client certificate and a revoked enrollment, and rejected an unapproved route. This check made no cloud time writes. ZIP SHA-256: `a9be14e93937c39005429032f0652afcb02f48ca7e304e733936fbb5657690b0`.
+
+The launcher is for a supervised Windows pilot: it does not install a Windows service, certificates, firewall rules or unattended restart. IT must configure those boundaries and complete the actual employee time-entry check. The original employee installer remains 1.0.15. No domain fields, permission roles or UI entity names changed.
