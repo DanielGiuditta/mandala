@@ -1,0 +1,31 @@
+mandala LAN gateway — Windows setup for local IT
+
+the employee installer stays MandalaAgentSetup-1.0.15.exe. this small package sets up the separate gateway; no Linux is needed. certificates and firewall isolation are still required.
+
+1. choose the gateway
+use a dedicated, supported Windows PC or Windows VM with internet and an office LAN address. do not use the file server, domain controller or an employee’s everyday PC. run the gateway as a standard dedicated local user with no access to office file shares. IT uses admin approval only for installation/configuration. install Node.js 24 LTS for Windows from https://nodejs.org/en/download.
+
+2. copy the files and protect them
+extract this package to C:\Program Files\Mandala Gateway. create C:\ProgramData\Mandala Gateway for configuration and certificates. use Windows folder Security settings: Administrators and SYSTEM may manage these folders; the dedicated gateway user gets Read & execute only. remove inherited access for other ordinary users; do not grant the gateway user permission to modify its code/configuration. avoid network/shared folders. only IT should be able to read or change the private key outside the gateway account.
+
+3. supply the certificates
+using the office’s certificate authority, IT supplies: a gateway HTTPS certificate/key in PEM format for its internal DNS name; the public device CA certificate; and an enrolled client-auth certificate for the employee’s Windows profile. install the client certificate with a non-exportable private key under that employee’s Current User > Personal store. install the necessary trusted server CA on the employee PC. never put the CA’s private signing key on the gateway, and do not bypass HTTPS verification. if the office does not have certificate issuance available, local IT must arrange it before the test.
+put gateway.key, gateway.crt (including its intermediate chain) and device-ca.crt in C:\ProgramData\Mandala Gateway. certificate names must match the actual gateway address the employee will use.
+
+4. fill in the two settings files
+copy gateway.example.json to C:\ProgramData\Mandala Gateway\gateway.json. replace the gateway LAN IP and public anonymous key; keep the supplied paths if using the names above. the public key is supabaseAnonKey in C:\ProgramData\Mandala Agent\agent.config.json on the already-installed audited employee agent. do not copy any service-role/admin key. the backend remains nzlajptokbcgeaifgnoq.supabase.co.
+copy enrolled-devices.example.json to C:\ProgramData\Mandala Gateway\enrolled-devices.json. add the employee certificate’s uppercase SHA-256 fingerprint as a JSON string: ["AA:BB:..."] using all 32 bytes. save this file as UTF-8 without BOM. no enrolled certificates means no device gets access.
+
+5. apply the firewall rules, then start
+on the office firewall, allow the employee PC to reach the gateway on HTTPS 8443. allow the gateway to reach nzlajptokbcgeaifgnoq.supabase.co on HTTPS 443, with controlled DNS/time/maintenance. block gateway-initiated connections to file servers, domain controllers and employee networks; permit established reply traffic. mirror the necessary inbound rule in Windows Firewall. no public port forwarding or general internet sharing. verify the gateway cannot reach the original file server.
+open start-gateway.cmd as the dedicated STANDARD gateway user. leave the window open and keep this PC awake for the pilot. a “listening” message means the listener started; the employee test below confirms the actual cloud path. if it stops, record the error for local IT. this launcher does not install a Windows service or automatic restart; IT must arrange supervised startup/restart under the same restricted account before wider rollout. do not configure it to run as SYSTEM or with highest privileges.
+
+6. connect the employee agent
+install exactly MandalaAgentSetup-1.0.15.exe with Windows admin approval if it is not already installed. the pilot installer is unsigned and may show a publisher warning. in administrator PowerShell, from this package folder, run:
+
+.\configure-lan.ps1 -GatewayUrl https://YOUR_GATEWAY_DNS_NAME:8443 -DeviceCertificateThumbprint YOUR_WINDOWS_CERTIFICATE_THUMBPRINT
+
+replace both example values. use the certificate’s 40-character Windows thumbprint here, NOT the SHA-256 fingerprint used in step 4. the certificate and private key must belong to the employee’s Windows profile even when IT uses another administrator account to run setup. restart Mandala. its login screen should show “LAN https://...” beside the production backend. the gateway must remain running; the employee PC needs LAN access, not direct internet.
+
+one test for the intern
+with the employee PC’s direct internet blocked and LAN available, sign in, choose a project, start work, type locally for two minutes, then stop. capture the saved reference. the local Mandala administrator must confirm that exact entry appears once for the right employee and project. record the email, project and start/stop times in IST. if sign-in fails or no reference arrives within two minutes, export “Save / copy diagnostics for IT” and hand the text file to local IT before retrying. a timeout does not by itself mean the password is wrong.

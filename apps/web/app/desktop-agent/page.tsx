@@ -47,6 +47,14 @@ export default async function DesktopAgentPage() {
                   Download the simple test checklist
                 </a>
               </p>
+              <p className="pd-meta-text">
+                <a className="pd-text-button" href="/mandala-windows-gateway.zip" download="mandala-windows-gateway.zip">
+                  Download Windows gateway setup for IT
+                </a>
+              </p>
+              <p className="pd-meta-text">
+                For LAN-only computers, IT must first configure a separate Windows gateway with internet access. This package includes the launcher and setup instructions; IT supplies the certificates and firewall rules.
+              </p>
             </section>
 
             <section className="pd-card">

@@ -2,6 +2,10 @@
 
 Status (2026-09-07): the production LAN migration is applied and audited installer `MandalaAgentSetup-1.0.15.exe` is published. Office installation, firewall verification and actual employee acceptance remain pending. Start with one employee on an internet-connected PC, then test the LAN configuration. See the release evidence in `docs/04-delivery/lan-implementation-validation.md`.
 
+## Windows time gateway
+
+For Windows-only offices, use the **Download Windows gateway setup for IT** link on `/desktop-agent`. The small package contains the existing time relay, a Windows command launcher, a validated JSON configuration loader, configuration examples and `configure-lan.ps1`. Follow [Windows setup](../../apps/lan-services/deploy/windows/START-HERE.txt). Use a dedicated supported Windows PC/VM and restricted local account; the same certificate enrollment and external firewall isolation apply. The launcher is for a supervised pilot, not an installed Windows service: keep it running and arrange managed restart under the restricted account before wider rollout. The employee installer remains 1.0.15. This Windows package covers the time gateway; it does not install the separate preview/web services.
+
 ## Network and trust boundaries
 
 Use a dedicated supported Linux gateway/VM for the time relay and the office copy of the web app, plus a separate isolated preview host/VM. Do not place either on the original file server, domain controller, or IT's everyday PC. Separate VMs require firewall separation and no shared original-file mounts. The publishing workstation sits inside the existing trusted file-access network and uses only approved read access to originals/exports. It does not need internet access.

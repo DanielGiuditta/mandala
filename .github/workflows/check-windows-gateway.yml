@@ -1,0 +1,30 @@
+name: Check Windows LAN gateway
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/lan-release-1.0.15]
+    paths:
+      - 'apps/lan-services/deploy/windows/**'
+      - 'apps/lan-services/test/windows-gateway.test.mjs'
+      - 'apps/web/public/mandala-windows-gateway.zip'
+      - '.github/workflows/check-windows-gateway.yml'
+permissions:
+  contents: read
+jobs:
+  gateway:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check the downloadable Windows launcher with test certificates
+        shell: pwsh
+        run: |
+          $env:Path = "C:\Program Files\Git\usr\bin;" + $env:Path
+          $package = Join-Path $env:RUNNER_TEMP "Mandala gateway package"
+          Expand-Archive -LiteralPath apps/web/public/mandala-windows-gateway.zip -DestinationPath $package
+          $env:MANDALA_GATEWAY_PACKAGE = Join-Path $package "Mandala-Windows-Gateway"
+          node --test apps/lan-services/test/windows-gateway.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

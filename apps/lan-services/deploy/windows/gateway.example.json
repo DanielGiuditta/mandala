@@ -1,0 +1,9 @@
+{
+  "bindAddress": "REPLACE_WITH_GATEWAY_LAN_IP",
+  "port": 8443,
+  "supabaseAnonKey": "REPLACE_WITH_PRODUCTION_PUBLIC_ANON_KEY",
+  "serverKey": "C:/ProgramData/Mandala Gateway/gateway.key",
+  "serverCertificate": "C:/ProgramData/Mandala Gateway/gateway.crt",
+  "deviceCaCertificate": "C:/ProgramData/Mandala Gateway/device-ca.crt",
+  "enrolledDevices": "C:/ProgramData/Mandala Gateway/enrolled-devices.json"
+}
