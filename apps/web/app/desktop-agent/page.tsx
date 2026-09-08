@@ -23,35 +23,6 @@ export default async function DesktopAgentPage() {
       <section className="pd-entity">
         <EntityHeader className="pd-entity-header" title="Windows companion" />
         <div className="pd-entity-content">
-        <section className="pd-card">
-          <div className="pd-card-header">
-            <h3 className="pd-card-title">Why the companion is needed</h3>
-          </div>
-          <p className="pd-empty">
-            The Windows companion is the workstation app for reliable time tracking. It records time against the project an employee is actively working on, even while they are using their desktop tools.
-          </p>
-          <div className="pd-list">
-            <article className="pd-list-item">
-              <div className="pd-list-item-main pd-list-item-main-column">
-                <h4>One active project at a time</h4>
-                <p className="pd-meta-text">Starting work on a new project stops and saves the previous project timer before the new one begins.</p>
-              </div>
-            </article>
-            <article className="pd-list-item">
-              <div className="pd-list-item-main pd-list-item-main-column">
-                <h4>Accurate time allocation</h4>
-                <p className="pd-meta-text">Employees choose Start Work for the project they are working on, so time is recorded against the correct project.</p>
-              </div>
-            </article>
-            <article className="pd-list-item">
-              <div className="pd-list-item-main pd-list-item-main-column">
-                <h4>Idle time protection</h4>
-                <p className="pd-meta-text">Tracking pauses after five minutes without keyboard or mouse activity and only resumes when the employee selects Start Work.</p>
-              </div>
-            </article>
-          </div>
-        </section>
-
         <div className="pd-columns">
           <div className="pd-col-main">
             <section className="pd-card">
@@ -71,40 +42,38 @@ export default async function DesktopAgentPage() {
               <p className="pd-meta-text">
                 Available to admins and partners. Installation always requires a Windows administrator to approve it.
               </p>
+              <p className="pd-meta-text">
+                <a className="pd-text-button" href="/mandala-test-checklist.txt" download="mandala-test-checklist.txt">
+                  Download the simple test checklist
+                </a>
+              </p>
             </section>
 
             <section className="pd-card">
               <div className="pd-card-header">
-                <h3 className="pd-card-title">Install on a workstation</h3>
+                <h3 className="pd-card-title">Four quick tests</h3>
               </div>
+              <p className="pd-meta-text">
+                Start with one employee on a PC with internet. Then ask local IT to prepare the LAN-only PC and follow the downloaded checklist.
+              </p>
               <div className="pd-list">
-                <article className="pd-list-item">
-                  <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>1. Download the installer</h4>
-                    <p className="pd-meta-text">Download it on the Windows computer that will run the companion.</p>
-                  </div>
-                </article>
-                <article className="pd-list-item">
-                  <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>2. Run setup</h4>
-                    <p className="pd-meta-text">
-                      Open the exact versioned filename shown above. A Windows administrator must approve the installation.
-                    </p>
-                  </div>
-                </article>
-                <article className="pd-list-item">
-                  <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>3. Open the companion</h4>
-                    <p className="pd-meta-text">Finish setup, then open Mandala Windows Companion from the Start menu.</p>
-                  </div>
-                </article>
-                <article className="pd-list-item">
-                  <div className="pd-list-item-main pd-list-item-main-column">
-                    <h4>4. Start tracking</h4>
-                    <p className="pd-meta-text">Have the employee sign in, choose their project, and select Start Work.</p>
-                  </div>
-                </article>
+                {[
+                  ["1. Start and stop", "Work for one minute, stop, and confirm the saved entry appears for the right employee and project."],
+                  ["2. Switch projects", "Work for one minute on each of two projects. Confirm both entries are saved."],
+                  ["3. Disconnect and reconnect", "On the LAN PC, start while connected, disconnect and stop. Reopen Mandala, reconnect, and confirm the time saves once."],
+                  ["4. Leave it idle", "Leave the keyboard and mouse untouched for six minutes. Confirm the timer pauses and saves."],
+                ].map(([title, description]) => (
+                  <article className="pd-list-item" key={title}>
+                    <div className="pd-list-item-main pd-list-item-main-column">
+                      <h4>{title}</h4>
+                      <p className="pd-meta-text">{description}</p>
+                    </div>
+                  </article>
+                ))}
               </div>
+              <p className="pd-meta-text">
+                If sign-in times out or the LAN address is missing, save diagnostics and ask local IT to check the gateway first. Send one result with the employee email, projects, IST times, save references and any diagnostics. A local Mandala administrator should confirm the actual saved entries.
+              </p>
             </section>
           </div>
 
@@ -117,7 +86,7 @@ export default async function DesktopAgentPage() {
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
                     <h4>No installer is published</h4>
-                    <p className="pd-meta-text">IT needs to publish the current signed Windows release before workstations can install it.</p>
+                    <p className="pd-meta-text">IT needs to publish the current audited Windows release before workstations can install it.</p>
                   </div>
                 </article>
                 <article className="pd-list-item">
@@ -129,7 +98,7 @@ export default async function DesktopAgentPage() {
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
                     <h4>The employee cannot sign in</h4>
-                    <p className="pd-meta-text">Confirm they are using the same email and password as the Mandala web app.</p>
+                    <p className="pd-meta-text">For a timeout on a LAN-only PC, ask local IT to check the gateway connection first. For an invalid-login message, confirm the employee is using their Mandala email and password.</p>
                   </div>
                 </article>
                 <article className="pd-list-item">

@@ -1,0 +1,33 @@
+mandala — quick employee test
+
+use one employee and two projects. allow about 20 minutes once IT has the LAN connection ready.
+
+before you start
+use MandalaAgentSetup-1.0.15.exe (the app may show 1.0.15.0). installation needs windows admin approval and may show an unsigned publisher warning.
+first do test 1 on a pc with internet. then do all four tests on the LAN-only pc after local IT confirms its connection is ready.
+if sign-in times out, save the diagnostics and give them to local IT. on the LAN pc, the login screen should show “LAN https://…” next to the backend. if it is missing, IT must configure the gateway first. do not keep resetting the password.
+
+1. start and stop
+sign in, choose a project and start work. type in a local document for one minute, then stop. note the “time saved successfully” reference. ask the local mandala administrator to confirm that exact entry appears for the right employee and project.
+
+2. switch projects
+start project A and work for one minute. switch to project B and confirm. work for another minute, then stop. check that each project has one saved entry.
+
+3. disconnect and reconnect — LAN pc only
+save and close any CAD drawings/shared files first. start a project while connected and work for one minute. disconnect only this pc from the network, keep typing locally for one minute, then stop.
+it should say the time is waiting to upload. close and reopen mandala using the same Windows profile, then reconnect. allow two minutes for a saved reference. check that the time appears once, with no duplicate. do not clear app data or start another session while a save is pending.
+
+4. leave it idle
+start work, then leave the mouse and keyboard untouched for six minutes. the timer should pause and save. it should stay paused until you click Start Work again.
+
+if anything fails
+save a screenshot and click “Save / copy diagnostics for IT”. give the saved text file to local IT. if they cannot fix it, mark that test blocked and move on only if there is no unsaved/pending session. do not delete data or disable security settings.
+
+send one result when finished
+employee email + pc name
+for each test: pass / fail / blocked; projects; date and start/stop/switch/disconnect/reconnect times in IST (am/pm); save references
+screenshots and diagnostics for failures
+the local mandala administrator’s confirmation that each saved entry exists once, for the right employee/project
+any outstanding issue and the local IT person handling it
+
+no need to wait for Daniel between tests. a test only passes when the actual saved entry is confirmed. IT owns gateway/certificate setup and keeping the gateway isolated from the file server.
