@@ -1,12 +1,11 @@
 @echo off
 setlocal
-where node.exe >nul 2>nul
-if errorlevel 1 (
-  echo Install Node.js 24 LTS for Windows, then reopen this window.
+if not exist "%~dp0runtime\node.exe" (
+  echo The bundled runtime is missing. Reinstall Mandala Gateway.
   pause
   exit /b 1
 )
-node.exe "%~dp0start-gateway.mjs" %*
+"%~dp0runtime\node.exe" "%~dp0start-gateway.mjs" %*
 set "gatewayExit=%ERRORLEVEL%"
 echo Gateway stopped. Keep this window open while IT reads any error above.
 pause

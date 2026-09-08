@@ -5,7 +5,7 @@ import { createGateway } from './gateway.mjs'
 import { PRODUCTION } from './security.mjs'
 
 try {
-  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Install supported Node.js 24 LTS first.')
+  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The bundled runtime is unsupported. Reinstall the current Mandala Gateway.')
   const file = process.argv[2] ?? path.join(process.env.ProgramData ?? 'C:/ProgramData', 'Mandala Gateway', 'gateway.json')
   const config = JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''))
   if (!isIP(config.bindAddress) || !Number.isInteger(config.port) || config.port < 1024 || config.port > 65535) {

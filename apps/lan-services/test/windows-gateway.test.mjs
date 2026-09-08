@@ -35,8 +35,13 @@ test('packaged Windows launcher serves enrolled TLS health and refuses unapprove
     writeFileSync(configFile, JSON.stringify({ bindAddress: '127.0.0.1', port, supabaseAnonKey: 'test-public-key',
       serverKey: path.join(directory, 'server.key'), serverCertificate: path.join(directory, 'server.crt'),
       deviceCaCertificate: path.join(directory, 'ca.crt'), enrolledDevices: devices }))
+    const launchEnvironment = { ...process.env }
+    if (process.platform === 'win32') {
+      for (const key of Object.keys(launchEnvironment)) if (key.toLowerCase() === 'path') delete launchEnvironment[key]
+      launchEnvironment.Path = path.join(process.env.SystemRoot, 'System32')
+    }
     child = process.platform === 'win32'
-      ? spawn('cmd.exe', ['/d', '/s', '/c', `""${path.join(packageDirectory, 'start-gateway.cmd')}" "${configFile}""`], { windowsVerbatimArguments: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      ? spawn('cmd.exe', ['/d', '/s', '/c', `""${path.join(packageDirectory, 'start-gateway.cmd')}" "${configFile}""`], { windowsVerbatimArguments: true, env: launchEnvironment, stdio: ['ignore', 'pipe', 'pipe'] })
       : spawn(process.execPath, [path.join(packageDirectory, 'start-gateway.mjs'), configFile], { stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', value => { output += value })
     child.stderr.on('data', value => { output += value })

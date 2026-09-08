@@ -1,30 +1,66 @@
-name: Check Windows LAN gateway
+name: Build Windows gateway installer
 on:
   workflow_dispatch:
   push:
     branches: [codex/lan-release-1.0.15]
     paths:
       - 'apps/lan-services/deploy/windows/**'
+      - 'apps/lan-services/installer/**'
+      - 'apps/lan-services/scripts/**'
       - 'apps/lan-services/test/windows-gateway.test.mjs'
-      - 'apps/web/public/mandala-windows-gateway.zip'
       - '.github/workflows/check-windows-gateway.yml'
 permissions:
   contents: read
 jobs:
   gateway:
     runs-on: windows-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Check the downloadable Windows launcher with test certificates
+      - name: Install packaging tool
+        run: choco install innosetup --no-progress --yes
+      - name: Build installer with verified private Node runtime
         shell: pwsh
+        env:
+          MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
+        run: ./apps/lan-services/scripts/build-windows-installer.ps1 -Version 1.0.0
+      - name: Audit the installed gateway with no Node on its PATH
+        shell: pwsh
+        env:
+          MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $env:Path = "C:\Program Files\Git\usr\bin;" + $env:Path
-          $package = Join-Path $env:RUNNER_TEMP "Mandala gateway package"
-          Expand-Archive -LiteralPath apps/web/public/mandala-windows-gateway.zip -DestinationPath $package
-          $env:MANDALA_GATEWAY_PACKAGE = Join-Path $package "Mandala-Windows-Gateway"
+          $installer = (Resolve-Path 'apps/lan-services/release/MandalaGatewaySetup-1.0.0.exe').Path
+          $installed = Join-Path $env:RUNNER_TEMP 'Mandala installed gateway'
+          $result = Start-Process $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installed`"" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw 'Installer failed.' }
+          $manifest = Get-Content (Join-Path $installed 'gateway-release.json') -Raw | ConvertFrom-Json
+          if ($manifest.version -ne '1.0.0' -or $manifest.backendProjectRef -ne 'nzlajptokbcgeaifgnoq') { throw 'Installed version/backend mismatch.' }
+          $config = Get-Content (Join-Path $installed 'gateway.example.json') -Raw | ConvertFrom-Json
+          if ($config.supabaseAnonKey -ne $env:MANDALA_SUPABASE_ANON_KEY) { throw 'Installed production key mismatch.' }
+          $runtime = Join-Path $installed 'runtime/node.exe'
+          if ((& $runtime --version) -ne "v$($manifest.nodeVersion)") { throw 'Bundled runtime version mismatch.' }
+          if ((Get-FileHash $runtime -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.nodeSha256) { throw 'Installed runtime hash mismatch.' }
+          $env:MANDALA_GATEWAY_PACKAGE = $installed
           node --test apps/lan-services/test/windows-gateway.test.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE -ne 0) { throw 'Installed gateway check failed.' }
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $installer).Length
+          Write-Host "Gateway installer audit passed: version=1.0.0 backend=nzlajptokbcgeaifgnoq node=$($manifest.nodeVersion) size=$size sha256=$hash"
+      - name: Publish audited gateway installer
+        shell: pwsh
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MANDALA_GATEWAY_VERSION: 1.0.0
+        run: node apps/lan-services/scripts/publish-windows-installer.mjs apps/lan-services/release/MandalaGatewaySetup-1.0.0.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MandalaGatewaySetup-1.0.0
+          path: apps/lan-services/release/MandalaGatewaySetup-1.0.0.exe
+          if-no-files-found: error
