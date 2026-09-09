@@ -16,7 +16,7 @@ try {
     $state=Initialize-PairingGateway '127.0.0.1' $data $InstallDirectory
     $root=[Convert]::FromBase64String($state.root)
     $rootThumbs+=([Security.Cryptography.X509Certificates.X509Certificate2]::new($root)).Thumbprint
-    Assert ((Get-Content (Join-Path $data 'enrolled-devices.json') -Raw).Trim() -eq '[]') 'New gateway must have no approved devices.'
+    Assert (((Get-Content (Join-Path $data 'enrolled-devices.json') -Raw) -replace '\s','') -eq '[]') 'New gateway must have no approved devices.'
     $request=New-EmployeePairingRequest $requestPath $profile
     $leafThumb=$request.thumbprint
     $rootThumbs+=([Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String($request.root))).Thumbprint

@@ -56,7 +56,7 @@ export default async function DesktopAgentPage() {
                 </p>
               ) : <p className="pd-meta-text">The verified gateway installer is not yet available.</p>}
               <p className="pd-meta-text">
-                For LAN-only computers, IT must first configure a separate Windows gateway with internet access. The gateway installer includes Node, so no separate Node installation is needed. IT supplies the certificates and firewall rules. Keep the gateway running during the pilot.
+                For LAN-only computers, install gateway 1.1.0 on a dedicated Windows PC with internet and open Mandala office setup. It creates the certificates, starts the gateway in the background and guides IT through pairing each employee PC. No separate Node or existing office certificates are needed. IT must isolate the gateway from file servers at the office firewall.
               </p>
             </section>
 
