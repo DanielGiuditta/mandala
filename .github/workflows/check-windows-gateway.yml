@@ -8,6 +8,7 @@ on:
       - 'apps/lan-services/installer/**'
       - 'apps/lan-services/scripts/**'
       - 'apps/lan-services/test/windows-gateway.test.mjs'
+      - 'apps/lan-services/test/windows-pairing.ps1'
       - '.github/workflows/check-windows-gateway.yml'
 permissions:
   contents: read
@@ -27,7 +28,7 @@ jobs:
         env:
           MANDALA_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
           MANDALA_SUPABASE_ANON_KEY: ${{ secrets.MANDALA_SUPABASE_ANON_KEY }}
-        run: ./apps/lan-services/scripts/build-windows-installer.ps1 -Version 1.0.0
+        run: ./apps/lan-services/scripts/build-windows-installer.ps1 -Version 1.1.0
       - name: Audit the installed gateway with no Node on its PATH
         shell: pwsh
         env:
@@ -35,12 +36,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:Path = "C:\Program Files\Git\usr\bin;" + $env:Path
-          $installer = (Resolve-Path 'apps/lan-services/release/MandalaGatewaySetup-1.0.0.exe').Path
+          $installer = (Resolve-Path 'apps/lan-services/release/MandalaGatewaySetup-1.1.0.exe').Path
           $installed = Join-Path $env:RUNNER_TEMP 'Mandala installed gateway'
           $result = Start-Process $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$installed`"" -Wait -PassThru
           if ($result.ExitCode -ne 0) { throw 'Installer failed.' }
           $manifest = Get-Content (Join-Path $installed 'gateway-release.json') -Raw | ConvertFrom-Json
-          if ($manifest.version -ne '1.0.0' -or $manifest.backendProjectRef -ne 'nzlajptokbcgeaifgnoq') { throw 'Installed version/backend mismatch.' }
+          if ($manifest.version -ne '1.1.0' -or $manifest.backendProjectRef -ne 'nzlajptokbcgeaifgnoq') { throw 'Installed version/backend mismatch.' }
           $config = Get-Content (Join-Path $installed 'gateway.example.json') -Raw | ConvertFrom-Json
           if ($config.supabaseAnonKey -ne $env:MANDALA_SUPABASE_ANON_KEY) { throw 'Installed production key mismatch.' }
           $runtime = Join-Path $installed 'runtime/node.exe'
@@ -49,18 +50,20 @@ jobs:
           $env:MANDALA_GATEWAY_PACKAGE = $installed
           node --test apps/lan-services/test/windows-gateway.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Installed gateway check failed.' }
+          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File apps/lan-services/test/windows-pairing.ps1 -InstallDirectory $installed
+          if ($LASTEXITCODE -ne 0) { throw 'Windows guided pairing check failed.' }
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $installer).Length
-          Write-Host "Gateway installer audit passed: version=1.0.0 backend=nzlajptokbcgeaifgnoq node=$($manifest.nodeVersion) size=$size sha256=$hash"
+          Write-Host "Gateway installer audit passed: version=1.1.0 backend=nzlajptokbcgeaifgnoq node=$($manifest.nodeVersion) size=$size sha256=$hash"
       - name: Publish audited gateway installer
         shell: pwsh
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          MANDALA_GATEWAY_VERSION: 1.0.0
-        run: node apps/lan-services/scripts/publish-windows-installer.mjs apps/lan-services/release/MandalaGatewaySetup-1.0.0.exe
+          MANDALA_GATEWAY_VERSION: 1.1.0
+        run: node apps/lan-services/scripts/publish-windows-installer.mjs apps/lan-services/release/MandalaGatewaySetup-1.1.0.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: MandalaGatewaySetup-1.0.0
-          path: apps/lan-services/release/MandalaGatewaySetup-1.0.0.exe
+          name: MandalaGatewaySetup-1.1.0
+          path: apps/lan-services/release/MandalaGatewaySetup-1.1.0.exe
           if-no-files-found: error

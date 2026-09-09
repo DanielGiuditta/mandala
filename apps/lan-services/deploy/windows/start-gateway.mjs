@@ -21,7 +21,7 @@ try {
       throw new Error('The key must be the production anonymous key.')
     }
   }
-  for (const key of ['serverKey', 'serverCertificate', 'deviceCaCertificate', 'enrolledDevices']) {
+  for (const key of [...(config.serverPfx ? ['serverPfx'] : ['serverKey', 'serverCertificate']), 'deviceCaCertificate', 'enrolledDevices']) {
     if (typeof config[key] !== 'string' || !path.isAbsolute(config[key])) throw new Error(`Set ${key} to an absolute local file path.`)
   }
   const devices = JSON.parse(readFileSync(config.enrolledDevices, 'utf8'))
@@ -29,14 +29,14 @@ try {
     throw new Error('enrolled-devices.json must list full uppercase SHA-256 certificate fingerprints.')
   }
   const server = createGateway({
-    tls: { key: readFileSync(config.serverKey), cert: readFileSync(config.serverCertificate),
+    tls: { ...(config.serverPfx ? { pfx: readFileSync(config.serverPfx), passphrase: config.serverPfxPassword } : { key: readFileSync(config.serverKey), cert: readFileSync(config.serverCertificate) }),
       ca: readFileSync(config.deviceCaCertificate), minVersion: 'TLSv1.2', requestCert: true, rejectUnauthorized: true },
     apiKey: apiKey.trim(), allowlistFile: config.enrolledDevices,
   })
   server.on('error', error => { console.error(`Gateway could not run: ${error.message}`); process.exitCode = 1 })
   server.listen(config.port, config.bindAddress, () => {
     console.log(`Mandala gateway listening on ${config.bindAddress}:${config.port}; backend ${PRODUCTION}`)
-    console.log('Keep this window open for the pilot. Listening does not prove cloud connectivity; complete the employee save test.')
+    console.log('Listening does not prove cloud connectivity; complete the employee save test.')
   })
 } catch (error) {
   console.error(`Gateway setup needs IT: ${error.message}`)

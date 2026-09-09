@@ -20,5 +20,8 @@ RestartApplications=no
 [Files]
 Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
-Name: "{autoprograms}\Mandala Gateway"; Filename: "{app}\start-gateway.cmd"; WorkingDir: "{app}"
+Name: "{autoprograms}\Mandala office setup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -STA -ExecutionPolicy RemoteSigned -File ""{app}\setup-wizard.ps1"""; WorkingDir: "{app}"
 Name: "{autoprograms}\Mandala Gateway setup instructions"; Filename: "{app}\START-HERE.txt"
+
+[Run]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -STA -ExecutionPolicy RemoteSigned -File ""{app}\setup-wizard.ps1"""; Description: "Open Mandala office setup"; Flags: postinstall nowait skipifsilent runasoriginaluser
