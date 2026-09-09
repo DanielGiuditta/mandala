@@ -1,5 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$InstallDirectory)
 $ErrorActionPreference='Stop'
+# Start-Process from PowerShell 7 otherwise leaks incompatible Core modules.
+$env:PSModulePath=(Join-Path $PSHOME 'Modules')+';'+(Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules')
 . (Join-Path $InstallDirectory 'pairing-core.ps1')
 function Assert($Condition,$Message) { if(-not $Condition) { throw $Message } }
 function Reject($Action,$Message) { $rejected=$false; try { & $Action | Out-Null } catch { $rejected=$true }; Assert $rejected $Message }
