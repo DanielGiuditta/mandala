@@ -116,6 +116,7 @@ if ($Mode -eq 'Choose') {
     New-Button $form '1. Install agent and create PC request' 120 {
         Ensure-EmployeeAgent
         $output=Pick-Save ('Mandala request - '+$env:COMPUTERNAME+'.json'); if(-not $output) { return }
+        Show-Info 'Windows may ask you to trust the Mandala pairing issuer certificate created for this profile. Approve that certificate prompt to continue.'
         $request=New-EmployeePairingRequest $output $script:EmployeeData
         Show-Info 'Take this request JSON to the gateway computer. There, choose Approve an employee PC request, then bring the approved connection JSON back here. Keep using this same Windows profile.'
     }
@@ -124,6 +125,7 @@ if ($Mode -eq 'Choose') {
     New-Button $form '2. Complete connection' 285 {
         Ensure-EmployeeAgent
         $file=Pick-Open 'Open the approved connection JSON from the gateway'; if(-not $file) { return }
+        Show-Info 'After the pairing code is checked, Windows may ask to trust this Mandala gateway certificate. Approve that certificate prompt to continue.'
         $reply=Import-EmployeePairing $file $script:EmployeeData $pairingCode.Text.Trim()
         $args='-NoProfile -ExecutionPolicy RemoteSigned -File "'+(Join-Path $PSScriptRoot 'configure-lan.ps1')+'" -GatewayUrl '+$reply.gatewayUrl+' -DeviceCertificateThumbprint '+$reply.thumbprint
         $process=Start-Process powershell.exe -ArgumentList $args -Verb RunAs -Wait -PassThru

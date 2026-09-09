@@ -123,7 +123,10 @@ function Approve-EmployeePairing($RequestPath, $OutputPath, $DataDirectory) {
         $state.approved = $entries
         Write-PairingJson $statePath $state
     }
-    Write-PairingJson (Join-Path $DataDirectory 'enrolled-devices.json') @($entries | ForEach-Object { $_.fingerprint })
+    $allowlistPath = Join-Path $DataDirectory 'enrolled-devices.json'
+    $allowed = @(Read-PairingJson $allowlistPath | Where-Object { $_ -ne $null })
+    if ($fp -notin $allowed) { $allowed += $fp }
+    Write-PairingJson $allowlistPath $allowed
     $reply = @{ kind='MandalaEmployeeConnection'; protocol=1; backend=$script:Production; requestId=$request.requestId; userSid=$request.userSid; thumbprint=$request.thumbprint; gatewayUrl=('https://' + $state.address + ':8443'); root=$state.root; certificate=$state.certificate }
     Write-PairingJson $OutputPath $reply
     return $reply

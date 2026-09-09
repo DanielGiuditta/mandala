@@ -12,11 +12,24 @@ $data=Join-Path $fixture 'gateway'; $profile=Join-Path $fixture 'employee'
 New-Item -ItemType Directory -Path $fixture | Out-Null
 $requestPath=Join-Path $fixture 'request.json'; $replyPath=Join-Path $fixture 'reply.json'
 $rootThumbs=@(); $leafThumb=$null; $taskCreated=$false
+# Windows prompts on first trust in a user Root store. This headless runner cannot
+# answer it. Pre-trust only these generated fixture roots in the disposable VM,
+# then exercise the real CurrentUser import. Production still shows Windows' prompt.
+$script:auditMachineRoots=@()
+$script:realRootImport=${function:Add-PairingRoot}
+function Add-PairingRoot([byte[]]$Bytes) {
+    $public=[Security.Cryptography.X509Certificates.X509Certificate2]::new($Bytes)
+    $machine=New-Object Security.Cryptography.X509Certificates.X509Store('Root','LocalMachine')
+    try { $machine.Open('ReadWrite'); $machine.Add($public); $script:auditMachineRoots+=$public.Thumbprint } finally { $machine.Close() }
+    return (& $script:realRootImport $Bytes)
+}
 try {
+    Write-Host 'Pairing audit: create gateway certificate'
     $state=Initialize-PairingGateway '127.0.0.1' $data $InstallDirectory
     $root=[Convert]::FromBase64String($state.root)
     $rootThumbs+=([Security.Cryptography.X509Certificates.X509Certificate2]::new($root)).Thumbprint
     Assert (((Get-Content (Join-Path $data 'enrolled-devices.json') -Raw) -replace '\s','') -eq '[]') 'New gateway must have no approved devices.'
+    Write-Host 'Pairing audit: create employee key and trust'
     $request=New-EmployeePairingRequest $requestPath $profile
     $leafThumb=$request.thumbprint
     $rootThumbs+=([Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String($request.root))).Thumbprint
@@ -24,9 +37,11 @@ try {
     Assert $cert.HasPrivateKey 'Employee private key missing.'
     Reject { $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx,'audit') } 'Employee private key must not be exportable.'
     foreach($thumb in $rootThumbs) { Assert (-not (Test-Path ('Cert:\CurrentUser\My\'+$thumb))) 'An issuer private key was persisted.' }
+    Write-Host 'Pairing audit: approve employee'
     Approve-EmployeePairing $requestPath $replyPath $data | Out-Null
     # A repeated approval repairs the allowlist if a previous write was interrupted.
     Write-PairingJson (Join-Path $data 'enrolled-devices.json') @()
+    Write-Host 'Pairing audit: approve employee'
     Approve-EmployeePairing $requestPath $replyPath $data | Out-Null
     Assert (@(Read-PairingJson (Join-Path $data 'enrolled-devices.json')).Count -eq 1) 'Repeated approval must produce one enrollment.'
     $code=Get-PairingCode $root
@@ -34,6 +49,7 @@ try {
     $bad=Read-PairingJson $replyPath; $bad.userSid='S-1-5-18'
     $badPath=Join-Path $fixture 'wrong-profile.json'; Write-PairingJson $badPath $bad
     Reject { Import-EmployeePairing $badPath $profile $code } 'Another Windows profile accepted.'
+    Write-Host 'Pairing audit: import approved gateway trust'
     $reply=Import-EmployeePairing $replyPath $profile $code
     $store=New-Object Security.Cryptography.X509Certificates.X509Store('My','CurrentUser')
     try { $store.Open('ReadOnly'); Assert ($store.Certificates.Find('FindByThumbprint',$leafThumb,$true).Count -eq 1) 'Agent validOnly certificate lookup failed.' } finally { $store.Close() }
@@ -41,11 +57,13 @@ try {
     & icacls.exe $InstallDirectory /grant '*S-1-5-19:(OI)(CI)RX' /T /Q | Out-Null
     if($LASTEXITCODE -ne 0) { throw 'Could not prepare installed fixture permissions.' }
     $taskCreated=$true
+    Write-Host 'Pairing audit: start restricted gateway task'
     Enable-PairingGateway '127.0.0.1' '127.0.0.0/8' $data $InstallDirectory
     $task=Get-ScheduledTask -TaskName 'Mandala LAN Gateway'
     Assert ($task.Principal.UserId -in @('LOCAL SERVICE','NT AUTHORITY\LOCAL SERVICE','S-1-5-19')) ('Gateway task is not Local Service: '+$task.Principal.UserId)
     Assert ($task.Principal.RunLevel -eq 'Limited') 'Gateway task is elevated.'
     [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+    Write-Host 'Pairing audit: verify Windows mutual TLS'
     $health=Invoke-WebRequest -Uri ($reply.gatewayUrl+'/health') -Certificate $cert -UseBasicParsing -TimeoutSec 10
     $identity=$health.Content | ConvertFrom-Json
     Assert ($identity.backend -eq 'https://nzlajptokbcgeaifgnoq.supabase.co' -and $identity.protocol -eq 1) 'Pairing did not reach the production-configured gateway.'
@@ -60,5 +78,6 @@ try {
     Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     if($leafThumb -and (Test-Path ('Cert:\CurrentUser\My\'+$leafThumb))) { Remove-Item ('Cert:\CurrentUser\My\'+$leafThumb) -DeleteKey }
     foreach($thumb in $rootThumbs) { if(Test-Path ('Cert:\CurrentUser\Root\'+$thumb)) { Remove-Item ('Cert:\CurrentUser\Root\'+$thumb) } }
+    foreach($thumb in $script:auditMachineRoots) { if(Test-Path ('Cert:\LocalMachine\Root\'+$thumb)) { Remove-Item ('Cert:\LocalMachine\Root\'+$thumb) } }
     Remove-Item $fixture -Recurse -Force
 }

@@ -50,8 +50,14 @@ jobs:
           $env:MANDALA_GATEWAY_PACKAGE = $installed
           node --test apps/lan-services/test/windows-gateway.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Installed gateway check failed.' }
-          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File apps/lan-services/test/windows-pairing.ps1 -InstallDirectory $installed
-          if ($LASTEXITCODE -ne 0) { throw 'Windows guided pairing check failed.' }
+          $out = Join-Path $env:RUNNER_TEMP 'pairing-out.txt'
+          $err = Join-Path $env:RUNNER_TEMP 'pairing-error.txt'
+          $auditArgs = '-NoProfile -ExecutionPolicy RemoteSigned -File apps/lan-services/test/windows-pairing.ps1 -InstallDirectory "' + $installed + '"'
+          $audit = Start-Process powershell.exe -ArgumentList $auditArgs -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+          $finished = $audit.WaitForExit(150000)
+          if (-not $finished) { Stop-Process -Id $audit.Id -Force }
+          Get-Content $out, $err
+          if (-not $finished -or $audit.ExitCode -ne 0) { throw 'Windows guided pairing check failed or timed out.' }
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $installer).Length
           Write-Host "Gateway installer audit passed: version=1.1.0 backend=nzlajptokbcgeaifgnoq node=$($manifest.nodeVersion) size=$size sha256=$hash"
