@@ -11,7 +11,9 @@ the repair asks for approval only when fixing the shared startup shortcut.
    without opening office setup or clicking "Internet-connected gateway".
 
 This repairs an existing employee installation; it does not install or start
-the gateway. It checks the installed agent's production backend, restores the
+the gateway. The launcher unblocks only its two included PowerShell files after
+download; it does not change Windows execution policy settings. It checks the
+installed agent's production backend, restores the
 common startup shortcut, and moves recognized Mandala setup/duplicate shortcuts
 out of the common and current-user Startup folders into shortcut-backups under
 ProgramData/LocalAppData\Mandala Startup Repair. Other applications are untouched.

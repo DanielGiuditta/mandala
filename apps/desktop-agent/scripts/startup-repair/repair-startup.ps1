@@ -15,6 +15,10 @@ try {
         exit 0
     }
 
+    if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Close this window and open Repair Mandala Startup.cmd normally in the employee Windows account, without Run as administrator.'
+    }
+
     # Elevate only the common shortcut operation. Do not launch the employee agent
     # or access profile-bound certificates/tokens as the administrator account.
     Write-Host 'Windows administrator approval is required once to repair Mandala startup.'
