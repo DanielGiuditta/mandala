@@ -59,3 +59,23 @@ does not establish end-to-end time logging or real-machine login behavior.
 No business entities, fields, permission roles, time-session semantics, division or
 cost-center concepts were added. Naming remains Mandala Agent for the employee
 application and Mandala LAN Gateway for the gateway task. No domain-model deviation.
+
+## Verification record - September 15, 2026
+
+[Windows audit 34970764097](https://github.com/DanielGiuditta/mandala/actions/runs/34970764097)
+passed for code commit `ee77a3b20ea256eebdf6baba27bae4bcb3bfc634`: PowerShell 5
+repair scenarios, downloaded launcher (including spaces/ampersands in its path),
+desktop regressions, actual installer startup audit, and missing installed-shortcut
+repair. The unpublished installer fixture was not included in the delivered artifact.
+
+The downloaded repair ZIP was verified on this Mac against the CI audit:
+
+- Filename: `MandalaAgentStartupRepair-1.0.0.zip`
+- Size: 4,754 bytes
+- SHA-256: `20f2bf36baa3553d760453cb6fcf42ac8f68d396c59f781d95f1d5eaeeb427ad`
+- Its four files match the workspace source after Windows line-ending normalization.
+
+Still requires on-site confirmation: employee Windows sign-in after repair and the
+production saved-time checks above. The revised office setup labels/button reuse
+the existing form pattern; visual verification of that wizard awaits a gateway
+release. The delivered repair does not depend on updating the gateway wizard.
