@@ -23,6 +23,7 @@ INTERN — TWO-MINUTE FIRST TEST
 9. Ask the local Mandala administrator to confirm the same reference appears once for the correct employee/project in the web app. A sign-in or loaded project list alone is not a pass. Then use the downloadable quick test checklist for switch/reconnect/idle checks.
 
 IF SOMETHING FAILS
+- Employee agent does not open at Windows sign-in: use the audited MandalaAgentStartupRepair-1.0.0.zip in the employee Windows account. Extract it and open Repair Mandala Startup.cmd normally; Windows asks for administrator approval only for the shared shortcut. It preserves pairing and pending time. After saving work, restart and sign in to confirm. Do not put Mandala office setup in Startup; that opens one-time configuration, not the employee agent.
 - Missing "LAN https://..." on agent sign-in: close the agent and repeat Complete connection under the same employee Windows account.
 - Gateway connection check fails: IT checks the gateway task in Windows Task Scheduler (Mandala LAN Gateway), reserved LAN IP, correct subnet and the Domain/Private Windows network profile. The gateway must have working internet. Do not disable firewall or certificate checks.
 - Missing saved reference: preserve the Windows profile/app data and export "Save / copy diagnostics for IT" before repeating. Report the employee, project, PC, IST date/time and screenshot. Do not clear a pending session.

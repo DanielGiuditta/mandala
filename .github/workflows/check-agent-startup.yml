@@ -1,0 +1,60 @@
+name: Audit employee startup repair
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/fix-employee-startup]
+permissions:
+  contents: read
+jobs:
+  startup:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Exercise startup repair on Windows PowerShell 5
+        shell: powershell
+        run: ./apps/desktop-agent/tests/startup-repair.ps1
+      - name: Run desktop regression checks
+        run: dotnet run --project apps/desktop-agent/tests/Mandala.Agent.RegressionTests/Mandala.Agent.RegressionTests.csproj -c Release
+      - name: Install packaging tool
+        run: choco install innosetup --no-progress --yes
+      - name: Build an unpublished installer fixture and check its installed startup entry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # No production key is needed or published for this packaging test.
+          $config = 'apps/desktop-agent/src/Mandala.Agent/agent.config.json'
+          @{supabaseUrl='https://nzlajptokbcgeaifgnoq.supabase.co';supabaseAnonKey='startup-audit-fixture'} | ConvertTo-Json | Set-Content $config
+          dotnet publish apps/desktop-agent/src/Mandala.Agent/Mandala.Agent.csproj -c Release -r win-x64 --self-contained true -p:Version=1.0.0 -o apps/desktop-agent/publish
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed.' }
+          $env:MANDALA_AGENT_VERSION='1.0.0'
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" apps/desktop-agent/installer/MandalaAgent.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture packaging failed.' }
+          $installer = (Resolve-Path 'apps/desktop-agent/release/MandalaAgentSetup-1.0.0.exe').Path
+          $installed = Join-Path $env:RUNNER_TEMP 'Mandala Startup Install Audit'
+          $result = Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw 'Fixture install failed.' }
+          ./apps/desktop-agent/scripts/audit-startup.ps1 -InstallDirectory $installed
+          # Delete the link, then exercise the real elevated repair entry point.
+          Remove-Item (Join-Path ([Environment]::GetFolderPath('CommonStartup')) 'Mandala Agent.lnk')
+          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File apps/desktop-agent/scripts/startup-repair/repair-startup.ps1 -CommonOnly
+          if ($LASTEXITCODE -ne 0) { throw 'Installed common startup repair failed.' }
+          ./apps/desktop-agent/scripts/audit-startup.ps1 -InstallDirectory $installed
+      - name: Package only the tested repair scripts
+        shell: pwsh
+        run: |
+          $zip = 'MandalaAgentStartupRepair-1.0.0.zip'
+          Compress-Archive -Path 'apps/desktop-agent/scripts/startup-repair/*' -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $zip).Length
+          "Repair audit passed: version=1.0.0 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MandalaAgentStartupRepair-1.0.0
+          path: |
+            MandalaAgentStartupRepair-1.0.0.zip
+            startup-repair-audit.txt
+          if-no-files-found: error

@@ -23,10 +23,12 @@ RestartApplications=no
 [Files]
 Source: "..\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\src\Mandala.Agent\agent.config.json"; DestDir: "{commonappdata}\Mandala Agent"; Flags: ignoreversion
+Source: "..\scripts\startup-repair\*"; DestDir: "{app}\startup-repair"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Mandala Agent"; Filename: "{app}\Mandala.Agent.exe"
-Name: "{commonstartup}\Mandala Agent"; Filename: "{app}\Mandala.Agent.exe"
+Name: "{commonstartup}\Mandala Agent"; Filename: "{app}\Mandala.Agent.exe"; WorkingDir: "{app}"; Comment: "Open Mandala Agent when you sign in to Windows"
+Name: "{autoprograms}\Repair Mandala Agent startup"; Filename: "{app}\startup-repair\Repair Mandala Startup.cmd"; WorkingDir: "{app}\startup-repair"
 
 [Run]
-Filename: "{app}\Mandala.Agent.exe"; Description: "Launch Mandala Agent"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Mandala.Agent.exe"; Description: "Launch Mandala Agent"; Flags: nowait postinstall skipifsilent runasoriginaluser

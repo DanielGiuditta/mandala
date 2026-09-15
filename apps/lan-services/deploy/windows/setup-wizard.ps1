@@ -42,17 +42,20 @@ function Ensure-EmployeeAgent {
     if ($config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co') { throw 'The installed employee agent targets the wrong backend.' }
 }
 $form=New-Object Windows.Forms.Form
-$form.Text='Mandala - guided office setup'; $form.ClientSize=New-Object Drawing.Size(660,620)
+$form.Text='Mandala - office setup (one-time configuration)'; $form.ClientSize=New-Object Drawing.Size(660,620)
 $form.StartPosition='CenterScreen'; $form.FormBorderStyle='FixedDialog'; $form.MaximizeBox=$false
 $form.Font=New-Object Drawing.Font('Segoe UI',10)
 if ($Mode -eq 'Choose') {
-    New-Label $form 'Choose this computer. Mandala creates the certificates; no office certificate authority is required.' 25 70 | Out-Null
-    New-Button $form 'Internet-connected gateway computer' 115 {
+    New-Label $form 'This is one-time office setup. For daily time tracking, open Mandala Agent. Do not add office setup to Windows Startup.' 25 70 | Out-Null
+    New-Button $form 'Open employee agent / repair automatic startup' 115 {
+        Start-Process (Join-Path $PSScriptRoot 'startup-repair\Repair Mandala Startup.cmd') | Out-Null
+    }
+    New-Button $form 'Internet-connected gateway computer' 180 {
         $args='-NoProfile -STA -ExecutionPolicy RemoteSigned -File "'+(Join-Path $PSScriptRoot 'setup-wizard.ps1')+'" -Mode Gateway'
         Start-Process powershell.exe -ArgumentList $args -Verb RunAs | Out-Null
         $form.Close()
     }
-    New-Label $form 'For the LAN-only employee PC, first export its setup ZIP from the gateway. Copy it using your approved USB/local transfer process.' 180 100 | Out-Null
+    New-Label $form 'For the LAN-only employee PC, first export its setup ZIP from the gateway. Copy it using your approved USB/local transfer process.' 245 100 | Out-Null
 } elseif ($Mode -eq 'Gateway') {
     if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Open the gateway setup with administrator approval.' }
     New-Label $form 'Gateway computer - internet required. Keep its LAN address reserved in your router. The gateway will run automatically as the restricted Local Service account.' 15 60 | Out-Null
@@ -90,6 +93,7 @@ if ($Mode -eq 'Choose') {
         New-Item -ItemType Directory $temp | Out-Null
         try {
             foreach($file in @('setup-wizard.ps1','pairing-core.ps1','PairingCertificates.cs','configure-lan.ps1','Employee pairing.cmd')) { Copy-Item (Join-Path $PSScriptRoot $file) $temp }
+            Copy-Item (Join-Path $PSScriptRoot 'startup-repair') $temp -Recurse
             Copy-Item $agent (Join-Path $temp $script:AgentName)
             Compress-Archive -Path (Join-Path $temp '*') -DestinationPath $destination -Force
         } finally { Remove-Item $temp -Recurse -Force }
@@ -136,8 +140,10 @@ if ($Mode -eq 'Choose') {
             $identity=$health.Content | ConvertFrom-Json
             if($identity.backend -ne 'https://nzlajptokbcgeaifgnoq.supabase.co' -or $identity.protocol -ne 1) { throw 'The gateway identity does not match production.' }
         } catch { throw ('Settings saved, but the gateway connection check failed. Ask local IT to check the gateway task, LAN and firewall. '+$_.Exception.Message) }
-        Show-Info 'Connection verified. Open Mandala, sign in, work for two minutes and stop. Ask the local administrator to confirm the saved reference matches one real time entry.'
-        Start-Process (Join-Path $env:ProgramFiles 'Mandala Agent\Mandala.Agent.exe') | Out-Null
+        $startupArgs='-NoProfile -ExecutionPolicy RemoteSigned -File "'+(Join-Path $PSScriptRoot 'startup-repair\repair-startup.ps1')+'"'
+        $startup=Start-Process powershell.exe -ArgumentList $startupArgs -Wait -PassThru
+        if($startup.ExitCode -ne 0) { throw 'Connection verified, but automatic startup needs attention. Open Repair Mandala Startup.cmd from the employee setup folder. Your connection settings are preserved.' }
+        Show-Info 'Connection and startup shortcut verified. Mandala Agent is open. Sign in, work for two minutes and stop. Ask the local administrator to confirm the saved reference matches one real time entry. After saving work, restart and sign in to check automatic startup.'
     }
     New-Label $form 'The certificates are created automatically. Only public certificates move between the PCs. The employee private key remains protected in this Windows profile. Do not clear the profile or app data if a save is pending.' 360 120 | Out-Null
 }

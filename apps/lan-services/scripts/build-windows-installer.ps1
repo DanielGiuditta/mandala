@@ -25,6 +25,7 @@ Copy-Item (Join-Path $runtime 'LICENSE') (Join-Path $publish 'runtime/LICENSE') 
 Copy-Item (Join-Path $root 'deploy/windows/*') $publish -Force
 Copy-Item (Join-Path $root 'gateway.mjs'), (Join-Path $root 'security.mjs') $publish -Force
 Copy-Item (Join-Path $root '../desktop-agent/scripts/configure-lan.ps1') $publish -Force
+Copy-Item (Join-Path $root '../desktop-agent/scripts/startup-repair') $publish -Recurse -Force
 $configFile = Join-Path $publish 'gateway.example.json'
 $config = Get-Content $configFile -Raw | ConvertFrom-Json
 $config.supabaseAnonKey = $env:MANDALA_SUPABASE_ANON_KEY

@@ -1,0 +1,25 @@
+MANDALA AGENT STARTUP REPAIR 1.0.0
+
+Windows administrator approval is required. Stay signed in to the employee's
+normal Windows account. Do not use "Run as administrator" on the repair file;
+the repair asks for approval only when fixing the shared startup shortcut.
+
+1. Extract the entire ZIP.
+2. Double-click Repair Mandala Startup.cmd and approve the Windows prompt.
+3. Wait for "Startup shortcut repaired". Mandala Agent opens directly.
+4. Save any active work, restart and sign in. Confirm Mandala Agent opens
+   without opening office setup or clicking "Internet-connected gateway".
+
+This repairs an existing employee installation; it does not install or start
+the gateway. It checks the installed agent's production backend, restores the
+common startup shortcut, and moves recognized Mandala setup/duplicate shortcuts
+out of the common and current-user Startup folders into shortcut-backups under
+ProgramData/LocalAppData\Mandala Startup Repair. Other applications are untouched.
+Connection settings, certificates, login data and pending time are preserved.
+If Windows has disabled Mandala in Startup apps, the repair reports that instead
+of overriding the setting. If an error appears, preserve the message for IT.
+
+Opening the agent does not start a timer. Choose a project and click Start Work.
+Automatic startup must be confirmed on the employee PC after restart. Before
+rollout, confirm start/stop, project-switch and reconnect saves against actual
+production time entries; a loaded project list is not proof of a saved session.

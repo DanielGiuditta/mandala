@@ -73,7 +73,7 @@ Publishing uses a versioned object key such as `latest/MandalaAgentSetup-1.0.10.
 
 1. A partner or admin signs in to Mandala and selects **Windows agent** in the sidebar.
 2. Select **Download Windows installer**. The link is a short-lived, private download and is unavailable to other roles.
-3. Confirm the filename contains the expected version, then run it while a Windows administrator is present. Administrator approval is mandatory because the Agent installs for all Windows users and adds itself to the common startup folder.
+3. Confirm the filename contains the expected version, then run it while a Windows administrator is present. Administrator approval is mandatory because the Agent installs for all Windows users and adds itself to the common startup folder. The installed shortcut must point directly to `Mandala.Agent.exe`, with the installation folder as its working directory and no setup arguments; Windows CI audits this after installation.
 4. At the employee’s next sign-in, Mandala Agent opens. The employee signs in with their existing Mandala email and password, selects a project, then selects **Start Work**.
 5. Confirm that Windows shows the organization as the verified publisher before broad deployment. Do not deploy an unsigned installer to employee devices.
 

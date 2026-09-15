@@ -113,6 +113,8 @@ jobs:
             throw "Installed Agent anonymous key does not match the approved production key."
           }
 
+          & .\apps\desktop-agent\scripts\audit-startup.ps1 -InstallDirectory $installDirectory
+
           $hash = (Get-FileHash $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
           Write-Host "Installer audit passed: version=$installedVersion backend=$installedProjectRef sha256=$hash"
       - name: Publish the audited installer
