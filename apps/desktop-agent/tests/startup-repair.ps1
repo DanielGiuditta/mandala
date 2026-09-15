@@ -67,7 +67,27 @@ try {
     for ($i=0; $i -lt 50 -and -not (Test-Path $marker); $i++) { Start-Sleep -Milliseconds 100 }
     Assert (Test-Path $marker) 'Windows could not launch the repaired shortcut.'
     Assert ((Get-Content $marker -Raw) -eq $installation) 'Incorrect shortcut working directory.'
+    # Exercise the actual double-click wrapper with downloaded-file markers and
+    # shell-sensitive directory names. A harmless fixture replaces the repair
+    # body so this test does not request UAC or alter the runner's own Startup.
+    $download = Join-Path $fixture 'Downloaded repair & office'
+    New-Item -ItemType Directory -Path $download | Out-Null
+    $launcher = Join-Path $download 'Repair Mandala Startup.cmd'
+    Copy-Item (Join-Path $PSScriptRoot '..\scripts\startup-repair\Repair Mandala Startup.cmd') $launcher
+    'Set-Content -LiteralPath (Join-Path $PSScriptRoot "wrapper-passed.txt") -Value "ok"; exit 0' | Set-Content (Join-Path $download 'repair-startup.ps1')
+    '# fixture' | Set-Content (Join-Path $download 'startup-core.ps1')
+    '# unrelated downloaded script' | Set-Content (Join-Path $download 'unrelated.ps1')
+    foreach ($name in @('repair-startup.ps1','startup-core.ps1','unrelated.ps1')) {
+        Set-Content -LiteralPath (Join-Path $download $name) -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+    }
+    $inputFile = Join-Path $fixture 'input.txt'
+    'x' | Set-Content $inputFile
+    $wrapper = Start-Process -FilePath $env:ComSpec -ArgumentList ('/d /c ""' + $launcher + '""') -RedirectStandardInput $inputFile -RedirectStandardOutput (Join-Path $fixture 'wrapper-output.txt') -RedirectStandardError (Join-Path $fixture 'wrapper-error.txt') -PassThru
+    if (-not $wrapper.WaitForExit(15000)) { Stop-Process -Id $wrapper.Id -Force; throw 'Double-click wrapper timed out.' }
+    Assert (Test-Path (Join-Path $download 'wrapper-passed.txt')) ('Downloaded repair wrapper failed: ' + (Get-Content (Join-Path $fixture 'wrapper-output.txt') -Raw))
+    Assert ($null -ne (Get-Item -LiteralPath (Join-Path $download 'unrelated.ps1') -Stream Zone.Identifier -ErrorAction SilentlyContinue)) 'Wrapper unblocked an unrelated script.'
     Write-Host 'PASS: missing/wrong shortcut repair; wizard backup; repeat repair; duplicate cleanup; unrelated files/config/pending work preserved; actual .lnk launch on Windows.'
+    Write-Host 'PASS: downloaded ZIP launcher handles spaces and ampersands, unblocks only its two scripts and invokes the repair.'
 } finally {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
     Remove-Item $fixture -Recurse -Force

@@ -5,6 +5,9 @@ on:
     branches: [codex/fix-employee-startup]
 permissions:
   contents: read
+concurrency:
+  group: employee-startup-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   startup:
     runs-on: windows-latest
