@@ -1,6 +1,6 @@
-MANDALA AGENT STARTUP REPAIR 1.0.0
+MANDALA AGENT STARTUP REPAIR 1.0.1
 
-Windows administrator approval is required. Stay signed in to the employee's
+Windows administrator approval is required for shared startup. Stay signed in to the employee's
 normal Windows account. Do not use "Run as administrator" on the repair file;
 the repair asks for approval only when fixing the shared startup shortcut.
 
@@ -13,11 +13,12 @@ the repair asks for approval only when fixing the shared startup shortcut.
 This repairs an existing employee installation; it does not install or start
 the gateway. The launcher unblocks only its two included PowerShell files after
 download; it does not change Windows execution policy settings. It checks the
-installed agent's production backend, restores the
-common startup shortcut, and moves recognized Mandala setup/duplicate shortcuts
+installed agent's production backend, checks both registry views and existing
+shortcuts, restores startup, and moves recognized Mandala setup/duplicate shortcuts
 out of the common and current-user Startup folders into shortcut-backups under
 ProgramData/LocalAppData\Mandala Startup Repair. Other applications are untouched.
-Connection settings, certificates, login data and pending time are preserved.
+User-local installations get a user-only shortcut instead of being registered for
+every Windows user. Connection settings, certificates, login data and pending time are preserved.
 If Windows has disabled Mandala in Startup apps, the repair reports that instead
 of overriding the setting. If an error appears, preserve the message for IT.
 

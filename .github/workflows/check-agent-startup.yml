@@ -64,6 +64,17 @@ jobs:
           # Report export must work even on an unconfigured machine, without prompts.
           & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File "$kit/office-test.ps1" -Mode Export
           if($LASTEXITCODE -ne 0){throw 'Complete report export failed.'}
+          $statePath=Join-Path $env:LOCALAPPDATA 'Mandala Office Test/employee.json'
+          $state=Get-Content $statePath -Raw|ConvertFrom-Json
+          $state.Email='office-audit@example.test'
+          $state|ConvertTo-Json -Depth 15|Set-Content $statePath
+          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File "$kit/office-test.ps1" -Mode Preflight
+          if($LASTEXITCODE -ne 0){throw 'Complete preflight did not return a report.'}
+          $state=Get-Content $statePath -Raw|ConvertFrom-Json
+          if($state.Checks.Count -lt 13){throw 'Main preflight stopped before all independent checks ran.'}
+          if(@($state.Checks|Where-Object {$_.Id -eq 'employee.version-and-binary' -and $_.Status -eq 'PASS'}).Count -ne 1){throw 'Real installed binary did not match kit fingerprint.'}
+          if($state.Result -ne 'NOT CLEARED'){throw 'Unconfigured fixture was incorrectly cleared.'}
+          Write-Host 'PASS: actual preflight entry point exported every check and kept the unconfigured PC NOT CLEARED.'
       - name: Build an unpublished installer fixture and check its installed startup entry
         shell: pwsh
         run: |
