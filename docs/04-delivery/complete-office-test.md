@@ -73,6 +73,17 @@ required gates; employee row verification alone is not a rollout approval.
   fingerprint used by employee preflight. The old installer is not rebuilt or
   relabeled. An unpublished fixture tests future installer startup behavior.
 
+- [Complete Windows test-kit audit 35104147268](https://github.com/DanielGiuditta/mandala/actions/runs/35104147268)
+  passed startup repair, full check collection, report privacy/failure fixtures,
+  production-row verifier fixtures, desktop regressions, real approved installer
+  discovery from 32-bit PowerShell, actual preflight/report export, and the future
+  installer startup fixture.
+- The downloaded final `MandalaOfficeTest-1.1.0.zip` was verified on Mac against
+  that Windows audit: 50,541,329 bytes, SHA-256
+  `0a6cf3ec99ab2c590e625b76fc1fd385aff238fe16fc1fee343fd9f83b4b6b1c`.
+  Every packaged script/instruction matches the audited source (normalizing line
+  endings); the bundled employee installer matches the live production download.
+
 Registry lookup uses explicit 32/64-bit views as documented by
 [Microsoft RegistryView](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.registryview?view=netframework-4.8.1).
 Tests also cover custom shortcut-only installations and refuse to promote a
