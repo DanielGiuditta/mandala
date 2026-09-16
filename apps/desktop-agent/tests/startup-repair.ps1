@@ -35,6 +35,23 @@ try {
     Reject { Assert-MandalaAgent $agent $fixture } 'Wrong production backend accepted.'
     '{"supabaseUrl":"https://nzlajptokbcgeaifgnoq.supabase.co","supabaseAnonKey":"fixture"}' | Set-Content $configPath
     Assert-MandalaAgent $agent $fixture
+    $stale=[pscustomobject]@{Path=(Join-Path $fixture 'removed\Mandala.Agent.exe');Scope='Machine';Source='stale registry'}
+    $custom=[pscustomobject]@{Path=$agent;Scope='User';Source='custom shortcut'}
+    Assert ((Select-MandalaAgent @($stale,$custom)).Path -eq $agent) 'Stale registration prevented finding a working installation.'
+    Assert ($null -eq (Select-MandalaAgent @($custom) -MachineOnly)) 'User-local installation was selected for all-user startup.'
+    $discovery=Join-Path $fixture 'Custom Start Menu'
+    New-Item -ItemType Directory $discovery|Out-Null
+    Make-Link (Join-Path $discovery 'Employee time tracker.lnk') $agent
+    Assert ((Select-MandalaAgent @(Get-MandalaShortcutCandidates @($discovery))).Path -eq $agent) 'Shortcut-only installation not discovered.'
+    $testKey='SOFTWARE\MandalaStartupAudit\'+[Guid]::NewGuid().ToString()
+    foreach($view in @('Registry32','Registry64')) {
+        $root=[Microsoft.Win32.RegistryKey]::OpenBaseKey('CurrentUser',$view)
+        try {
+            $key=$root.CreateSubKey($testKey);$key.SetValue('InstallLocation',$installation);$key.Dispose()
+            $found=@(Get-MandalaRegistryCandidates $testKey)
+            Assert (@($found|Where-Object {$_.Path -eq $agent -and $_.Source -eq ('CurrentUser/'+$view)}).Count -gt 0) ('Explicit registry view not found: '+$view)
+        } finally {$root.DeleteSubKeyTree($testKey,$false);$root.Dispose()}
+    }
     $configHash = (Get-FileHash $configPath).Hash
     $pending = Join-Path $fixture 'pending-time.json'
     'preserve pending work' | Set-Content $pending
@@ -88,6 +105,7 @@ try {
     Assert ($null -ne (Get-Item -LiteralPath (Join-Path $download 'unrelated.ps1') -Stream Zone.Identifier -ErrorAction SilentlyContinue)) 'Wrapper unblocked an unrelated script.'
     Write-Host 'PASS: missing/wrong shortcut repair; wizard backup; repeat repair; duplicate cleanup; unrelated files/config/pending work preserved; actual .lnk launch on Windows.'
     Write-Host 'PASS: downloaded ZIP launcher handles spaces and ampersands, unblocks only its two scripts and invokes the repair.'
+    Write-Host 'PASS: stale registration fallback, custom shortcut discovery, user/machine scope isolation and explicit 32/64-bit registry views.'
 } finally {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
     Remove-Item $fixture -Recurse -Force

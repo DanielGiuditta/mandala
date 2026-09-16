@@ -3,7 +3,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'startup-core.ps1')
 
 try {
-    $agent = Get-MandalaAgentPath
+    $selected = Select-MandalaAgent @(Get-MandalaAgentCandidates) -MachineOnly:$CommonOnly
+    $agent = if($selected) { $selected.Path } else { $null }
     Assert-MandalaAgent $agent ([Environment]::GetFolderPath('CommonApplicationData'))
     $commonStartup = [Environment]::GetFolderPath('CommonStartup')
     if ($CommonOnly) {
@@ -21,14 +22,18 @@ try {
 
     # Elevate only the common shortcut operation. Do not launch the employee agent
     # or access profile-bound certificates/tokens as the administrator account.
-    Write-Host 'Windows administrator approval is required once to repair Mandala startup.'
-    $arguments = '-NoProfile -ExecutionPolicy RemoteSigned -File "' + $PSCommandPath + '" -CommonOnly'
-    $process = Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait -PassThru
-    if ($process.ExitCode -ne 0) { throw 'Startup repair was not completed. No connection settings or saved time were changed.' }
-    if (-not (Test-MandalaStartupShortcut $commonStartup $agent)) { throw 'The common startup shortcut is still missing or incorrect.' }
-
     $backup = Join-Path $env:LOCALAPPDATA 'Mandala Startup Repair\shortcut-backups'
-    Repair-MandalaStartupFolder ([Environment]::GetFolderPath('Startup')) $agent $backup
+    if($selected.Scope -eq 'Machine') {
+        Write-Host 'Windows administrator approval is required once to repair Mandala startup.'
+        $arguments = '-NoProfile -ExecutionPolicy RemoteSigned -File "' + $PSCommandPath + '" -CommonOnly'
+        $process = Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw 'Startup repair was not completed. No connection settings or saved time were changed.' }
+        if (-not (Test-MandalaStartupShortcut $commonStartup $agent)) { throw 'The common startup shortcut is still missing or incorrect.' }
+        Repair-MandalaStartupFolder ([Environment]::GetFolderPath('Startup')) $agent $backup
+    } else {
+        # A user/portable installation must never be registered for every user.
+        Repair-MandalaStartupFolder ([Environment]::GetFolderPath('Startup')) $agent $backup -CreateShortcut
+    }
     # Respect Windows' startup-disable setting: report it instead of editing its
     # undocumented binary value or claiming automatic startup is already proven.
     foreach ($key in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder')) {

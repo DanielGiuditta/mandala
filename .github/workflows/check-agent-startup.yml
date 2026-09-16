@@ -5,6 +5,7 @@ on:
     branches: [codex/fix-employee-startup]
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: employee-startup-${{ github.ref }}
   cancel-in-progress: true
@@ -20,10 +21,49 @@ jobs:
       - name: Exercise startup repair on Windows PowerShell 5
         shell: powershell
         run: ./apps/desktop-agent/tests/startup-repair.ps1
+      - name: Exercise full office checks and fail-closed evidence parsing
+        shell: powershell
+        run: ./apps/desktop-agent/tests/office-test.ps1
+      - name: Check read-only production verification with failure fixtures
+        run: node --test apps/desktop-agent/tests/verify-office-test.test.mjs
       - name: Run desktop regression checks
         run: dotnet run --project apps/desktop-agent/tests/Mandala.Agent.RegressionTests/Mandala.Agent.RegressionTests.csproj -c Release
       - name: Install packaging tool
         run: choco install innosetup --no-progress --yes
+      - name: Audit the approved production installer for the complete test kit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $kit='apps/desktop-agent/scripts/office-test'
+          gh run download 34076879611 --name MandalaAgentSetup-1.0.15 --dir $kit
+          if ($LASTEXITCODE -ne 0) { throw 'Approved installer download failed.' }
+          $installer=(Resolve-Path "$kit/MandalaAgentSetup-1.0.15.exe").Path
+          $hash=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -ne 'acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed' -or (Get-Item $installer).Length -ne 51056706) { throw 'Approved installer differs from original Windows audit.' }
+          $installed=Join-Path $env:RUNNER_TEMP 'Mandala Approved Agent Audit'
+          $process=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"" -Wait -PassThru
+          if($process.ExitCode -ne 0) { throw 'Approved installer failed.' }
+          $agent=Join-Path $installed 'Mandala.Agent.exe'
+          $config=Get-Content (Join-Path $installed 'agent.config.json') -Raw|ConvertFrom-Json
+          if($config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co' -or (Get-Item $agent).VersionInfo.ProductVersion -notmatch '^1\.0\.15(?:\.|\+|$)') { throw 'Approved version/backend mismatch.' }
+          @{version='1.0.15';filename='MandalaAgentSetup-1.0.15.exe';installerSha256=$hash;installerBytes=51056706;backend='https://nzlajptokbcgeaifgnoq.supabase.co';agentSha256=(Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$kit/approved-agent.json"
+          Copy-Item 'apps/desktop-agent/scripts/startup-repair' $kit -Recurse
+          # Validate real installation discovery from a 32-bit PowerShell host.
+          $audit=Join-Path $env:RUNNER_TEMP 'check-discovery.ps1'
+          @'
+          param($Core,$Expected)
+          $ErrorActionPreference='Stop'
+          . $Core
+          if((Get-MandalaAgentPath -MachineOnly) -ne $Expected) { throw '32-bit host did not discover the real 64-bit installation.' }
+          Write-Host 'PASS: 32-bit PowerShell located the custom 64-bit installation.'
+          '@ | Set-Content $audit
+          & "$env:WINDIR\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -File $audit -Core (Resolve-Path 'apps/desktop-agent/scripts/startup-repair/startup-core.ps1').Path -Expected $agent
+          if($LASTEXITCODE -ne 0){throw '32-bit discovery audit failed.'}
+          # Report export must work even on an unconfigured machine, without prompts.
+          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File "$kit/office-test.ps1" -Mode Export
+          if($LASTEXITCODE -ne 0){throw 'Complete report export failed.'}
       - name: Build an unpublished installer fixture and check its installed startup entry
         shell: pwsh
         run: |
@@ -49,15 +89,22 @@ jobs:
       - name: Package only the tested repair scripts
         shell: pwsh
         run: |
-          $zip = 'MandalaAgentStartupRepair-1.0.0.zip'
+          $zip = 'MandalaAgentStartupRepair-1.0.1.zip'
           Compress-Archive -Path 'apps/desktop-agent/scripts/startup-repair/*' -DestinationPath $zip
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $zip).Length
-          "Repair audit passed: version=1.0.0 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
+          "Repair audit passed: version=1.0.1 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
+          $kitZip='MandalaOfficeTest-1.1.0.zip'
+          Compress-Archive -Path 'apps/desktop-agent/scripts/office-test/*' -DestinationPath $kitZip
+          $kitHash=(Get-FileHash $kitZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $kitSize=(Get-Item $kitZip).Length
+          "Office test audit passed: version=1.1.0 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MandalaAgentStartupRepair-1.0.0
+          name: MandalaOfficeTest-1.1.0
           path: |
-            MandalaAgentStartupRepair-1.0.0.zip
+            MandalaAgentStartupRepair-1.0.1.zip
             startup-repair-audit.txt
+            MandalaOfficeTest-1.1.0.zip
+            office-test-audit.txt
           if-no-files-found: error

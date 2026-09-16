@@ -1,23 +1,79 @@
 $ErrorActionPreference = 'Stop'
 
 function Assert-MandalaAgent($AgentPath, $CommonDataDirectory) {
-    if (-not (Test-Path -LiteralPath $AgentPath -PathType Leaf) -or (Split-Path $AgentPath -Leaf) -ne 'Mandala.Agent.exe') {
-        throw 'Mandala Agent is not installed. This repair does not install the agent or the gateway.'
+    if (-not $AgentPath -or -not (Test-Path -LiteralPath $AgentPath -PathType Leaf) -or (Split-Path $AgentPath -Leaf) -ne 'Mandala.Agent.exe') {
+        throw 'Mandala Agent could not be located. This does not prove it is uninstalled. Run the complete Mandala check to collect installation and connection evidence.'
     }
     # Use the same configuration precedence as AppConfiguration.Load.
     $configPath = Join-Path (Split-Path $AgentPath -Parent) 'agent.config.json'
     if (-not (Test-Path -LiteralPath $configPath)) { $configPath = Join-Path $CommonDataDirectory 'Mandala Agent\agent.config.json' }
-    $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json }
+    catch { throw 'The agent connection configuration is missing or unreadable. No startup changes were made.' }
     if (-not $config.supabaseUrl -or $config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co' -or -not $config.supabaseAnonKey) {
         throw 'AGENT-CONFIG-BACKEND-001: The installed agent is not configured for Mandala production. Startup was not changed.'
     }
 }
 
-function Get-MandalaAgentPath {
-    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{F2E1F144-4E47-4E47-8206-163C6BCA6D89}_is1'
-    $installation = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
-    if ($installation -and $installation.InstallLocation) { return Join-Path $installation.InstallLocation 'Mandala.Agent.exe' }
-    return Join-Path $env:ProgramFiles 'Mandala Agent\Mandala.Agent.exe'
+function Get-MandalaRegistryCandidates($SubKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{F2E1F144-4E47-4E47-8206-163C6BCA6D89}_is1') {
+    foreach ($hive in @('LocalMachine','CurrentUser')) {
+        foreach ($view in @('Registry64','Registry32')) {
+            $root=$null; $key=$null
+            try {
+                $root=[Microsoft.Win32.RegistryKey]::OpenBaseKey($hive,$view)
+                $key=$root.OpenSubKey($SubKey)
+                if ($key -and $key.GetValue('InstallLocation')) {
+                    [pscustomobject]@{Path=(Join-Path ($key.GetValue('InstallLocation')) 'Mandala.Agent.exe'); Scope=$(if($hive -eq 'LocalMachine'){'Machine'}else{'User'}); Source="$hive/$view"}
+                }
+            } catch { Write-Verbose "Could not read $hive/$view installation registration." }
+            finally { if($key){$key.Dispose()}; if($root){$root.Dispose()} }
+        }
+    }
+}
+
+function Get-MandalaShortcutCandidates($Directories) {
+    $shell=New-Object -ComObject WScript.Shell
+    try {
+        foreach($directory in @($Directories | Select-Object -Unique)) {
+            if(-not $directory -or -not (Test-Path -LiteralPath $directory)) { continue }
+            foreach($file in @(Get-ChildItem -LiteralPath $directory -Filter '*.lnk' -File -Recurse -ErrorAction SilentlyContinue)) {
+                try {
+                    $target=$shell.CreateShortcut($file.FullName).TargetPath
+                    if($target -and [IO.Path]::GetFileName($target) -eq 'Mandala.Agent.exe') {
+                        [pscustomobject]@{Path=$target; Scope='User'; Source=('Shortcut: '+$file.FullName)}
+                    }
+                } catch { Write-Verbose 'Unreadable shortcut skipped.' }
+            }
+        }
+    } finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) }
+}
+
+function Get-MandalaAgentCandidates {
+    Get-MandalaRegistryCandidates
+    foreach($directory in (@($env:ProgramW6432,$env:ProgramFiles,${env:ProgramFiles(x86)}) | Select-Object -Unique)) {
+        if($directory) { [pscustomobject]@{Path=(Join-Path $directory 'Mandala Agent\Mandala.Agent.exe');Scope='Machine';Source='Program Files'} }
+    }
+    [pscustomobject]@{Path=(Join-Path $env:LOCALAPPDATA 'Programs\Mandala Agent\Mandala.Agent.exe');Scope='User';Source='User programs'}
+    foreach($process in @(Get-Process -Name 'Mandala.Agent' -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq (Get-Process -Id $PID).SessionId })) {
+        if($process.Path) { [pscustomobject]@{Path=$process.Path;Scope='User';Source='Running employee agent'} }
+    }
+    $directories=@('Programs','CommonPrograms','DesktopDirectory','CommonDesktopDirectory','Startup','CommonStartup') | ForEach-Object { [Environment]::GetFolderPath($_) }
+    Get-MandalaShortcutCandidates $directories
+}
+
+function Select-MandalaAgent($Candidates, [switch]$MachineOnly) {
+    foreach($candidate in $Candidates) {
+        if($MachineOnly -and $candidate.Scope -ne 'Machine') { continue }
+        # Do not probe UNC/network executables or treat setup shortcuts as agents.
+        if($candidate.Path -notmatch '^[a-zA-Z]:[\\/]' -or [IO.Path]::GetFileName($candidate.Path) -ne 'Mandala.Agent.exe') { continue }
+        if(([IO.DriveInfo]::new([IO.Path]::GetPathRoot($candidate.Path))).DriveType -ne 'Fixed') { continue }
+        if(Test-Path -LiteralPath $candidate.Path -PathType Leaf) { return $candidate }
+    }
+    return $null
+}
+
+function Get-MandalaAgentPath([switch]$MachineOnly) {
+    $selected=Select-MandalaAgent @(Get-MandalaAgentCandidates) -MachineOnly:$MachineOnly
+    if($selected) { return $selected.Path }
 }
 
 function Test-MandalaSetupShortcut($Shortcut, $Name) {
