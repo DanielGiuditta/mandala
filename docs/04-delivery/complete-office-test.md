@@ -1,5 +1,67 @@
 # Complete office acceptance test
 
+## Gateway repair follow-up 1.2.1
+
+The September 17 screenshot from STP54 establishes that gateway 1.1.0 is installed,
+its configured address is 192.168.1.58:8443, production is reachable, and its valid
+server certificate has one enrolled employee. The task is stopped, no listener is
+present, and the old checker finds no Private/Domain profile. It does not establish
+why the task stopped. The 1.2.0 checker failed before retaining the task exit result;
+its gateway path only diagnosed problems and did not repair them. That was a gap
+in the earlier handoff, not evidence that installation or pairing must be repeated.
+
+`MandalaOfficeTest-1.2.1.zip` now offers an IT-approved maintenance repair before the
+real gateway reboot check. It verifies installed gateway bytes against the original
+production Windows audit, preserves all five guided configuration/pairing files
+byte-for-byte, backs up the old task/rule, restores Local Service read permissions,
+and installs a small startup entry beside the unchanged audited gateway transport.
+The new entry retries a temporarily unavailable bind address or port every 15 seconds
+within the same restricted process. The task has a 30-second boot delay, no run-time
+limit, and 999 one-minute restarts after an actual process exit. A task marked Running
+alone never passes: the configured listener is still required.
+
+With explicit IT confirmation that this is the trusted office LAN and no employee
+timers are active, the repair extends only the existing gateway firewall rule to
+all network categories. It preserves the exact existing private employee subnet(s)
+and restricts the rule to the configured gateway IP, adapter, TCP 8443 and audited
+Node executable. This accommodates Public classification without changing Windows'
+network category, opening unrelated Private-network rules or disabling any firewall.
+Unknown/public/Any employee subnet scopes are refused. Employee mutual TLS and the
+fixed production upstream are unchanged.
+
+The report now retains task state, last exit result (including stopped tasks), action
+location, restart/boot settings, actual adapter profiles and firewall scopes. Startup
+status contains only a fixed phase, code, PID and UTC timestamp; it does not copy
+configuration, raw exception bodies, credentials or certificate keys. If startup
+still fails, the report contains substantially more evidence than the screenshot.
+A nullable next-run date on a boot-triggered task is handled explicitly.
+
+Validation uses the exact production gateway installer on Windows, generated fixture
+pairing, and a real Local Service scheduled task. It stops the task, performs the
+repair, proves pairing/config bytes and Windows network categories were unchanged,
+checks the narrow firewall scope including Public, and occupies/releases the port
+to prove recovery in the same process. The repaired service must pass the shipped
+checker and the existing enrolled/missing/revoked-certificate HTTPS tests. CI does
+not claim a real reboot on STP54 or a confirmed cause for its original failure.
+
+The complete Windows audit passed in [run 35216705140](https://github.com/DanielGiuditta/mandala/actions/runs/35216705140),
+source commit `d8dedf5`. The downloaded final `MandalaOfficeTest-1.2.1.zip` was
+verified on Mac: 50,554,934 bytes, SHA-256
+`c20183471de5ef951d179b5f752b71b2c0cac70594f36e79b1d782d1d4c5762f`.
+All 16 expected files matched the package inventory, all scripts/instructions
+matched audited source after newline normalization, both backend/version manifests
+matched production, and the included employee installer retained its approved SHA.
+The live gateway manifest still names the original 1.1.0 installer at 24,825,179
+bytes with SHA-256 `0fd024c0cf69d8e913c048f5e3e20c2e50d2fdf0c4584dbc6108d5ac98150ce3`;
+that exact installer was used by this Windows repair audit.
+
+Existing 1.2.0 progress is retained; employee time tests are not silently replayed.
+The old gateway setup is a one-time configuration tool, not the daily startup path.
+The legacy 1.1.0 setup can recreate its old task/rule if explicitly run again; this
+repair must be reapplied after such a reconfiguration or installer replacement.
+No employee or gateway installer version is relabeled, and no new certificate,
+account, product entity, permission or time-entry behavior is introduced.
+
 ## Automated handoff 1.2.0
 
 The current deliverable is `MandalaOfficeTest-1.2.0.zip`. It supersedes the manual
