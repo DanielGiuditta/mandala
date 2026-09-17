@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { verifyReport } from '../scripts/verify-office-test.mjs'
+import { verifyReport, verifyGatewayReport, verifyOfficeReports } from '../scripts/verify-office-test.mjs'
 const id = n => '00000000-0000-0000-0000-' + String(n).padStart(12, '0')
 function fixture() {
   const required = ['account-context','installed-agent','version-and-binary','production-backend','startup-shortcut','startup-enabled','lan-settings','certificate','gateway-mutual-tls','gateway-clock','unenrolled-request-denied','diagnostics-readable','signed-in-projects','reboot-observed']
@@ -37,3 +37,25 @@ for(const [name,change] of Object.entries({
   'incomplete scenario': f=>{f.report.Scenarios[0].Status='INCOMPLETE'},
   'wrong receipt': f=>{f.report.Scenarios[0].Receipts[0].EntryId=id(999)}
 }))test('rejects '+name,async()=>{const f=fixture();change(f);const r=await verifyReport(f.report,f.get);assert.equal(r.status,'NOT CLEARED')})
+
+function gatewayFixture() {
+ return { Role: 'gateway', KitVersion: '1.2.0', Phase: 'complete', Checks: ['task','configuration','installed-release','production-internet','firewall','listener','certificate-and-enrollment','reboot-observed'].map(id => ({Id:'gateway.'+id,Status:'PASS'})).concat({Id:'gateway.isolation',Status:'OBSERVED'}) }
+}
+test('combined acceptance requires gateway reboot, all checks and IT isolation observation', async()=>{
+ const f=fixture(); const gateway=gatewayFixture()
+ assert.equal(verifyGatewayReport(gateway).status,'PASS')
+ assert.match((await verifyOfficeReports(f.report,gateway,f.get)).status,/CHECKS PASSED/)
+ gateway.Checks=gateway.Checks.filter(c=>c.Id!=='gateway.reboot-observed')
+ assert.equal((await verifyOfficeReports(f.report,gateway,f.get)).status,'NOT CLEARED')
+})
+test('gateway cannot pass without isolation confirmation or with a hidden failure',()=>{
+ const g=gatewayFixture();g.Checks=g.Checks.filter(c=>c.Id!=='gateway.isolation');assert.equal(verifyGatewayReport(g).status,'NOT CLEARED')
+ const h=gatewayFixture();h.Checks.push({Id:'test.quick-runner',Status:'BLOCKED'});assert.equal(verifyGatewayReport(h).status,'NOT CLEARED')
+})
+test('automatic run rejects interrupted phase and missing detailed behavior evidence',async()=>{
+ const f=fixture();f.report.KitVersion='1.2.0';f.report.Phase='functional'
+ assert.equal((await verifyReport(f.report,f.get)).status,'NOT CLEARED')
+ f.report.Phase='complete';assert.equal((await verifyReport(f.report,f.get)).status,'NOT CLEARED')
+ for(const s of f.report.Scenarios) s.Observations=Array.from({length:({stop:2,switch:2,idle:1,offline:4})[s.Kind]},()=>({Answer:'yes'}))
+ assert.ok((await verifyReport(f.report,f.get)).checks.every(c=>c.status==='PASS'))
+})

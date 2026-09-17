@@ -52,7 +52,9 @@ jobs:
           $config=Get-Content (Join-Path $installed 'agent.config.json') -Raw|ConvertFrom-Json
           if($config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co' -or (Get-Item $agent).VersionInfo.ProductVersion -notmatch '^1\.0\.15(?:\.|\+|$)') { throw 'Approved version/backend mismatch.' }
           @{version='1.0.15';filename='MandalaAgentSetup-1.0.15.exe';installerSha256=$hash;installerBytes=51056706;backend='https://nzlajptokbcgeaifgnoq.supabase.co';agentSha256=(Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$kit/approved-agent.json"
-          Copy-Item 'apps/desktop-agent/scripts/startup-repair' $kit -Recurse
+          if(-not(Test-Path (Join-Path $kit 'startup-repair'))) { Copy-Item 'apps/desktop-agent/scripts/startup-repair' $kit -Recurse }
+          & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-ui.ps1 -Agent $agent
+          if($LASTEXITCODE -ne 0){throw 'Actual approved Agent UI compatibility failed.'}
           # Validate real installation discovery from a 32-bit PowerShell host.
           $audit=Join-Path $env:RUNNER_TEMP 'check-discovery.ps1'
           @'

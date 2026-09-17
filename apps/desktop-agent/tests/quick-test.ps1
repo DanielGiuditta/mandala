@@ -15,6 +15,7 @@ try {
  Wait-Ui 'cancelled invoke' {$click.IsCompleted} 15|Out-Null;$click.GetAwaiter().GetResult();Wait-AgentState 'Tracking A'
  $click=Invoke-AgentButton 'StartWorkButton' -Async;Confirm-AgentSwitch $true
  Wait-Ui 'confirmed invoke' {$click.IsCompleted} 15|Out-Null;$click.GetAwaiter().GetResult();Wait-AgentState 'Tracking B'
+ Wait-TestActivity 1
  Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project'
  Assert ((Get-AgentText 'TrackerMessageText') -like '*saved successfully*') 'Confirmation text unavailable.'
  $failed=$false;try{Select-AgentProject 'missing'}catch{$failed=$true};Assert $failed 'Unknown project accepted.'
@@ -39,3 +40,32 @@ Assert ($state.Scenarios[0].Status -eq 'LOCAL PASS' -and $state.Scenarios[0].Fin
 $failed=$false;try {Run-AutomatedCase 'switch' 2 {throw 'simulated UI failure'}}catch{$failed=$true}
 Assert ($failed -and $state.Scenarios[1].Status -eq 'FAIL' -and $state.Scenarios[1].FinishedUtc) 'Failed case did not persist evidence and propagate stop.'
 Write-Host 'PASS: actual scenario orchestrator saves pass/failure evidence and propagates failures without repeating writes.'
+# Run the actual entry point against an interrupted state: it must export only,
+# never continue time writes or change the real user's persistent test state.
+$isolated=Join-Path $env:RUNNER_TEMP ('Quick Interrupted '+[Guid]::NewGuid())
+$folder=Join-Path $isolated 'Mandala Office Test 1.2.0'
+New-Item -ItemType Directory $folder -Force|Out-Null
+$computer='MANDALA-CI-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
+$reportDir=Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) ('Mandala-Quick-Test-'+$computer+'-employee')
+$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.0';RunId=[Guid]::NewGuid().ToString();Role='employee';Computer=$computer;WindowsUser='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='functional';Email='fixture@example.test';ProjectA='A';ProjectB='B';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@([pscustomobject]@{Kind='stop';Status='INCOMPLETE';Detail='Interrupted'});Events=@();DatabaseVerification='PENDING';Result='NOT CLEARED'}
+$state|ConvertTo-Json -Depth 15|Set-Content (Join-Path $folder 'employee.json')
+# The staged startup core is needed by the entry point, as in the actual kit.
+$kit=Split-Path $file
+$coreTarget=Join-Path $kit 'startup-repair'
+if(-not(Test-Path $coreTarget)){Copy-Item (Join-Path $PSScriptRoot '..\scripts\startup-repair') $kit -Recurse}
+try {
+ $savedLocal=$env:LOCALAPPDATA;$savedComputer=$env:COMPUTERNAME
+ $env:LOCALAPPDATA=$isolated;$env:COMPUTERNAME=$computer
+ & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
+ Assert ($LASTEXITCODE -eq 0) 'Interrupted main entry point failed to export.'
+ $restored=Get-Content (Join-Path $folder 'employee.json') -Raw|ConvertFrom-Json
+ Assert ($restored.Phase -eq 'stopped' -and $restored.Result -eq 'NOT CLEARED') 'Interrupted run was not blocked.'
+ Assert ($restored.Scenarios.Count -eq 4 -and $restored.Scenarios[0].Status -eq 'FAIL') 'Interrupted/remaining tests not recorded.'
+ Assert (Test-Path ($reportDir+'.zip')) 'Interrupted report ZIP missing.'
+ Write-Host 'PASS: actual quick launcher preserves interruption, blocks remaining writes and exports a report.'
+} finally {
+ $env:LOCALAPPDATA=$savedLocal;$env:COMPUTERNAME=$savedComputer
+ Remove-Item $isolated -Recurse -Force
+ Remove-Item $reportDir -Recurse -Force -ErrorAction SilentlyContinue
+ Remove-Item ($reportDir+'.zip') -Force -ErrorAction SilentlyContinue
+}

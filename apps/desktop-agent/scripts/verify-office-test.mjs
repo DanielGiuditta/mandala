@@ -14,6 +14,7 @@ export async function verifyReport(report, get) {
     catch (error) { checks.push({ id, status: 'FAIL', detail: error.message }) }
   }
   await check('employee-local-checks', async () => {
+    if (report.KitVersion === '1.2.0') assert(report.Phase === 'complete', 'Automatic run did not finish.')
     const required = ['account-context','installed-agent','version-and-binary','production-backend','startup-shortcut','startup-enabled','lan-settings','certificate','gateway-mutual-tls','gateway-clock','unenrolled-request-denied','diagnostics-readable','signed-in-projects','reboot-observed']
     assert(required.every(id => report.Checks?.some(c => c.Id === 'employee.' + id && c.Status === 'PASS')), 'Not every required employee check passed.')
     assert(report.Checks.every(c => c.Status === 'PASS'), 'A failed or blocked local check remains.')
@@ -30,6 +31,7 @@ export async function verifyReport(report, get) {
       assert(scenarios.length === 1 && scenarios[0].Status === 'LOCAL PASS', 'Scenario was not completed successfully exactly once.')
       const scenario = scenarios[0]
       assert(scenario.Observations?.length && scenario.Observations.every(o => o.Answer === 'yes'), 'A required behavior observation is missing.')
+      if (report.KitVersion === '1.2.0') assert(scenario.Observations.length >= ({ stop: 2, switch: 2, idle: 1, offline: 4 })[kind], 'Automatic behavior evidence is incomplete.')
       assert(scenario.Receipts?.length === names.length, 'Unexpected receipt count.')
       const from = new Date(scenario.StartedUtc); const until = new Date(scenario.FinishedUtc)
       assert(Number.isFinite(+from) && Number.isFinite(+until) && until > from, 'Invalid test window.')
@@ -61,9 +63,23 @@ export async function verifyReport(report, get) {
   return { computer: report.Computer, email: report.Email, checkedAt: new Date().toISOString(), backend: production, status: checks.every(c => c.status === 'PASS') ? 'EMPLOYEE CHECKS PASSED - GATEWAY REPORT AND IT SIGNOFF STILL REQUIRED' : 'NOT CLEARED', checks }
 }
 
+export function verifyGatewayReport(report) {
+  const required = ['task', 'configuration', 'installed-release', 'production-internet', 'firewall', 'listener', 'certificate-and-enrollment', 'reboot-observed']
+  const checks = required.map(id => ({ id: 'gateway.' + id, status: report?.Checks?.some(c => c.Id === 'gateway.' + id && c.Status === 'PASS') ? 'PASS' : 'FAIL' }))
+  checks.push({ id: 'gateway.it-isolation-signoff', status: report?.Checks?.some(c => c.Id === 'gateway.isolation' && c.Status === 'OBSERVED') ? 'PASS' : 'FAIL' })
+  checks.push({ id: 'gateway.complete-run', status: report?.Role === 'gateway' && report?.KitVersion === '1.2.0' && report?.Phase === 'complete' && report?.Checks?.every(c => ['PASS', 'OBSERVED'].includes(c.Status)) ? 'PASS' : 'FAIL' })
+  return { computer: report?.Computer, status: checks.every(c => c.status === 'PASS') ? 'PASS' : 'NOT CLEARED', checks }
+}
+
+export async function verifyOfficeReports(employee, gateway, get) {
+  const local = await verifyReport(employee, get)
+  const network = verifyGatewayReport(gateway)
+  return { checkedAt: new Date().toISOString(), backend: production, status: local.checks.every(c => c.status === 'PASS') && network.status === 'PASS' ? 'OFFICE ACCEPTANCE CHECKS PASSED - MAINTAINER REVIEW REQUIRED BEFORE ROLLOUT' : 'NOT CLEARED', employee: local, gateway: network }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const file = process.argv[2]
-  assert(file, 'Usage: node --env-file=<private-env> verify-office-test.mjs <employee-report.json>')
+  assert(file, 'Usage: node --env-file=<private-env> verify-office-test.mjs <employee-report.json> [gateway-report.json]')
   assert(process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '') === production, 'Refusing non-production backend.')
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   assert(key, 'Maintainer read credential unavailable. Do not put this credential in the Windows test package.')
@@ -74,7 +90,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     assert(response.ok, 'Production read failed with HTTP ' + response.status)
     return response.json()
   }
-  const result = await verifyReport(report, get)
+  const gatewayFile = process.argv[3]
+  assert(report.KitVersion !== '1.2.0' || gatewayFile, 'The automated kit requires both employee and gateway reports in one verification.')
+  const result = gatewayFile ? await verifyOfficeReports(report, JSON.parse((await readFile(gatewayFile, 'utf8')).replace(/^\uFEFF/, '')), get) : await verifyReport(report, get)
   await writeFile(file + '.verified.json', JSON.stringify(result, null, 2))
   console.log(JSON.stringify(result, null, 2))
   if (result.status === 'NOT CLEARED') process.exitCode = 1

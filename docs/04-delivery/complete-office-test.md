@@ -1,5 +1,85 @@
 # Complete office acceptance test
 
+## Automated handoff 1.2.0
+
+The current deliverable is `MandalaOfficeTest-1.2.0.zip`. It supersedes the manual
+1.1.0 handoff below. The ZIP contains two launchers, `START HERE.txt`, `FIXES.txt`,
+the approved employee installer, startup repair, and the automatic runner. It does
+not contain passwords, employee certificates or a database service credential.
+The existing gateway 1.1.0 and employee's original pairing material are prerequisites,
+not replaceable generic files. No new employee/gateway binary is released.
+
+The target is 5–10 minutes of employee attention after setup, spread over roughly
+25–35 elapsed minutes including reboots and real idle waits. These are planning
+estimates, not measured office results. Unknown setup problems can take longer.
+The computer must stay unlocked and unused while the automatic tests run.
+
+### What happens automatically
+
+- Collect independent installation, startup, certificate, network and clock checks.
+- Offer the exact audited employee installer only if no installation is found;
+  verify its SHA/size first. Repair recognized startup shortcuts with backups.
+- Persist progress atomically before and during tests, with a ZIP report at every
+  checkpoint. Resume once after sign-in through a separate per-user RunOnce entry.
+  The resume launcher detaches immediately so it cannot hold up Agent startup.
+- Drive only the audited executable's own Windows UI Automation controls. Select
+  the agreed projects; start/stop; cancel and confirm switches; inspect displayed
+  state and full saved references. No private app APIs or direct time writes.
+- Generate small Windows mouse movements during active test sessions; validate
+  that Windows received them. Keep the desktop awake without altering saved power
+  settings. Stop input for the real idle interval, require idle save, then verify
+  that input returning does not start another session.
+- During the actual manually disconnected LAN interval, stop once, require pending
+  rather than cloud-save state, export native diagnostics, close/reopen normally,
+  verify pending persistence and blocked start, then reconcile one receipt after
+  reconnect. No firewall/network settings are modified by the runner.
+- Stop further time-writing cases after any uncertain result. Mark unattempted
+  cases BLOCKED. A reopened interrupted runner exports its prior evidence and
+  refuses to replay the cases. Existing pending work is not deleted or force-killed.
+
+### Deliberate human checks
+
+Employee sign-in, selecting/authorizing two real test projects, Windows elevation,
+real restarts, confirming no manual Agent/gateway launch, the browser ownership
+attempt, and disconnect/reconnect remain explicit. IT also confirms reserved IP,
+perimeter isolation and employee internet restrictions that local checks cannot
+prove. All these observations are identified as human evidence in the report.
+The UI driver never reads the password control or decrypts authentication/journals.
+A locked desktop, unknown UI, interrupted idle interval or policy preventing
+accessibility becomes a reported failure, never an inferred pass.
+
+### One return, one combined verification
+
+IT returns `Mandala-Quick-Test-<PC>-employee.zip` and
+`Mandala-Quick-Test-<PC>-gateway.zip` together. The maintainer runs:
+
+```sh
+node --env-file=<private-production-env> apps/desktop-agent/scripts/verify-office-test.mjs <employee-report.json> <gateway-report.json>
+```
+
+For kit 1.2.0 both reports are required. The read-only verifier checks the five
+actual production entries and all gateway checks/reboot/IT observations, rejects
+interrupted/incomplete behavior evidence, and emits one combined go/no-go report.
+A pass remains subject to maintainer review before rollout. The kit does not
+promise that unknown office defects can never require a later fix.
+
+### Validation coverage
+
+Windows CI exercises actual WPF controls (selection, start/stop, modal cancel and
+confirm, bounded failure, normal close), Windows test-input delivery, scenario
+success/failure persistence, the actual interrupted-run entry point, and the
+approved installed Agent's login-window accessibility/version/backend. Existing
+startup discovery, installer, desktop regression and receipt-parsing audits remain.
+Database tests reject missing/wrong/extra entries, missing reboot/IT evidence,
+wrong durations/projects/people, and interrupted runs. The fixture tests do not
+claim that the production time scenarios have run on the office computers.
+
+No product entity, field, authorization rule, time semantics or office relationship
+changes. No divisions/cost centers added; no domain-model deviations. Test prompts
+reuse the existing console workflow and the Agent's existing controls.
+
+## Historical manual handoff 1.1.0
+
 The September 16 video shows the first repair reporting that it could not find
 Mandala Agent. This is not proof that the agent is absent: version 1.0.0 used only
 one registry view and one default path. The complete kit replaces repeated

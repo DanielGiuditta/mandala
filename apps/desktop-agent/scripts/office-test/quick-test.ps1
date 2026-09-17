@@ -45,7 +45,7 @@ function Arm-Reboot {
     # One-time launcher only, in this Windows account. Never replace Agent startup.
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
     New-Item $key -Force|Out-Null
-    $command='"'+$env:WINDIR+'\System32\cmd.exe" /d /c ""'+$launcher+'""'
+    $command='"'+$env:WINDIR+'\System32\cmd.exe" /d /c start "" "'+$launcher+'"'
     New-ItemProperty $key -Name ('MandalaOfficeTest-'+$Role) -Value $command -PropertyType String -Force|Out-Null
     $state.BootBefore=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
     $state.Phase='reboot';Save-QuickReport

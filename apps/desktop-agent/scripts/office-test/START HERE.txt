@@ -14,8 +14,8 @@ BEFORE STARTING
 [ ] One dedicated internet-connected gateway and ONE LAN-only employee PC.
 [ ] Gateway already installed/configured with MandalaGatewaySetup-1.1.0.exe.
 [ ] Employee signs in themselves; no passwords sent to Daniel or typed in checker.
-[ ] Two allowed projects agreed for FIVE real test time entries (roughly 0.2 hours
-    total, depending on waiting). They will be checked in production afterward.
+[ ] Two allowed projects agreed for FIVE real test time entries.
+    Durations depend on waiting; Daniel checks the resulting production entries.
 [ ] Existing employee pairing ZIP available if connection setup is incomplete.
     It must belong to this employee Windows profile; the kit cannot replace keys.
 [ ] An internet-connected browser is available for the same employee's short

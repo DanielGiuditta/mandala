@@ -134,7 +134,7 @@ function Get-EmployeeChecks($Candidates,$Approved) {
 }
 
 function Get-GatewayChecks {
-    $task=$null;$config=$null
+    $task=$null;$config=$null;$script:checkedTask=$null
     Invoke-OfficeCheck 'gateway.task' {
         $script:checkedTask=Get-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction Stop
         Require ($script:checkedTask.State -eq 'Running') 'Gateway task is not running. Complete gateway setup on this dedicated computer.'
