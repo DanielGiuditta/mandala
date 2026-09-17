@@ -16,6 +16,10 @@ else {$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.1';RunId=[Guid]::
 function Save-QuickReport {
     if($Role -eq 'gateway') {
         $evidence=[ordered]@{Task=(Get-GatewayTaskEvidence);NetworkProfiles=@(Get-NetConnectionProfile -ErrorAction SilentlyContinue|Select-Object InterfaceAlias,InterfaceIndex,NetworkCategory)}
+        try {
+            $rules=@(Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction Stop)
+            $evidence.Firewall=@($rules|ForEach-Object {[pscustomobject]@{Name=$_.Name;Enabled=[string]$_.Enabled;Profile=[string]$_.Profile;LocalAddress=@(($_|Get-NetFirewallAddressFilter).LocalAddress);RemoteAddress=@(($_|Get-NetFirewallAddressFilter).RemoteAddress);InterfaceAlias=@(($_|Get-NetFirewallInterfaceFilter).InterfaceAlias);Program=($_|Get-NetFirewallApplicationFilter).Program}})
+        } catch {$evidence.Firewall='Could not read the named gateway firewall rule.'}
         $statusFile=Join-Path $env:ProgramData 'Mandala Gateway\startup-status\status.json'
         if(Test-Path $statusFile){try{$status=Get-Content $statusFile -Raw|ConvertFrom-Json;$evidence.Startup=$status|Select-Object schema,repairVersion,utc,phase,code,pid}catch{$evidence.Startup='Status unreadable'}}
         $state|Add-Member -NotePropertyName GatewayEvidence -NotePropertyValue ([pscustomobject]$evidence) -Force

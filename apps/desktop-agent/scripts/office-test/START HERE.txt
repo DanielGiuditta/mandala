@@ -1,4 +1,4 @@
-MANDALA COMPLETE TEST 1.2.0 - START HERE
+MANDALA COMPLETE TEST 1.2.1 - START HERE
 ONE OFFICE SESSION. SEND BOTH REPORT ZIPS TOGETHER.
 
 Allow roughly 25-35 minutes elapsed. Target: 5-10 minutes of employee attention
@@ -19,7 +19,11 @@ Never add this test or the setup wizard to Startup.
 
 2. GATEWAY FIRST
 Open "Start gateway Test.cmd" and approve administrator access.
-IT confirms the network checklist and that NO employee timers are active.
+If the configured gateway is stopped, approve the offered repair after confirming
+NO employee timers are active. It preserves certificates and enrollment, repairs
+the startup task and limits gateway access to the existing employee subnet on its
+exact adapter/IP/port/program, including Public networks. Other firewall rules and
+the Windows network category are unchanged. Then confirm the network checklist.
 Save other work and approve the requested restart.
 Sign back into the SAME administrator account. Approve the resumed test's prompt.
 If the test does not reopen, open the same launcher. Do NOT open gateway setup or

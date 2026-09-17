@@ -133,7 +133,7 @@ function Get-EmployeeChecks($Candidates,$Approved) {
     }
 }
 
-function Get-GatewayChecks {
+function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala Gateway')) {
     $task=$null;$config=$null;$script:checkedTask=$null
     Invoke-OfficeCheck 'gateway.task' {
         $script:checkedTask=Get-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction Stop
@@ -146,7 +146,7 @@ function Get-GatewayChecks {
     }
     Invoke-OfficeCheck 'gateway.configuration' {
         $script:checkedGatewayConfig=$null
-        try {$script:checkedGatewayConfig=Get-Content -LiteralPath (Join-Path $env:ProgramData 'Mandala Gateway\gateway.json') -Raw|ConvertFrom-Json}catch{throw 'Gateway configuration missing/unreadable. IT should run the gateway check as administrator; do not copy the configuration into the report.'}
+        try {$script:checkedGatewayConfig=Get-Content -LiteralPath (Join-Path $DataDirectory 'gateway.json') -Raw|ConvertFrom-Json}catch{throw 'Gateway configuration missing/unreadable. IT should run the gateway check as administrator; do not copy the configuration into the report.'}
         $c=$script:checkedGatewayConfig
         Require ($c.bindAddress -and $c.port -eq 8443 -and $c.supabaseAnonKey) 'Gateway settings are incomplete.'
         Require (@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {$_.IPAddress -eq $c.bindAddress}).Count -gt 0) 'Reserved gateway address is not assigned to this PC.'

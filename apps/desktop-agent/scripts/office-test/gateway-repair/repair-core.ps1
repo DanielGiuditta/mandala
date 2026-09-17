@@ -3,7 +3,7 @@ function Get-GatewayTaskEvidence {
     $task=Get-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction SilentlyContinue
     if(-not $task){return [pscustomobject]@{Exists=$false}}
     $info=Get-ScheduledTaskInfo -TaskName 'Mandala LAN Gateway'
-    [pscustomobject]@{Exists=$true;State=[string]$task.State;LastTaskResult=('0x{0:X8}' -f [uint32]$info.LastTaskResult);LastRunTime=$info.LastRunTime.ToString('o');NextRunTime=$info.NextRunTime.ToString('o');MissedRuns=$info.NumberOfMissedRuns;UserId=$task.Principal.UserId;Executable=$task.Actions[0].Execute;WorkingDirectory=$task.Actions[0].WorkingDirectory;BootTrigger=@($task.Triggers|Where-Object {$_.CimClass.CimClassName -eq 'MSFT_TaskBootTrigger'}).Count -gt 0;RestartCount=$task.Settings.RestartCount}
+    [pscustomobject]@{Exists=$true;State=[string]$task.State;LastTaskResult=('0x{0:X8}' -f [uint32]$info.LastTaskResult);LastRunTime=$(if($info.LastRunTime){$info.LastRunTime.ToString('o')}else{$null});NextRunTime=$(if($info.NextRunTime){$info.NextRunTime.ToString('o')}else{$null});MissedRuns=$info.NumberOfMissedRuns;UserId=$task.Principal.UserId;Executable=$task.Actions[0].Execute;WorkingDirectory=$task.Actions[0].WorkingDirectory;BootTrigger=@($task.Triggers|Where-Object {$_.CimClass.CimClassName -eq 'MSFT_TaskBootTrigger'}).Count -gt 0;RestartCount=$task.Settings.RestartCount}
 }
 function Test-PrivateGatewayScope($Scope) {
     $parts=$Scope.Split('/');$ip=$null;$prefix=32

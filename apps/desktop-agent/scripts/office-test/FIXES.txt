@@ -24,12 +24,23 @@ Use the EXISTING approved pairing ZIP and Complete connection in the SAME employ
 Windows account. IT approves device enrollment on the gateway. Do not recreate
 certificates from guesses, copy another account's private key, or disable TLS.
 
-GATEWAY TASK MISSING / NOT RUNNING
-Use the existing Mandala gateway setup on the dedicated gateway PC to complete
-its installation/task registration. This is a one-time setup, not a Startup app.
-Reopen the gateway test and perform the required real restart WITHOUT opening setup.
-If the task still cannot run by itself, return the complete report; do not keep
-adding the setup wizard to Startup or manually starting it to claim a pass.
+GATEWAY TASK NOT RUNNING / NO LISTENER / PUBLIC NETWORK PROFILE
+The updated gateway launcher offers a repair for an already configured gateway.
+Approve it only on the trusted office LAN with no active employee timers.
+It verifies the audited installed gateway files, preserves pairing/configuration
+bytes, backs up the existing task/rule, repairs Local Service read access, and
+registers a delayed boot task with persistent retries. The listener retries if its
+configured address/port is temporarily unavailable during startup.
+The existing employee subnet is retained. Only the named gateway rule is allowed
+on all network profiles, restricted to the exact adapter, gateway IP, port 8443
+and audited Node executable. The Windows network category and all other rules stay
+unchanged. This avoids enabling unrelated Private-network sharing rules.
+Afterward the checker requires a real reboot without manually opening setup.
+If startup still fails, its report includes the task exit code, action location,
+network/firewall details and sanitized startup status. Preserve that ZIP; do not
+reset certificates, reenroll employees or repeatedly open the setup wizard.
+If configuration/task registration is entirely absent, the repair will not guess
+an employee subnet or create a new gateway identity; return the complete report.
 
 WRONG BACKEND / VERSION / BINARY
 Stop. The report identifies the mismatch. Do not downgrade, bypass the check or

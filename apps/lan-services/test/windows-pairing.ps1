@@ -28,7 +28,8 @@ function Add-PairingRoot([byte[]]$Bytes) {
 $address='127.0.0.1';$scope='127.0.0.0/8'
 if($RepairFolder) {
  . (Join-Path $RepairFolder 'repair-core.ps1')
- $candidate=@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {Test-PrivateGatewayScope $_.IPAddress}|Where-Object {$_.AddressState -eq 'Preferred'})
+ $profileIndices=@(Get-NetConnectionProfile|ForEach-Object {$_.InterfaceIndex})
+ $candidate=@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {Test-PrivateGatewayScope $_.IPAddress}|Where-Object {$_.AddressState -eq 'Preferred' -and $_.InterfaceIndex -in $profileIndices})
  if(-not $candidate.Count){throw 'CI requires a private IPv4 interface for the real scoped firewall audit.'}
  $address=$candidate[0].IPAddress;$scope=$address+'/32'
 }
@@ -77,9 +78,11 @@ try {
         $evidence=Get-GatewayTaskEvidence
         Assert ($evidence.State -ne 'Running' -and $evidence.LastTaskResult) 'Stopped task evidence was not captured.'
         $approved=Read-PairingJson (Join-Path $RepairFolder 'approved-gateway.json')
+        Write-Host 'Repair audit: validate installed bytes and existing network scope'
         $plan=Get-GatewayRepairPlan $approved $data
         foreach($bad in @('Any','0.0.0.0/0','8.8.8.8','10.0.0.0/1','192.168.0.0/8')){Assert (-not(Test-PrivateGatewayScope $bad)) ('Unsafe firewall scope accepted: '+$bad)}
         $categories=@(Get-NetConnectionProfile|ForEach-Object {[string]$_.NetworkCategory}) -join ','
+        Write-Host 'Repair audit: apply task/permission/firewall repair without changing pairing bytes'
         $result=Repair-ConfiguredGateway $plan $RepairFolder
         Assert ($result.PreservedFiles -eq 5 -and $result.Owner -eq 'Local Service') 'Repair did not verify pairing preservation and restricted listener owner.'
         Assert ((@(Get-NetConnectionProfile|ForEach-Object {[string]$_.NetworkCategory}) -join ',') -eq $categories) 'Repair changed Windows network categories.'
@@ -104,6 +107,10 @@ try {
         Start-Sleep -Seconds 17
         $status=Read-PairingJson (Join-Path $data 'startup-status\status.json')
         Assert ($status.phase -eq 'listening' -and $status.pid -eq $retryPid) 'Gateway did not recover in the same service process when its port became available.'
+        . (Join-Path (Split-Path $RepairFolder) 'check-core.ps1')
+        $checks=@(Get-GatewayChecks $data)
+        $checks|ForEach-Object {Write-Host ('['+$_.Status+'] '+$_.Id+': '+$_.Detail)}
+        Assert (@($checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'Repaired gateway did not pass the actual shipped checker.'
         Write-Host 'PASS: actual stopped-task repair, exact firewall scope including Public, unchanged network category, unchanged pairing, Local Service listener and automatic bind retry.'
     }
     [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
@@ -117,7 +124,7 @@ try {
     try { Invoke-WebRequest -Uri ($reply.gatewayUrl+'/health') -Certificate $cert -UseBasicParsing -TimeoutSec 5 | Out-Null } catch { $status=[int]$_.Exception.Response.StatusCode }
     Assert ($status -eq 403) 'Revoked paired device was not denied.'
     Write-Host 'Guided Windows pairing audit passed: Windows PowerShell 5; generated certificates; non-exportable employee key; no persistent issuer key; profile/code rejection; validOnly lookup; restricted Local Service task; trusted HTTPS with client certificate; missing/revoked client denied.'
-} finally {
+} catch { Write-Host $_.ScriptStackTrace; throw } finally {
     if($taskCreated) { Stop-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'Mandala LAN Gateway' -Confirm:$false -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1 }
     Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     if($leafThumb -and (Test-Path ('Cert:\CurrentUser\My\'+$leafThumb))) { Remove-Item ('Cert:\CurrentUser\My\'+$leafThumb) -DeleteKey }
