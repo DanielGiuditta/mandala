@@ -86,7 +86,7 @@ try {
             $changedAcls[$path]=Get-Acl -LiteralPath $path
             $restricted=Get-Acl -LiteralPath $path
             $restricted.SetAccessRuleProtection($true,$false)
-            foreach($entry in @($restricted.Access)){$restricted.RemoveAccessRuleSpecific($entry)}
+            foreach($entry in @($restricted.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))){$restricted.RemoveAccessRuleSpecific($entry)}
             foreach($sid in @('S-1-5-18','S-1-5-32-544')){$restricted.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow))}
             Set-Acl -LiteralPath $path -AclObject $restricted
         }
@@ -102,6 +102,19 @@ try {
         # Refuse elevated repair into a mutable install and reject link redirection.
         $unsafeAcl=Get-Acl -LiteralPath $InstallDirectory
         try {
+            # Orphaned domain SIDs must not require an account/domain lookup.
+            # Read-only unknown identities are harmless; write access still fails.
+            $orphan=[Security.Principal.SecurityIdentifier]::new('S-1-5-21-111111111-222222222-333333333-9999')
+            $readOnly=Get-Acl -LiteralPath $InstallDirectory
+            $readOnly.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($orphan,[Security.AccessControl.FileSystemRights]::ReadAndExecute,[Security.AccessControl.AccessControlType]::Allow))
+            Set-Acl -LiteralPath $InstallDirectory -AclObject $readOnly
+            Get-GatewayRepairPlan $approved $data|Out-Null
+            Assert-MandalaServiceReadPolicy @($InstallDirectory)
+            $unknownWriter=Get-Acl -LiteralPath $InstallDirectory
+            $unknownWriter.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($orphan,[Security.AccessControl.FileSystemRights]::Write,[Security.AccessControl.AccessControlType]::Allow))
+            Set-Acl -LiteralPath $InstallDirectory -AclObject $unknownWriter
+            Reject {Get-GatewayRepairPlan $approved $data} 'Unresolvable identity with write access was accepted.'
+            Set-Acl -LiteralPath $InstallDirectory -AclObject $unsafeAcl
             $mutable=Get-Acl -LiteralPath $InstallDirectory
             $mutable.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-5-32-545'),[Security.AccessControl.FileSystemRights]::Write,[Security.AccessControl.AccessControlType]::Allow))
             Set-Acl -LiteralPath $InstallDirectory -AclObject $mutable

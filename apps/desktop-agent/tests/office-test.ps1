@@ -53,3 +53,29 @@ $rule=New-FirewallFixture;$rule.Addresses[0].LocalAddress=@('Any');Reject {Check
 $rule=New-FirewallFixture;$rule.Enabled='False';Reject {Check-FirewallFixture $rule} 'Disabled rule passed.'
 $rule=New-FirewallFixture;$rule.Ports=@($rule.Ports[0],$rule.Ports[0]);Reject {Check-FirewallFixture $rule} 'Ambiguous filters passed.'
 Write-Host 'PASS: actual firewall check rejects wrong profile, broad scopes, wrong executable/adapter, extra ports and ambiguous filters.'
+
+# A browser-downloaded ZIP marks extracted PowerShell files as Internet content.
+# Execute the actual launchers' unblock loop against marked fixture files; the
+# newly installed pairing helper must be executable under RemoteSigned too.
+$download=Join-Path ([IO.Path]::GetTempPath()) ('Mandala downloaded kit '+[Guid]::NewGuid())
+New-Item -ItemType Directory $download|Out-Null
+$oldQuickDir=$env:MANDALA_QUICK_DIR
+try {
+ foreach($launcher in @('Start employee Test.cmd','Start gateway Test.cmd')) {
+  $source=Get-Content -LiteralPath (Join-Path $PSScriptRoot ('..\scripts\office-test\'+$launcher)) -Raw
+  $loop=[regex]::Match($source,'foreach \(\$name in @\([^\r\n]+?\)\) \{ Unblock-File [^}]+\}')
+  Assert $loop.Success 'Launcher file-unblock step is missing.'
+  $expected=@('quick-test.ps1','ui-driver.ps1','check-core.ps1','gateway-repair\repair-core.ps1','gateway-repair\pairing-core.ps1','startup-repair\startup-core.ps1','startup-repair\repair-startup.ps1')
+  foreach($name in $expected+@('unrelated.ps1')) {
+   $path=Join-Path $download $name
+   New-Item -ItemType Directory (Split-Path $path) -Force|Out-Null
+   Set-Content -LiteralPath $path -Value '# harmless downloaded fixture'
+   Set-Content -LiteralPath $path -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+  }
+  $env:MANDALA_QUICK_DIR=$download
+  Invoke-Expression $loop.Value
+  foreach($name in $expected){Assert (-not (Get-Item -LiteralPath (Join-Path $download $name) -Stream Zone.Identifier -ErrorAction SilentlyContinue)) ('Downloaded script remained blocked: '+$name)}
+  Assert (Get-Item -LiteralPath (Join-Path $download 'unrelated.ps1') -Stream Zone.Identifier -ErrorAction SilentlyContinue) 'Launcher unblocked unrelated content.'
+ }
+ Write-Host 'PASS: actual launcher unblock loops cover every shipped PowerShell dependency including maintained gateway setup, and leave unrelated files alone.'
+} finally {$env:MANDALA_QUICK_DIR=$oldQuickDir;Remove-Item $download -Recurse -Force}

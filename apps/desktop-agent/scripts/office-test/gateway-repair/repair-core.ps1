@@ -15,8 +15,8 @@ function Assert-ProtectedGatewayPath($Path) {
             if((Get-Item -LiteralPath $walk -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Gateway code/data must not use redirected links.'}
             if($walk -ne $full) {
                 $replace=[Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership
-                foreach($entry in (Get-Acl -LiteralPath $walk).Access) {
-                    if($entry.AccessControlType -eq 'Allow' -and -not ($entry.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -and ($entry.FileSystemRights -band $replace) -and $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -notin $trusted){throw 'Gateway installation ancestor can be replaced by a non-system/non-administrator identity. IT must restore protected installation permissions.'}
+                foreach($entry in (Get-Acl -LiteralPath $walk).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+                    if($entry.AccessControlType -eq 'Allow' -and -not ($entry.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -and ($entry.FileSystemRights -band $replace) -and $entry.IdentityReference.Value -notin $trusted){throw 'Gateway installation ancestor can be replaced by a non-system/non-administrator identity. IT must restore protected installation permissions.'}
                 }
             }
         }
@@ -26,16 +26,16 @@ function Assert-ProtectedGatewayPath($Path) {
     # Elevated writes may only target code protected from non-administrator edits.
     # SYSTEM, Administrators and Windows TrustedInstaller are the only writers.
     $write=[Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::Delete -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::TakeOwnership
-    foreach($entry in (Get-Acl -LiteralPath $full).Access) {
+    foreach($entry in (Get-Acl -LiteralPath $full).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
         if($entry.AccessControlType -ne 'Allow' -or ($entry.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)){continue}
-        $sid=$entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        $sid=$entry.IdentityReference.Value
         if(($entry.FileSystemRights -band $write) -and $sid -notin $trusted){throw 'Gateway code is writable by a non-system/non-administrator identity. IT must restore protected installation permissions before repair.'}
     }
 }
 function Assert-MandalaServiceReadPolicy($Paths) {
     foreach($path in @($Paths|Select-Object -Unique)) {
-        foreach($entry in (Get-Acl -LiteralPath $path).Access) {
-            $sid=$entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        foreach($entry in (Get-Acl -LiteralPath $path).GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+            $sid=$entry.IdentityReference.Value
             if($entry.AccessControlType -eq 'Deny' -and $sid -in @('S-1-5-19','S-1-1-0','S-1-5-11','S-1-5-6') -and ($entry.FileSystemRights -band [Security.AccessControl.FileSystemRights]::ReadAndExecute)){throw 'Local Service has an explicit deny permission on a required gateway file/directory. IT must review that policy; the gateway has not been stopped by this plan.'}
         }
     }
