@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$InstallDirectory)
+param([Parameter(Mandatory=$true)][string]$InstallDirectory,[string]$RepairFolder)
 $ErrorActionPreference='Stop'
 # Start-Process from PowerShell 7 otherwise leaks incompatible Core modules.
 $env:PSModulePath=(Join-Path $PSHOME 'Modules')+';'+(Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules')
@@ -25,9 +25,16 @@ function Add-PairingRoot([byte[]]$Bytes) {
     try { $machine.Open('ReadWrite'); $machine.Add($public); $script:auditMachineRoots+=$public.Thumbprint } finally { $machine.Close() }
     return (& $script:realRootImport $Bytes)
 }
+$address='127.0.0.1';$scope='127.0.0.0/8'
+if($RepairFolder) {
+ . (Join-Path $RepairFolder 'repair-core.ps1')
+ $candidate=@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {Test-PrivateGatewayScope $_.IPAddress}|Where-Object {$_.AddressState -eq 'Preferred'})
+ if(-not $candidate.Count){throw 'CI requires a private IPv4 interface for the real scoped firewall audit.'}
+ $address=$candidate[0].IPAddress;$scope=$address+'/32'
+}
 try {
     Write-Host 'Pairing audit: create gateway certificate'
-    $state=Initialize-PairingGateway '127.0.0.1' $data $InstallDirectory
+    $state=Initialize-PairingGateway $address $data $InstallDirectory
     $root=[Convert]::FromBase64String($state.root)
     $rootThumbs+=([Security.Cryptography.X509Certificates.X509Certificate2]::new($root)).Thumbprint
     Assert (((Get-Content (Join-Path $data 'enrolled-devices.json') -Raw) -replace '\s','') -eq '[]') 'New gateway must have no approved devices.'
@@ -60,10 +67,45 @@ try {
     if($LASTEXITCODE -ne 0) { throw 'Could not prepare installed fixture permissions.' }
     $taskCreated=$true
     Write-Host 'Pairing audit: start restricted gateway task'
-    Enable-PairingGateway '127.0.0.1' '127.0.0.0/8' $data $InstallDirectory
+    Enable-PairingGateway $address $scope $data $InstallDirectory
     $task=Get-ScheduledTask -TaskName 'Mandala LAN Gateway'
     Assert ($task.Principal.UserId -in @('LOCAL SERVICE','NT AUTHORITY\LOCAL SERVICE','S-1-5-19')) ('Gateway task is not Local Service: '+$task.Principal.UserId)
     Assert ($task.Principal.RunLevel -eq 'Limited') 'Gateway task is elevated.'
+    if($RepairFolder) {
+        Write-Host 'Repair audit: reproduce stopped task with existing pairing and Private-only rule'
+        Stop-ScheduledTask -TaskName 'Mandala LAN Gateway';Start-Sleep -Seconds 2
+        $evidence=Get-GatewayTaskEvidence
+        Assert ($evidence.State -ne 'Running' -and $evidence.LastTaskResult) 'Stopped task evidence was not captured.'
+        $approved=Read-PairingJson (Join-Path $RepairFolder 'approved-gateway.json')
+        $plan=Get-GatewayRepairPlan $approved $data
+        foreach($bad in @('Any','0.0.0.0/0','8.8.8.8','10.0.0.0/1','192.168.0.0/8')){Assert (-not(Test-PrivateGatewayScope $bad)) ('Unsafe firewall scope accepted: '+$bad)}
+        $categories=@(Get-NetConnectionProfile|ForEach-Object {[string]$_.NetworkCategory}) -join ','
+        $result=Repair-ConfiguredGateway $plan $RepairFolder
+        Assert ($result.PreservedFiles -eq 5 -and $result.Owner -eq 'Local Service') 'Repair did not verify pairing preservation and restricted listener owner.'
+        Assert ((@(Get-NetConnectionProfile|ForEach-Object {[string]$_.NetworkCategory}) -join ',') -eq $categories) 'Repair changed Windows network categories.'
+        $rule=Get-NetFirewallRule -Name $plan.RuleName
+        Assert ([string]$rule.Profile -eq 'Any') 'Gateway rule still excludes Public profile.'
+        Assert ((@(($rule|Get-NetFirewallInterfaceFilter).InterfaceAlias) -join ',') -eq $plan.InterfaceAlias) 'Gateway rule not bound to the selected adapter.'
+        Assert ((@(($rule|Get-NetFirewallAddressFilter).RemoteAddress) -join ',') -eq ($plan.RemoteAddresses -join ',')) 'Employee subnet changed during repair.'
+        $fixed=Get-ScheduledTask -TaskName 'Mandala LAN Gateway'
+        Assert ($fixed.Settings.RestartCount -eq 999 -and $fixed.Triggers[0].Delay -eq 'PT30S') 'Durable boot/restart settings missing.'
+        # Occupy only our generated fixture's gateway port, then release it. The
+        # same Local Service process must retry and bind without another task start.
+        Stop-ScheduledTask -TaskName 'Mandala LAN Gateway';Start-Sleep -Seconds 2
+        $blocker=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Parse($address),8443)
+        $blocker.Start()
+        try {
+            Start-ScheduledTask -TaskName 'Mandala LAN Gateway'
+            Start-Sleep -Seconds 3
+            $status=Read-PairingJson (Join-Path $data 'startup-status\status.json')
+            Assert ($status.phase -eq 'waiting-to-retry' -and $status.code -eq 'EADDRINUSE') 'Transient bind error not captured without private data.'
+            $retryPid=$status.pid
+        } finally {$blocker.Stop()}
+        Start-Sleep -Seconds 17
+        $status=Read-PairingJson (Join-Path $data 'startup-status\status.json')
+        Assert ($status.phase -eq 'listening' -and $status.pid -eq $retryPid) 'Gateway did not recover in the same service process when its port became available.'
+        Write-Host 'PASS: actual stopped-task repair, exact firewall scope including Public, unchanged network category, unchanged pairing, Local Service listener and automatic bind retry.'
+    }
     [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
     Write-Host 'Pairing audit: verify Windows mutual TLS'
     $health=Invoke-WebRequest -Uri ($reply.gatewayUrl+'/health') -Certificate $cert -UseBasicParsing -TimeoutSec 10

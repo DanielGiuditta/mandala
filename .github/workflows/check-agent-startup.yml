@@ -33,6 +33,28 @@ jobs:
         run: dotnet run --project apps/desktop-agent/tests/Mandala.Agent.RegressionTests/Mandala.Agent.RegressionTests.csproj -c Release
       - name: Install packaging tool
         run: choco install innosetup --no-progress --yes
+      - name: Repair a stopped installed gateway under Local Service and recover a bind failure
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $download=Join-Path $env:RUNNER_TEMP 'approved-gateway'
+          gh run download 34306122310 --name MandalaGatewaySetup-1.1.0 --dir $download
+          if($LASTEXITCODE -ne 0){throw 'Approved gateway download failed.'}
+          $installer=Join-Path $download 'MandalaGatewaySetup-1.1.0.exe'
+          if((Get-Item $installer).Length -ne 24825179 -or (Get-FileHash $installer).Hash.ToLowerInvariant() -ne '0fd024c0cf69d8e913c048f5e3e20c2e50d2fdf0c4584dbc6108d5ac98150ce3'){throw 'Gateway installer differs from production audit.'}
+          $installed=Join-Path $env:ProgramFiles 'Mandala Gateway Repair Audit'
+          $p=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"" -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'Gateway installation failed.'}
+          $release=Get-Content (Join-Path $installed 'gateway-release.json') -Raw|ConvertFrom-Json
+          if($release.version -ne '1.1.0' -or $release.backendProjectRef -ne 'nzlajptokbcgeaifgnoq'){throw 'Gateway version/backend mismatch.'}
+          $repair=(Resolve-Path 'apps/desktop-agent/scripts/office-test/gateway-repair').Path
+          $files=@{}
+          foreach($name in @('runtime\node.exe','gateway.mjs','security.mjs','start-gateway.mjs','gateway-release.json')){$files[$name]=(Get-FileHash (Join-Path $installed $name)).Hash.ToLowerInvariant()}
+          @{version='1.1.0';backend='nzlajptokbcgeaifgnoq';files=$files}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $repair 'approved-gateway.json')
+          & powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File apps/lan-services/test/windows-pairing.ps1 -InstallDirectory $installed -RepairFolder $repair
+          if($LASTEXITCODE -ne 0){throw 'Real Local Service gateway repair/recovery audit failed.'}
       - name: Audit the approved production installer for the complete test kit
         shell: pwsh
         env:
@@ -110,20 +132,20 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $zip).Length
           "Repair audit passed: version=1.0.1 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
-          $kitZip='MandalaOfficeTest-1.2.0.zip'
+          $kitZip='MandalaOfficeTest-1.2.1.zip'
           $stage=Join-Path $env:RUNNER_TEMP 'Mandala Office Test Handoff'
           New-Item -ItemType Directory $stage -Force|Out-Null
-          foreach($name in @('Start employee Test.cmd','Start gateway Test.cmd','START HERE.txt','FIXES.txt','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.15.exe','startup-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
+          foreach($name in @('Start employee Test.cmd','Start gateway Test.cmd','START HERE.txt','FIXES.txt','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.15.exe','startup-repair','gateway-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $kitZip
           $kitHash=(Get-FileHash $kitZip -Algorithm SHA256).Hash.ToLowerInvariant()
           $kitSize=(Get-Item $kitZip).Length
-          "Office test audit passed: version=1.2.0 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
+          "Office test audit passed: version=1.2.1 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MandalaOfficeTest-1.2.0
+          name: MandalaOfficeTest-1.2.1
           path: |
             MandalaAgentStartupRepair-1.0.1.zip
             startup-repair-audit.txt
-            MandalaOfficeTest-1.2.0.zip
+            MandalaOfficeTest-1.2.1.zip
             office-test-audit.txt
           if-no-files-found: error

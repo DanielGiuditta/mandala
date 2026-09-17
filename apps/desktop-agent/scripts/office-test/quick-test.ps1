@@ -2,6 +2,7 @@ param([ValidateSet('employee','gateway')][string]$Role='employee')
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'startup-repair\startup-core.ps1')
 . (Join-Path $PSScriptRoot 'check-core.ps1')
+. (Join-Path $PSScriptRoot 'gateway-repair\repair-core.ps1')
 $stateDir=Join-Path $env:LOCALAPPDATA 'Mandala Office Test 1.2.0'
 New-Item -ItemType Directory $stateDir -Force|Out-Null
 $stateFile=Join-Path $stateDir ($Role+'.json')
@@ -10,15 +11,21 @@ New-Item -ItemType Directory $reportDir -Force|Out-Null
 $log=Join-Path $env:LOCALAPPDATA 'Mandala Agent\agent.log'
 $lock=New-Object Threading.Mutex($false,('Local\MandalaOfficeQuickTest-'+$Role))
 if(-not $lock.WaitOne(0)) {Write-Host 'This test is already running. Use the existing window.';exit 1}
-if(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json}
-else {$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.0';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}}
+if(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;$state.KitVersion='1.2.1'}
+else {$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.1';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}}
 function Save-QuickReport {
+    if($Role -eq 'gateway') {
+        $evidence=[ordered]@{Task=(Get-GatewayTaskEvidence);NetworkProfiles=@(Get-NetConnectionProfile -ErrorAction SilentlyContinue|Select-Object InterfaceAlias,InterfaceIndex,NetworkCategory)}
+        $statusFile=Join-Path $env:ProgramData 'Mandala Gateway\startup-status\status.json'
+        if(Test-Path $statusFile){try{$status=Get-Content $statusFile -Raw|ConvertFrom-Json;$evidence.Startup=$status|Select-Object schema,repairVersion,utc,phase,code,pid}catch{$evidence.Startup='Status unreadable'}}
+        $state|Add-Member -NotePropertyName GatewayEvidence -NotePropertyValue ([pscustomobject]$evidence) -Force
+    }
     $state.Events=@(Read-AgentEvents $log ([DateTimeOffset]$state.StartedUtc))
     $json=$state|ConvertTo-Json -Depth 20
     $temp=$stateFile+'.tmp';[IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $temp -Destination $stateFile -Force
     [IO.File]::WriteAllText((Join-Path $reportDir 'report.json'),$json,(New-Object Text.UTF8Encoding($false)))
-    $lines=@('MANDALA COMPLETE TEST 1.2.0',('Computer: '+$state.Computer),('Role: '+$Role),('Phase: '+$state.Phase),('Result: '+$state.Result),('Saved: '+(Get-IstTime)),'')
+    $lines=@('MANDALA COMPLETE TEST 1.2.1',('Computer: '+$state.Computer),('Role: '+$Role),('Phase: '+$state.Phase),('Result: '+$state.Result),('Saved: '+(Get-IstTime)),'')
     foreach($c in $state.Checks){$lines+=('['+$c.Status+'] '+$c.Id+': '+$c.Detail)}
     foreach($s in $state.Scenarios){$lines+=('['+$s.Status+'] '+$s.Kind+': '+$s.Detail)}
     $lines+=@('','Return this ZIP with the other PC report once. Do not repeat uncertain time tests.','Production row verification and gateway/IT observations are required before clearance.','If stopped during offline testing, reconnect the employee LAN now. Pending work is preserved.')
@@ -82,7 +89,7 @@ function Run-AutomatedCase($Kind,$Count,[scriptblock]$Body) {
     finally {$scenario.FinishedUtc=[DateTimeOffset]::UtcNow.ToString('o');Save-QuickReport}
 }
 try {
-    Write-Host ('MANDALA COMPLETE TEST 1.2.0 - '+$Role.ToUpperInvariant())
+    Write-Host ('MANDALA COMPLETE TEST 1.2.1 - '+$Role.ToUpperInvariant())
     Write-Host 'One result set. No screenshots after each step. Keep the full extracted folder in place.'
     $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if($state.Phase -eq 'functional') {
@@ -96,6 +103,15 @@ try {
         Require $admin 'Open Start gateway Test.cmd and approve the Windows administrator prompt.'
         $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
         $state.Checks=@(Get-GatewayChecks);Show-Checks
+        if($state.Phase -eq 'preflight' -and @($state.Checks|Where-Object {$_.Status -eq 'FAIL' -and $_.Id -in @('gateway.task','gateway.listener','gateway.firewall')}).Count) {
+            $approvedGateway=Get-Content (Join-Path $PSScriptRoot 'gateway-repair\approved-gateway.json') -Raw|ConvertFrom-Json
+            $plan=Get-GatewayRepairPlan $approvedGateway
+            Ask-Yes ('IT maintenance: confirm NO employee timers are active and this is the trusted office LAN. Repair the gateway task and Local Service read access, preserve certificates/enrollment, and allow ONLY its existing employee subnet ('+($plan.RemoteAddresses -join ', ')+') through '+$plan.InterfaceAlias+' / '+$plan.Address+':8443 on Public as well as Private/Domain profiles? Other firewall rules and the Windows network category stay unchanged.')
+            $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks;TaskBefore=(Get-GatewayTaskEvidence)};Save-QuickReport
+            $repair=Repair-ConfiguredGateway $plan (Join-Path $PSScriptRoot 'gateway-repair')
+            $state|Add-Member -NotePropertyName GatewayRepair -NotePropertyValue $repair -Force
+            $state.Checks=@(Get-GatewayChecks);Show-Checks
+        }
         if($state.Phase -eq 'preflight') {
             Ask-Yes 'IT: confirm this is the dedicated, awake gateway with reserved IP, no internet port forwarding, isolation from file servers/domain controllers, and employee direct internet blocked while gateway HTTPS is allowed.'
             $state.Checks+=New-CheckResult 'gateway.isolation' 'OBSERVED' 'IT confirmed dedicated gateway, reserved IP, network isolation and employee internet restriction.'

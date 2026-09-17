@@ -173,12 +173,24 @@ function Get-GatewayChecks {
         Require (@($rule|Get-NetFirewallPortFilter|Where-Object {$_.Protocol -eq 'TCP' -and $_.LocalPort -eq '8443'}).Count -gt 0) 'Gateway firewall rule is not restricted to TCP 8443.'
         $addresses=@($rule|Get-NetFirewallAddressFilter)
         Require (@($addresses|Where-Object {'Any' -in $_.RemoteAddress}).Count -eq 0) 'Gateway inbound rule allows Any remote address instead of the employee subnet.'
-        Require (@(Get-NetConnectionProfile|Where-Object {$_.NetworkCategory -in @('Private','DomainAuthenticated')}).Count -gt 0) 'No active Private/Domain network profile found.'
-        'Gateway inbound rule and Private/Domain profile found. External network isolation requires IT confirmation.'
+        Require $config 'BLOCKED: gateway configuration unavailable.'
+        $adapter=@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {$_.IPAddress -eq $config.bindAddress})
+        Require ($adapter.Count -eq 1) 'Gateway address must identify one adapter.'
+        $profiles=@(Get-NetConnectionProfile -InterfaceIndex $adapter[0].InterfaceIndex -ErrorAction SilentlyContinue)
+        Require ($profiles.Count -gt 0) 'Gateway adapter has no active network profile.'
+        $public=@($profiles|Where-Object {$_.NetworkCategory -eq 'Public'}).Count -gt 0
+        if($public) {
+            Require ([string]$rule.Profile -eq 'Any' -or [string]$rule.Profile -match 'Public') 'Gateway adapter is Public but the gateway firewall rule does not cover Public. Use the scoped gateway repair.'
+            $interfaces=@(($rule|Get-NetFirewallInterfaceFilter).InterfaceAlias)
+            $locals=@(($rule|Get-NetFirewallAddressFilter).LocalAddress)
+            $program=($rule|Get-NetFirewallApplicationFilter).Program
+            Require ($interfaces.Count -eq 1 -and $interfaces[0] -eq $adapter[0].InterfaceAlias -and $locals.Count -eq 1 -and $locals[0] -eq $config.bindAddress -and $program -eq $script:checkedTask.Actions[0].Execute) 'Public-profile access must be restricted to the exact gateway adapter, address and runtime, as well as employee subnet and port.'
+        }
+        'Gateway firewall covers its actual adapter profile; Public access, if enabled, is scoped to the exact gateway adapter/IP/program and existing employee subnet.'
     }
     Invoke-OfficeCheck 'gateway.listener' {
         Require $config 'BLOCKED: gateway configuration unavailable.'
-        Require (@(Get-NetTCPConnection -LocalPort 8443 -State Listen|Where-Object {$_.LocalAddress -eq $config.bindAddress}).Count -gt 0) 'Gateway is not listening on its configured address and port.'
+        Require (@(Get-NetTCPConnection -LocalPort 8443 -State Listen -ErrorAction SilentlyContinue|Where-Object {$_.LocalAddress -eq $config.bindAddress}).Count -gt 0) 'Gateway is not listening on its configured address and port.'
         'Configured HTTPS listener present.'
     }
     Invoke-OfficeCheck 'gateway.certificate-and-enrollment' {
