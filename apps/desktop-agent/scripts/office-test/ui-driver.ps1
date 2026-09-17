@@ -95,11 +95,13 @@ function Wait-TestActivity([int]$Seconds=125) {
     $end=[DateTimeOffset]::UtcNow.AddSeconds($Seconds)
     while([DateTimeOffset]::UtcNow -lt $end) {
         if([MandalaTestInput]::Cancelled()){throw 'Escape pressed. Test stopped; report preserved.'}
+        Write-Progress -Activity 'Automatic Mandala timer check' -Status ('Leave this PC unlocked; '+[int]($end-[DateTimeOffset]::UtcNow).TotalSeconds+' seconds remaining')
         $before=[MandalaTestInput]::LastInput();[MandalaTestInput]::Pulse();Start-Sleep -Milliseconds 100
         Require ([MandalaTestInput]::LastInput() -ne $before) 'Test input did not reach Windows. Keep the same desktop unlocked; no test result assumed.'
         Start-Sleep -Seconds 5
     }
     [MandalaTestInput]::Pulse();Start-Sleep -Seconds 3
+    Write-Progress -Activity 'Automatic Mandala timer check' -Completed
 }
 function Close-TestAgent {
     $process=Get-Process -Id $script:AgentProcessId -ErrorAction Stop

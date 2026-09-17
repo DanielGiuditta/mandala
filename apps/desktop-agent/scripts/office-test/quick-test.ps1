@@ -42,6 +42,7 @@ function Show-Checks {foreach($c in $state.Checks){Write-Host ('['+$c.Status+'] 
 function Arm-Reboot {
     $launcher=Join-Path $PSScriptRoot ('Start '+$Role+' Test.cmd')
     Require (Test-Path $launcher) 'Keep the complete extracted package in its folder.'
+    Ask-Yes 'Save all other work. Restart this PC now? After signing into THIS SAME Windows account the test should reopen. If it does not, open the same Start Test file. Do not open Agent/setup manually.'
     # One-time launcher only, in this Windows account. Never replace Agent startup.
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
     New-Item $key -Force|Out-Null
@@ -49,7 +50,6 @@ function Arm-Reboot {
     New-ItemProperty $key -Name ('MandalaOfficeTest-'+$Role) -Value $command -PropertyType String -Force|Out-Null
     $state.BootBefore=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
     $state.Phase='reboot';Save-QuickReport
-    Ask-Yes 'Save all other work. Restart this PC now? After signing into THIS SAME Windows account the test should reopen. If it does not, open the same Start Test file. Do not open Agent/setup manually.'
     & shutdown.exe /r /t 0
     Require ($LASTEXITCODE -eq 0) 'Windows did not accept restart. Restart normally and reopen this test.'
 }
@@ -233,7 +233,7 @@ try {
         Start-AgentProject $state.ProjectA;Wait-TestActivity
         Note-Action 'IDLE CHECK: no keyboard/mouse activity for six minutes. Timer runs unattended. Extra activity fails this check instead of silently extending it.'
         $last=[MandalaTestInput]::LastInput();$end=[DateTimeOffset]::UtcNow.AddSeconds(360)
-        while([DateTimeOffset]::UtcNow -lt $end){Start-Sleep -Seconds 2;Require ([MandalaTestInput]::LastInput() -eq $last) 'Keyboard/mouse input interrupted the idle test. Evidence saved; no time tests repeated.'}
+        while([DateTimeOffset]::UtcNow -lt $end){Write-Progress -Activity 'Automatic Mandala idle check' -Status ('Do not touch keyboard or mouse; '+[int]($end-[DateTimeOffset]::UtcNow).TotalSeconds+' seconds remaining');Start-Sleep -Seconds 2;Require ([MandalaTestInput]::LastInput() -eq $last) 'Keyboard/mouse input interrupted the idle test. Evidence saved; no time tests repeated.'}
         Wait-AgentState 'No active project';Wait-Receipts $since 1
         Require ((Get-AgentText 'TrackerMessageText') -like '*Timer paused after 5 minutes*') 'Idle pause/save message missing.'
         [MandalaTestInput]::Pulse();Start-Sleep -Seconds 5
@@ -254,6 +254,8 @@ try {
     Write-Host 'Reconnect LAN if disconnected. Preserve any active/pending Agent work. Return the report; do not repeat time tests.'
 } finally {
     Save-QuickReport
+    Write-Progress -Activity 'Automatic Mandala timer check' -Completed
+    Write-Progress -Activity 'Automatic Mandala idle check' -Completed
     if('MandalaTestInput' -as [type]){[MandalaTestInput]::Awake($false)}
     Write-Host ('REPORT: '+$reportDir+'.zip')
     $lock.ReleaseMutex();$lock.Dispose()

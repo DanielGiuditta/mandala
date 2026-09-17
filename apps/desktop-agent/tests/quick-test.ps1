@@ -69,3 +69,17 @@ try {
  Remove-Item $reportDir -Recurse -Force -ErrorAction SilentlyContinue
  Remove-Item ($reportDir+'.zip') -Force -ErrorAction SilentlyContinue
 }
+# Test the real restart helper with only side effects stubbed. Never reboot CI.
+$node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Arm-Reboot'},$true)
+Invoke-Expression $node.Extent.Text
+function Test-Path {return $true}
+function New-Item {}
+function New-ItemProperty {param($Path,$Name,$Value,$PropertyType,[switch]$Force) $script:resumeCommand=$Value;$script:resumeName=$Name}
+function Get-CimInstance { [pscustomobject]@{LastBootUpTime=[DateTime]'2026-09-16T00:00:00Z'} }
+function Ask-Yes { $script:approved=$true }
+function shutdown.exe { Require ($script:approved -and $state.Phase -eq 'reboot') 'Restart happened before approval/state checkpoint.'; $global:LASTEXITCODE=0 }
+$Role='employee';$state=[pscustomobject]@{BootBefore='';Phase='preflight'}
+Arm-Reboot
+Assert ($state.Phase -eq 'reboot' -and $state.BootBefore) 'Restart checkpoint missing.'
+Assert ($script:resumeName -eq 'MandalaOfficeTest-employee' -and $script:resumeCommand -like '* /d /c start "" *') 'Resume would block other startup programs or replace Agent startup.'
+Write-Host 'PASS: restart requires approval, checkpoints first, and resumes through a separate detached one-time launcher.'

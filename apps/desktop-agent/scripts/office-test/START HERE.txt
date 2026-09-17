@@ -1,84 +1,68 @@
-MANDALA COMPLETE TEST 1.2.0
-ONE PACKAGE. ONE OFFICE SESSION. SEND BOTH REPORTS TOGETHER.
+MANDALA COMPLETE TEST 1.2.0 - START HERE
+ONE OFFICE SESSION. SEND BOTH REPORT ZIPS TOGETHER.
 
-WHAT TO EXPECT
-Target: 5-10 minutes of hands-on employee testing after setup, spread across a
-roughly 25-35 minute run including restarts/waiting. Setup faults may take longer.
-The timer tests click the installed Agent automatically and generate test mouse
-activity. Keep this employee PC unlocked and reserved for the test. Do not use it
-for other work until finished. The six-minute idle check needs NO keyboard/mouse
-input. No screenshots or messages are needed after each step.
+Allow roughly 25-35 minutes elapsed. Target: 5-10 minutes of employee attention
+after setup; most timer checks run unattended. Setup problems may take longer.
+Keep the employee PC unlocked and unused. Do not send screenshots at each step.
 
-BEFORE STARTING
-[ ] IT/Windows administrator is available for gateway checks and any installation.
-[ ] One dedicated internet-connected gateway and ONE LAN-only employee PC.
-[ ] Gateway already installed/configured with MandalaGatewaySetup-1.1.0.exe.
-[ ] Employee signs in themselves; no passwords sent to Daniel or typed in checker.
-[ ] Two allowed projects agreed for FIVE real test time entries.
-    Durations depend on waiting; Daniel checks the resulting production entries.
-[ ] Existing employee pairing ZIP available if connection setup is incomplete.
-    It must belong to this employee Windows profile; the kit cannot replace keys.
-[ ] An internet-connected browser is available for the same employee's short
-    browser ownership check. Do not test on a second employee's login.
+HAVE THESE READY
+- IT/Windows administrator, the configured internet-connected gateway (1.1.0),
+  and ONE LAN-only employee PC using its original Windows account.
+- Employee's own login and two allowed projects agreed for FIVE real time entries.
+- Existing employee pairing ZIP if connection setup is incomplete. It is specific
+  to that Windows profile; this package cannot replace private keys.
+- Internet-connected browser for the same employee's short ownership check.
 
 1. EXTRACT THE WHOLE ZIP ON BOTH PCs
-Keep the extracted folder in place through the restart. Do not run from inside
-the ZIP. Do not add the test launcher or office setup to Windows Startup.
+Keep the extracted folder in place through restarts. Do not run inside the ZIP.
+Never add this test or the setup wizard to Startup.
 
-2. GATEWAY PC FIRST
-Double-click "Start gateway Test.cmd". Approve the administrator prompt.
-IT confirms the network isolation checklist and that no employee timers are active.
-The checker runs all gateway checks, then asks to restart. Save other work first.
-Sign back into the SAME Windows administrator account. The one-time test launcher
-should reopen; approve its administrator prompt. If it does not, open the same
-launcher yourself. Do NOT open gateway setup or start its task manually.
-Confirm automatic gateway startup when asked. Collect its desktop report ZIP.
-Only continue to the employee if the gateway report says local checks passed.
+2. GATEWAY FIRST
+Open "Start gateway Test.cmd" and approve administrator access.
+IT confirms the network checklist and that NO employee timers are active.
+Save other work and approve the requested restart.
+Sign back into the SAME administrator account. Approve the resumed test's prompt.
+If the test does not reopen, open the same launcher. Do NOT open gateway setup or
+start its task manually. Confirm whether it started by itself.
+Continue only when the gateway report says local checks passed.
 
 3. EMPLOYEE PC
-Double-click "Start employee Test.cmd" NORMALLY in the employee Windows account.
-Enter the employee email. If needed, approve the included installer/startup repair.
-Sign in in the real Agent. The checker never reads its password field.
-Choose the two agreed projects by number and approve the five real test entries.
-Save other work and accept the requested restart.
-Sign back into the SAME employee account. The test should reopen automatically;
-otherwise open the same employee test launcher. Do NOT open Agent/setup manually.
-Confirm whether Agent opened by itself. Sign in in Agent again only if requested.
+Open "Start employee Test.cmd" NORMALLY (not as administrator).
+Enter the email; sign in in the real Agent. Never type a password in the checker.
+Approve installation/startup repair if requested. Choose two test projects by
+number and authorize the five entries. Save other work and approve restart.
+Sign back into the SAME employee account. The test reopens; if not, open its
+launcher. Do NOT open Agent/setup manually. Confirm Agent opened by itself.
+Sign in in Agent again only if requested.
 
-4. FOLLOW ONLY THE SHORT PROMPTS
-- Browser check: on the connected browser, same employee opens project B and tries
-  Start Work. Viewing B must leave A running, and browser takeover must be refused.
-  Confirm only if BOTH checks pass.
-- When asked, disconnect ONLY the employee PC from LAN and confirm. Do not stop
-  the gateway. The checker performs the offline stop/reopen/pending tests itself.
-- Reconnect when called back and confirm. The remaining project switching and idle
-  tests run automatically for about 13 minutes. Leave the PC unlocked and untouched.
-The runner reads the Agent's visible state and full save references. It will NOT
-invent passes, retry uncertain time writes, shorten the real five-minute idle rule,
-read passwords/tokens, change firewall settings, or clear pending work.
+4. RESPOND TO THREE SHORT PROMPTS; THE RUNNER DOES THE TIMER WORK
+- Browser: same employee views project B and tries Start Work. Confirm viewing
+  did not switch A AND the browser could not take over the desktop session.
+- Disconnect ONLY the employee PC from LAN when asked. Confirm. The runner stops
+  once, checks pending work, closes/reopens Agent and checks blocked new starts.
+- Reconnect when called back. Confirm, then leave the PC unlocked and untouched.
+  Switching and the real idle check run automatically for about 13 more minutes.
+The runner generates small mouse movements during active test sessions, then
+stops input for the six-minute idle check. Do not use this PC during the test.
 
-5. SEND ONE RESULT SET
-Send BOTH desktop ZIPs together:
+5. SEND THESE TWO DESKTOP ZIPs TOGETHER ONCE
   Mandala-Quick-Test-<GATEWAY-PC>-gateway.zip
   Mandala-Quick-Test-<EMPLOYEE-PC>-employee.zip
-The reports contain all checks, actions in IST/UTC and saved-session references.
-No need for screenshots after each step. Keep any MandalaAgentDiagnostics file the
-Agent generated during offline testing; provide it only if requested.
-Daniel verifies the FIVE real database entries from these reports. Local passes
-alone are NOT permission to roll out to the office.
+Send both even if a check fails. They contain checks, IST/UTC actions and references.
+Daniel verifies all FIVE actual database entries from these reports. Local checks
+alone do not clear an office rollout. Keep any native Agent diagnostics file.
 
-IF SOMETHING FAILS
-Read FIXES.txt. All independent checks already collected are in the report.
-Before time tests begin, correct a known prerequisite and reopen the SAME launcher.
-Once any time test has started, do NOT rerun, reinstall or delete its saved state.
-Send the report set even if a check is blocked. Unattempted tests remain BLOCKED.
-If disconnected when it stops, reconnect LAN. Preserve any active/pending Agent work.
-During automated work hold Escape to stop; the runner leaves existing work intact.
-Closing the test window also leaves the last saved report/state; reopen only to
-export it. It will not silently repeat a partially completed time test.
+IF A CHECK FAILS
+See FIXES.txt for known setup corrections. Before time tests begin, correct the
+prerequisite and reopen the SAME launcher. After time tests begin, do not rerun,
+reinstall or delete state. Send the reports; unattempted tests stay BLOCKED.
+If disconnected when it stops, reconnect LAN and preserve active/pending work.
+Hold Escape during automation to stop. Reopening an interrupted test exports its
+evidence without repeating time writes. No passwords, keys or raw journals are
+included in the reports; security checks/firewall settings are not changed.
 
-APPROVED EMPLOYEE INSTALLER (INCLUDED)
-MandalaAgentSetup-1.0.15.exe - requires Windows administrator approval.
+INCLUDED APPROVED EMPLOYEE INSTALLER
+MandalaAgentSetup-1.0.15.exe - Windows administrator approval required.
 Production: nzlajptokbcgeaifgnoq.supabase.co
-Existing unsigned pre-launch release: supervised testing only, not broad rollout.
-This ZIP is a test/repair kit, not a replacement Agent or gateway release.
+Existing unsigned pre-launch release: supervised test only. This is a test/repair
+kit, not a new Agent or gateway release. Keep existing pairing material available.
