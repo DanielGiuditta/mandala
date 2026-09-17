@@ -11,7 +11,7 @@ $log=Join-Path $env:LOCALAPPDATA 'Mandala Agent\agent.log'
 $lock=New-Object Threading.Mutex($false,('Local\MandalaOfficeQuickTest-'+$Role))
 if(-not $lock.WaitOne(0)) {Write-Host 'This test is already running. Use the existing window.';exit 1}
 if(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json}
-else {$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.0';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}}
+else {$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.0';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}}
 function Save-QuickReport {
     $state.Events=@(Read-AgentEvents $log ([DateTimeOffset]$state.StartedUtc))
     $json=$state|ConvertTo-Json -Depth 20

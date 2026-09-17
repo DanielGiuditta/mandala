@@ -71,7 +71,8 @@ try {
 }
 # Test the real restart helper with only side effects stubbed. Never reboot CI.
 $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Arm-Reboot'},$true)
-Invoke-Expression $node.Extent.Text
+$script:fixtureKitRoot=Split-Path $file
+Invoke-Expression ($node.Extent.Text.Replace('$PSScriptRoot','$script:fixtureKitRoot'))
 function Test-Path {return $true}
 function New-Item {}
 function New-ItemProperty {param($Path,$Name,$Value,$PropertyType,[switch]$Force) $script:resumeCommand=$Value;$script:resumeName=$Name}
