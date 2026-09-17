@@ -1,114 +1,84 @@
-MANDALA COMPLETE OFFICE TEST 1.1.0
-ONE SUPERVISED SESSION / ONE RETURN OF RESULTS
+MANDALA COMPLETE TEST 1.2.0
+ONE PACKAGE. ONE OFFICE SESSION. SEND BOTH REPORTS TOGETHER.
 
-Allow 35-45 minutes with Surjith, one employee and a Windows administrator.
-Use one internet-connected GATEWAY PC and one LAN-only EMPLOYEE PC.
-Do not start with the whole office. Keep the original employee Windows profile.
-Have the existing employee pairing ZIP/connection file available in case pairing
-was never completed. This package cannot recreate another PC's private key.
-Use two allowed projects with different names and the employee's own login.
-The browser ownership test also needs an internet-connected test browser where
-the employee signs in themselves. Do not share or collect passwords.
+WHAT TO EXPECT
+Target: 5-10 minutes of hands-on employee testing after setup, spread across a
+roughly 25-35 minute run including restarts/waiting. Setup faults may take longer.
+The timer tests click the installed Agent automatically and generate test mouse
+activity. Keep this employee PC unlocked and reserved for the test. Do not use it
+for other work until finished. The six-minute idle check needs NO keyboard/mouse
+input. No screenshots or messages are needed after each step.
 
-EXACT APPROVED FILES
-Employee: MandalaAgentSetup-1.0.15.exe (included)
-Gateway: MandalaGatewaySetup-1.1.0.exe (existing gateway installation)
-Backend: nzlajptokbcgeaifgnoq.supabase.co
-Windows administrator approval is required for installation/shared startup repair.
-The approved employee installer is the existing unsigned pre-launch test release;
-this kit is for the supervised test, not broad employee deployment.
+BEFORE STARTING
+[ ] IT/Windows administrator is available for gateway checks and any installation.
+[ ] One dedicated internet-connected gateway and ONE LAN-only employee PC.
+[ ] Gateway already installed/configured with MandalaGatewaySetup-1.1.0.exe.
+[ ] Employee signs in themselves; no passwords sent to Daniel or typed in checker.
+[ ] Two allowed projects agreed for FIVE real test time entries (roughly 0.2 hours
+    total, depending on waiting). They will be checked in production afterward.
+[ ] Existing employee pairing ZIP available if connection setup is incomplete.
+    It must belong to this employee Windows profile; the kit cannot replace keys.
+[ ] An internet-connected browser is available for the same employee's short
+    browser ownership check. Do not test on a second employee's login.
 
-Extract the WHOLE ZIP before starting. Open Run Mandala Test.cmd normally on the
-employee PC. IT runs the gateway checks in an administrator window on the gateway.
-The menu can be reopened between steps; it retains this test's report.
-Never add this checker or office setup to Startup.
+1. EXTRACT THE WHOLE ZIP ON BOTH PCs
+Keep the extracted folder in place through the restart. Do not run from inside
+the ZIP. Do not add the test launcher or office setup to Windows Startup.
 
-1. GATEWAY FIRST (menu option 2, on GATEWAY PC)
-[ ] Run all gateway checks: task, boot trigger, Local Service, installation version,
-    runtime, reserved address, listener, production reachability, firewall and certs.
-[ ] IT confirms dedicated/awake gateway, reserved IP, no port forwarding, and office
-    firewall isolation from file servers/domain controllers.
-[ ] IT confirms employee internet is blocked while gateway HTTPS remains reachable.
-[ ] With no employee sessions active, restart the gateway. Do NOT open setup or
-    manually start its task. Run option 2 again. Every automatic check must pass
-    and the reboot/isolation observations must be confirmed.
-Expected: gateway works without clicking "Internet-connected gateway computer".
+2. GATEWAY PC FIRST
+Double-click "Start gateway Test.cmd". Approve the administrator prompt.
+IT confirms the network isolation checklist and that no employee timers are active.
+The checker runs all gateway checks, then asks to restart. Save other work first.
+Sign back into the SAME Windows administrator account. The one-time test launcher
+should reopen; approve its administrator prompt. If it does not, open the same
+launcher yourself. Do NOT open gateway setup or start its task manually.
+Confirm automatic gateway startup when asked. Collect its desktop report ZIP.
+Only continue to the employee if the gateway report says local checks passed.
 
-2. EMPLOYEE PREFLIGHT (menu option 1, on EMPLOYEE PC)
-[ ] Record the employee email when asked. Every independent check runs even if
-    installation detection fails; no more screenshots are needed for basic checks.
-[ ] Check agent discovery, exact version/binary, backend, one startup shortcut,
-    Windows startup setting, LAN pairing, certificate/private key/trust, gateway
-    TLS/enrollment, clock difference and recent sign-in/project-list evidence.
-[ ] Open the real Mandala Agent normally and sign in. At least two allowed projects
-    must load. Run option 1 again after any corrections below, in this same session.
+3. EMPLOYEE PC
+Double-click "Start employee Test.cmd" NORMALLY in the employee Windows account.
+Enter the employee email. If needed, approve the included installer/startup repair.
+Sign in in the real Agent. The checker never reads its password field.
+Choose the two agreed projects by number and approve the five real test entries.
+Save other work and accept the requested restart.
+Sign back into the SAME employee account. The test should reopen automatically;
+otherwise open the same employee test launcher. Do NOT open Agent/setup manually.
+Confirm whether Agent opened by itself. Sign in in Agent again only if requested.
 
-USE THESE BRANCHES NOW, WITHOUT WAITING FOR ANOTHER MESSAGE
-- Agent cannot be found: review the candidate paths in the report. If the agent
-  really is absent, option 6 installs the INCLUDED, hash-verified employee installer.
-  It will not overwrite/downgrade an installation it can find. Reopen Agent normally.
-- Missing/wrong/duplicate startup shortcut: option 7 repairs it, preserving backups,
-  settings and saved work. It uses user-only startup for a user-local installation.
-- Startup disabled in Windows: enable Mandala Agent in Startup apps. Do not enable
-  Mandala office setup. The checker does not change organizational policy.
-- LAN settings/certificate missing: use the EXISTING approved employee pairing ZIP
-  and Complete connection under this SAME employee Windows account. IT approves
-  device enrollment on the gateway. Do not regenerate keys or clear profile data.
-- Backend/version/binary mismatch: stop installation/time tests; return the report.
-  Do not bypass the backend check or install an older version over a newer agent.
-- Gateway/TLS/firewall failure: IT resolves the named failing gateway checks using
-  the existing setup. Never disable the firewall or certificate validation.
-- Missing projects/login: confirm the correct active employee account and project
-  access in Mandala. A correct clock does not prove data is being saved.
-- Anything still failing after these steps: keep the report and stop time-writing
-  tests. Independent diagnostics will still be included. Do not repeat uncertain saves.
+4. FOLLOW ONLY THE SHORT PROMPTS
+- Browser check: on the connected browser, same employee opens project B and tries
+  Start Work. Viewing B must leave A running, and browser takeover must be refused.
+  Confirm only if BOTH checks pass.
+- When asked, disconnect ONLY the employee PC from LAN and confirm. Do not stop
+  the gateway. The checker performs the offline stop/reopen/pending tests itself.
+- Reconnect when called back and confirm. The remaining project switching and idle
+  tests run automatically for about 13 minutes. Leave the PC unlocked and untouched.
+The runner reads the Agent's visible state and full save references. It will NOT
+invent passes, retry uncertain time writes, shorten the real five-minute idle rule,
+read passwords/tokens, change firewall settings, or clear pending work.
 
-3. REAL EMPLOYEE RESTART (menu option 3)
-[ ] Save any active work. Restart Windows and sign into the SAME employee account.
-[ ] Do NOT manually open Agent or office setup. Run option 3 from the extracted kit.
-[ ] It checks that Windows actually restarted and exactly one Agent is already
-    running. Confirm whether the Agent window appeared automatically.
-Expected: Agent opens by itself. Selecting a project/Start Work is still manual.
+5. SEND ONE RESULT SET
+Send BOTH desktop ZIPs together:
+  Mandala-Quick-Test-<GATEWAY-PC>-gateway.zip
+  Mandala-Quick-Test-<EMPLOYEE-PC>-employee.zip
+The reports contain all checks, actions in IST/UTC and saved-session references.
+No need for screenshots after each step. Keep any MandalaAgentDiagnostics file the
+Agent generated during offline testing; provide it only if requested.
+Daniel verifies the FIVE real database entries from these reports. Local passes
+alone are NOT permission to roll out to the office.
 
-4. GUIDED TIME TESTS (menu option 4; only after preflight and reboot pass)
-The console records IST dates/times, observations and complete save references
-from the agent log. Follow its prompts; do not type passwords into the console.
-These tests create FIVE real project time entries. Use agreed test projects.
-[ ] Start/stop + session ownership: work on A for >=2 minutes. The same employee
-    opens B in a test web browser: viewing B must not change A, and starting B must
-    not take over the desktop-owned session. Stop A once; require a saved reference.
-[ ] Switch: work A >=2 minutes; cancel a switch once and confirm A stays active;
-    then confirm switch to B. Require A's reference. Work B >=2 minutes and stop;
-    require B's reference. Expected two separate saved entries.
-[ ] Idle: work A >=2 minutes, then leave ALL keyboard/mouse activity alone for
-    6 minutes. Require pause/save. Returning to the PC must not restart the timer.
-[ ] Offline/recovery: start A online; work >=2 minutes. Disconnect only this PC
-    from LAN, work >=2 more minutes, and stop once. It must say pending/local save.
-    Export in-app diagnostics before closing/reopening the Agent while still
-    offline. Pending work must survive. A new start must be blocked. Reconnect,
-    wait up to 2 minutes, and require ONE final saved reference for that session.
+IF SOMETHING FAILS
+Read FIXES.txt. All independent checks already collected are in the report.
+Before time tests begin, correct a known prerequisite and reopen the SAME launcher.
+Once any time test has started, do NOT rerun, reinstall or delete its saved state.
+Send the report set even if a check is blocked. Unattempted tests remain BLOCKED.
+If disconnected when it stops, reconnect LAN. Preserve any active/pending Agent work.
+During automated work hold Escape to stop; the runner leaves existing work intact.
+Closing the test window also leaves the last saved report/state; reopen only to
+export it. It will not silently repeat a partially completed time test.
 
-If a save/behavior check fails, the program marks later time tests BLOCKED and
-keeps all evidence. Do not start over, reinstall, erase data or repeat Stop.
-
-5. RETURN ONE RESULT SET
-[ ] On employee PC use option 5 after testing (reports also export automatically).
-[ ] Collect the desktop ZIPs named Mandala-Test-<PC>-employee.zip and
-    Mandala-Test-<PC>-gateway.zip. Attach BOTH in one reply, with any in-app
-    diagnostics exported during an error. The ZIP contains text + structured JSON.
-[ ] Do not send agent.config.json, session.dat, time-*.dat, certificates or keys.
-    The checker exports only selected diagnostic facts, not those files.
-
-6. DATABASE VERIFICATION / GO-NO-GO (Daniel/maintainer, from the SAME report)
-The maintainer runs the read-only verifier against production. It matches all five
-references to exactly one session/entry each, the correct employee/project/date,
-and hours derived from the saved session duration; extra sessions fail the check.
-No database service key belongs on employee or gateway PCs.
-PASS requires: all employee checks, real reboot, all four time scenarios, gateway
-checks/IT observations, and actual production rows. Missing evidence = NOT CLEARED.
-The test package passing CI does NOT certify the office computer or a broad rollout.
-
-NO REPEATED DAILY TROUBLESHOOTING
-Use this whole checklist in one session. Send the completed report set once, even
-if something is blocked. The report contains all independent checks so fixes can
-be based on the complete result instead of requesting another screenshot each day.
+APPROVED EMPLOYEE INSTALLER (INCLUDED)
+MandalaAgentSetup-1.0.15.exe - requires Windows administrator approval.
+Production: nzlajptokbcgeaifgnoq.supabase.co
+Existing unsigned pre-launch release: supervised testing only, not broad rollout.
+This ZIP is a test/repair kit, not a replacement Agent or gateway release.

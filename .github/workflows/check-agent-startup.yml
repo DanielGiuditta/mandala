@@ -24,6 +24,9 @@ jobs:
       - name: Exercise full office checks and fail-closed evidence parsing
         shell: powershell
         run: ./apps/desktop-agent/tests/office-test.ps1
+      - name: Exercise real Windows UI automation and scenario failure handling
+        shell: powershell
+        run: ./apps/desktop-agent/tests/quick-test.ps1
       - name: Check read-only production verification with failure fixtures
         run: node --test apps/desktop-agent/tests/verify-office-test.test.mjs
       - name: Run desktop regression checks
@@ -105,17 +108,20 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $zip).Length
           "Repair audit passed: version=1.0.1 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
-          $kitZip='MandalaOfficeTest-1.1.0.zip'
-          Compress-Archive -Path 'apps/desktop-agent/scripts/office-test/*' -DestinationPath $kitZip
+          $kitZip='MandalaOfficeTest-1.2.0.zip'
+          $stage=Join-Path $env:RUNNER_TEMP 'Mandala Office Test Handoff'
+          New-Item -ItemType Directory $stage -Force|Out-Null
+          foreach($name in @('Start employee Test.cmd','Start gateway Test.cmd','START HERE.txt','FIXES.txt','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.15.exe','startup-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $kitZip
           $kitHash=(Get-FileHash $kitZip -Algorithm SHA256).Hash.ToLowerInvariant()
           $kitSize=(Get-Item $kitZip).Length
-          "Office test audit passed: version=1.1.0 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
+          "Office test audit passed: version=1.2.0 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MandalaOfficeTest-1.1.0
+          name: MandalaOfficeTest-1.2.0
           path: |
             MandalaAgentStartupRepair-1.0.1.zip
             startup-repair-audit.txt
-            MandalaOfficeTest-1.1.0.zip
+            MandalaOfficeTest-1.2.0.zip
             office-test-audit.txt
           if-no-files-found: error

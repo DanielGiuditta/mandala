@@ -1,0 +1,58 @@
+KNOWN PREREQUISITE FIXES - USE IN THE SAME SESSION
+
+These fixes are only for BEFORE automated time tests have started. If a time save
+is uncertain, preserve work and return both reports instead of repeating it.
+
+EMPLOYEE AGENT NOT FOUND
+The checker looks in both registry views, machine/user install locations, running
+processes and known shortcuts. It offers the included exact approved installer
+only when no existing Agent is found. Approve Windows administrator access. It
+never deliberately replaces a detected newer/different Agent with an older one.
+
+WRONG STARTUP / SETUP WINDOW OPENS INSTEAD OF AGENT
+The runner invokes the included startup repair, which backs up recognized Mandala
+setup/duplicate shortcuts and installs one actual Agent launcher. A user-local
+Agent receives user-only startup. Windows administrator approval may be required
+for the shared shortcut. The real reboot test then proves the outcome.
+
+WINDOWS HAS DISABLED STARTUP
+Enable Mandala Agent in Windows Startup apps; do not enable Mandala office setup.
+Reopen the employee test normally. Do not change organizational security policies.
+
+EMPLOYEE CONNECTION / CERTIFICATE MISSING
+Use the EXISTING approved pairing ZIP and Complete connection in the SAME employee
+Windows account. IT approves device enrollment on the gateway. Do not recreate
+certificates from guesses, copy another account's private key, or disable TLS.
+
+GATEWAY TASK MISSING / NOT RUNNING
+Use the existing Mandala gateway setup on the dedicated gateway PC to complete
+its installation/task registration. This is a one-time setup, not a Startup app.
+Reopen the gateway test and perform the required real restart WITHOUT opening setup.
+If the task still cannot run by itself, return the complete report; do not keep
+adding the setup wizard to Startup or manually starting it to claim a pass.
+
+WRONG BACKEND / VERSION / BINARY
+Stop. The report identifies the mismatch. Do not downgrade, bypass the check or
+clear user data. The employee must target nzlajptokbcgeaifgnoq.supabase.co and the
+exact audited Agent 1.0.15 binary; gateway version is 1.1.0.
+
+CLOCK / FIREWALL / NETWORK
+IT corrects the named failing check using the office's existing configuration.
+Do not disable the firewall, change security policy or turn off certificate checks.
+The test does not alter these settings. All independent findings are retained.
+
+NO PROJECTS / WRONG PERSON
+Confirm the employee's own active account and allowed projects. Sign in themselves
+in Agent, select no real work session, and reopen the checker before time tests.
+A successful login/project list alone is not proof that time was saved correctly.
+
+TEST CANNOT CONTROL AGENT / IDLE CHECK INTERRUPTED / MISSING SAVE
+Return both ZIPs. Do not try repeatedly. Keep the same profile and any pending work.
+A locked/RDP-disconnected desktop, policy blocking accessibility, unknown dialog or
+user activity during the idle test can block automation; those are NOT passes.
+
+REPORT LOCATION
+Desktop: Mandala-Quick-Test-<PC>-employee.zip or -gateway.zip.
+Progress: LocalAppData / Mandala Office Test 1.2.0 (do not delete/reset to retry).
+The temporary resume entry is HKCU RunOnce / MandalaOfficeTest-employee or -gateway.
+It runs once after sign-in. It is separate from the actual Agent startup shortcut.
