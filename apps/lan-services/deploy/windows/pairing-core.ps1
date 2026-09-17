@@ -59,6 +59,19 @@ function Initialize-PairingGateway($Address, $DataDirectory, $InstallDirectory) 
 }
 function Enable-PairingGateway($Address, $EmployeeSubnet, $DataDirectory, $InstallDirectory) {
     if ($EmployeeSubnet -notmatch '^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$' -or [int]($EmployeeSubnet.Split('/')[1]) -lt 8 -or [int]($EmployeeSubnet.Split('/')[1]) -gt 32) { throw 'Enter the employee LAN subnet, for example 192.168.1.0/24.' }
+    $durable=Join-Path $InstallDirectory 'gateway-startup-core.ps1'
+    if(Test-Path -LiteralPath $durable) {
+        # The repair deliberately upgrades the existing wizard's maintenance path.
+        # Reopening setup must not restore the legacy task or broaden its approved
+        # employee scope based on the wizard's automatically populated textbox.
+        . $durable
+        $rules=@(Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction Stop)
+        if($rules.Count -ne 1){throw 'The repaired gateway firewall scope is missing or ambiguous. Preserve pairing and use the gateway test repair.'}
+        $scope=@(($rules[0]|Get-NetFirewallAddressFilter).RemoteAddress)
+        Set-MandalaDurableGatewayStartup $Address $scope $DataDirectory $InstallDirectory
+        Restart-PairingGateway
+        return
+    }
     $node = Join-Path $InstallDirectory 'runtime\node.exe'
     $ruleName = 'Mandala guided gateway HTTPS'
     Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
@@ -76,6 +89,17 @@ function Restart-PairingGateway {
     for ($i=0; $i -lt 30 -and (Get-ScheduledTask -TaskName 'Mandala LAN Gateway').State -eq 'Running'; $i++) { Start-Sleep -Milliseconds 200 }
     if ((Get-ScheduledTask -TaskName 'Mandala LAN Gateway').State -eq 'Running') { throw 'The gateway could not stop. Ask local IT to check the scheduled task.' }
     Start-ScheduledTask -TaskName 'Mandala LAN Gateway'
+    $task=Get-ScheduledTask -TaskName 'Mandala LAN Gateway'
+    $durable=Join-Path $task.Actions[0].WorkingDirectory 'gateway-startup-core.ps1'
+    if(Test-Path -LiteralPath $durable) {
+        . $durable
+        $arguments=@([regex]::Matches($task.Actions[0].Arguments,'"([^"]+)"')|ForEach-Object {$_.Groups[1].Value})
+        if($arguments.Count -ne 3 -or (Split-Path $arguments[1] -Leaf) -ne 'gateway.json'){throw 'Repaired gateway task arguments are invalid. Use the gateway test repair.'}
+        $data=Split-Path $arguments[1] -Parent
+        $deadline=[DateTime]::UtcNow.AddSeconds(90)
+        do {Start-Sleep -Seconds 2;if(Test-MandalaGatewayListener $task.Actions[0].WorkingDirectory $data){return}} while([DateTime]::UtcNow -lt $deadline)
+        throw 'Gateway has not established its audited Local Service listener. Preserve pairing and return the gateway test report.'
+    }
     Start-Sleep -Seconds 2
     if ((Get-ScheduledTask -TaskName 'Mandala LAN Gateway').State -ne 'Running') { throw 'The gateway did not stay running. Ask local IT to check the gateway task and configuration.' }
 }

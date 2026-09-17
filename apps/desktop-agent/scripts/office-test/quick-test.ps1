@@ -11,11 +11,90 @@ New-Item -ItemType Directory $reportDir -Force|Out-Null
 $log=Join-Path $env:LOCALAPPDATA 'Mandala Agent\agent.log'
 $lock=New-Object Threading.Mutex($false,('Local\MandalaOfficeQuickTest-'+$Role))
 if(-not $lock.WaitOne(0)) {Write-Host 'This test is already running. Use the existing window.';exit 1}
-if(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;$state.KitVersion='1.2.1'}
-else {$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.1';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}}
+function New-QuickRunState {
+    [pscustomobject]@{SchemaVersion=1;KitVersion='1.2.2';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}
+}
+try {
+    if(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;Require ($state.SchemaVersion -eq 1 -and $state.Role -eq $Role -and $state.RunId -and $state.Phase -in @('preflight','reboot','functional','complete','stopped')) 'Saved test state is not recognized.'}
+    else {$state=New-QuickRunState}
+} catch {
+    Write-Host 'Saved test state cannot be resumed. No test actions were performed. Keep this file for Daniel; do not delete it or repeat time tests:'
+    Write-Host $stateFile
+    $lock.ReleaseMutex();$lock.Dispose();exit 1
+}
+function Update-QuickStateVersion {
+    # A report describes the code that actually performed its checks. Never rename
+    # a finished/interrupted employee run or silently replay its real time writes.
+    if($state.KitVersion -ne '1.2.2' -and $state.Phase -in @('preflight','reboot')) {
+        $previous=@($state.PreviousKitVersions|Where-Object {$null -ne $_})+@([pscustomobject]@{Version=$state.KitVersion;UpgradedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase=$state.Phase})
+        $state|Add-Member -NotePropertyName PreviousKitVersions -NotePropertyValue $previous -Force
+        $state.KitVersion='1.2.2'
+        if($Role -eq 'gateway' -and $state.Phase -eq 'reboot') {
+            # An older partially completed gateway check has not proved the new
+            # persistent startup contract. Repair/check again, then require a new boot.
+            $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks;PreviousBoot=$state.BootBefore}
+            $state.Phase='preflight';$state.BootBefore=''
+        }
+    }
+}
+function Test-GatewayStartupReady {
+    try {
+        $task=Get-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction Stop
+        if($task.State -ne 'Running'){return $false}
+        $config=Get-Content (Join-Path $env:ProgramData 'Mandala Gateway\gateway.json') -Raw|ConvertFrom-Json
+        $adapter=@(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop|Where-Object {$_.IPAddress -eq $config.bindAddress})
+        if($adapter.Count -ne 1){return $false}
+        if(-not @(Get-NetConnectionProfile -InterfaceIndex $adapter[0].InterfaceIndex -ErrorAction SilentlyContinue).Count){return $false}
+        return (Test-MandalaGatewayListener $task.Actions[0].WorkingDirectory (Join-Path $env:ProgramData 'Mandala Gateway') $config.bindAddress)
+    } catch {return $false}
+}
+function Wait-GatewayStartup([int]$Seconds=180,[int]$PollMilliseconds=2000) {
+    # Boot delay and address acquisition are expected. Observe only: never start
+    # the task, wizard, or gateway process while testing automatic startup.
+    $clock=[Diagnostics.Stopwatch]::StartNew();$attempts=0;$ready=$false
+    do {
+        $attempts++;$ready=Test-GatewayStartupReady
+        if($ready){break}
+        Write-Progress -Activity 'Checking automatic gateway startup' -Status 'Waiting for Windows startup and the office network (up to three minutes). No manual start is needed.'
+        Start-Sleep -Milliseconds $PollMilliseconds
+    } while($clock.Elapsed.TotalSeconds -lt $Seconds)
+    $clock.Stop();Write-Progress -Activity 'Checking automatic gateway startup' -Completed
+    $state|Add-Member -NotePropertyName GatewayStartupWait -NotePropertyValue ([pscustomobject]@{Ready=$ready;Attempts=$attempts;ElapsedSeconds=[Math]::Round($clock.Elapsed.TotalSeconds,1);ObservedUtc=[DateTimeOffset]::UtcNow.ToString('o')}) -Force
+    # Full independent checks still run after a timeout and preserve every failure.
+}
+function Record-QuickGatewayOrigin {
+    $fingerprint=if($script:checkedGatewayCertificateSha256){$script:checkedGatewayCertificateSha256}else{''}
+    $state|Add-Member -NotePropertyName GatewayCertificateSha256 -NotePropertyValue $fingerprint -Force
+    try {
+        if($Role -eq 'gateway') {
+            $config=Get-Content (Join-Path $env:ProgramData 'Mandala Gateway\gateway.json') -Raw|ConvertFrom-Json
+            $origin=([Uri]('https://'+$config.bindAddress+':'+$config.port)).AbsoluteUri.TrimEnd('/')
+        } else {
+            $config=Get-Content (Join-Path $env:ProgramData 'Mandala Agent\lan.config.json') -Raw|ConvertFrom-Json
+            $origin=([Uri]$config.gatewayUrl).AbsoluteUri.TrimEnd('/')
+        }
+        $state|Add-Member -NotePropertyName GatewayOrigin -NotePropertyValue $origin -Force
+    } catch { $state|Add-Member -NotePropertyName GatewayOrigin -NotePropertyValue '' -Force }
+}
+function Record-AgentFailureSnapshot {
+    # Capture actionable error codes and fixed UI states, never free-form text,
+    # passwords, configuration values, or raw exception bodies.
+    $snapshot=[ordered]@{CapturedUtc=[DateTimeOffset]::UtcNow.ToString('o');Available=$false}
+    try {
+        $active=Get-AgentText 'ActiveProjectText';$message=Get-AgentText 'TrackerMessageText'
+        $snapshot.Available=$true
+        $snapshot.ActiveState=if($active -eq 'No active project'){'none'}elseif($active -like 'Tracking *'){'tracking'}elseif($active -like 'Paused *'){'paused'}else{'unknown'}
+        $snapshot.ErrorCodes=@([regex]::Matches($message,'\bAGENT-[A-Z0-9-]+-\d{3}\b')|ForEach-Object {$_.Value}|Select-Object -Unique)
+        $snapshot.SaveState=if($message -like '*waiting for the LAN gateway*'){'pending'}elseif($message -like '*Time saved successfully*'){'confirmed'}else{'not shown'}
+        $snapshot.StartEnabled=(Get-AgentControl 'StartWorkButton').Current.IsEnabled
+    } catch { $snapshot.Collection='Agent UI unavailable; existing evidence preserved.' }
+    $state|Add-Member -NotePropertyName AgentFailureSnapshot -NotePropertyValue ([pscustomobject]$snapshot) -Force
+}
 function Save-QuickReport {
     if($Role -eq 'gateway') {
-        $evidence=[ordered]@{Task=(Get-GatewayTaskEvidence);NetworkProfiles=@(Get-NetConnectionProfile -ErrorAction SilentlyContinue|Select-Object InterfaceAlias,InterfaceIndex,NetworkCategory)}
+        $evidence=[ordered]@{}
+        try {$evidence.Task=Get-GatewayTaskEvidence} catch {$evidence.Task='Task evidence unavailable; other report evidence preserved.'}
+        try {$evidence.NetworkProfiles=@(Get-NetConnectionProfile -ErrorAction Stop|Select-Object InterfaceAlias,InterfaceIndex,NetworkCategory)} catch {$evidence.NetworkProfiles='Network profile evidence unavailable; other report evidence preserved.'}
         try {
             $rules=@(Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction Stop)
             $evidence.Firewall=@($rules|ForEach-Object {[pscustomobject]@{Name=$_.Name;Enabled=[string]$_.Enabled;Profile=[string]$_.Profile;LocalAddress=@(($_|Get-NetFirewallAddressFilter).LocalAddress);RemoteAddress=@(($_|Get-NetFirewallAddressFilter).RemoteAddress);InterfaceAlias=@(($_|Get-NetFirewallInterfaceFilter).InterfaceAlias);Program=($_|Get-NetFirewallApplicationFilter).Program}})
@@ -24,12 +103,13 @@ function Save-QuickReport {
         if(Test-Path $statusFile){try{$status=Get-Content $statusFile -Raw|ConvertFrom-Json;$evidence.Startup=$status|Select-Object schema,repairVersion,utc,phase,code,pid}catch{$evidence.Startup='Status unreadable'}}
         $state|Add-Member -NotePropertyName GatewayEvidence -NotePropertyValue ([pscustomobject]$evidence) -Force
     }
-    $state.Events=@(Read-AgentEvents $log ([DateTimeOffset]$state.StartedUtc))
+    try {$state.Events=@(Read-AgentEvents $log ([DateTimeOffset]$state.StartedUtc))}
+    catch {$state|Add-Member -NotePropertyName AgentEventCollection -NotePropertyValue 'Agent log could not be read; previous events and all independent checks preserved.' -Force}
     $json=$state|ConvertTo-Json -Depth 20
     $temp=$stateFile+'.tmp';[IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $temp -Destination $stateFile -Force
     [IO.File]::WriteAllText((Join-Path $reportDir 'report.json'),$json,(New-Object Text.UTF8Encoding($false)))
-    $lines=@('MANDALA COMPLETE TEST 1.2.1',('Computer: '+$state.Computer),('Role: '+$Role),('Phase: '+$state.Phase),('Result: '+$state.Result),('Saved: '+(Get-IstTime)),'')
+    $lines=@(('MANDALA COMPLETE TEST '+$state.KitVersion),('Computer: '+$state.Computer),('Role: '+$Role),('Phase: '+$state.Phase),('Result: '+$state.Result),('Saved: '+(Get-IstTime)),'')
     foreach($c in $state.Checks){$lines+=('['+$c.Status+'] '+$c.Id+': '+$c.Detail)}
     foreach($s in $state.Scenarios){$lines+=('['+$s.Status+'] '+$s.Kind+': '+$s.Detail)}
     $lines+=@('','Return this ZIP with the other PC report once. Do not repeat uncertain time tests.','Production row verification and gateway/IT observations are required before clearance.','If stopped during offline testing, reconnect the employee LAN now. Pending work is preserved.')
@@ -41,10 +121,16 @@ function Note-Action($Message) {
     $state.Actions+=[pscustomobject]@{Instruction=$Message;Utc=[DateTimeOffset]::UtcNow.ToString('o');Ist=(Get-IstTime);Source='automatic runner'}
     Save-QuickReport
 }
-function Ask-Yes($Message) {
+function Ask-Yes($Message,[switch]$KeepTestActive) {
     Write-Host '';Write-Host $Message
     [Console]::Beep(750,250)
-    $answer=Read-Host 'Type yes to confirm, or anything else to stop and save the report'
+    if($KeepTestActive) {
+        Write-Host 'Authorized test mouse activity continues for up to 10 minutes while you answer. Reply within 10 minutes; type no and Enter to stop. Holding Escape stops the activity; press Enter to save the report.'
+        [MandalaTestInput]::BeginPromptActivity()
+        try {$answer=Read-Host 'Type yes to confirm, or anything else to stop and save the report'}
+        finally {$activityOk=[MandalaTestInput]::EndPromptActivity()}
+        Require $activityOk 'Confirmation exceeded 10 minutes, Escape was held, or test input stopped reaching the unlocked desktop. Existing work and evidence are preserved.'
+    } else {$answer=Read-Host 'Type yes to confirm, or anything else to stop and save the report'}
     $state.Actions+=[pscustomobject]@{Instruction=$Message;Utc=[DateTimeOffset]::UtcNow.ToString('o');Ist=(Get-IstTime);Answer=$answer;Source='tester'}
     Save-QuickReport
     Require ($answer -eq 'yes') 'Tester did not confirm. All available checks are in the report.'
@@ -82,7 +168,7 @@ function Test-GatewayReachable {
     try {$task=$client.ConnectAsync($uri.Host,$uri.Port);return ($task.Wait(3000) -and $client.Connected)} catch {return $false} finally {$client.Dispose()}
 }
 function Run-AutomatedCase($Kind,$Count,[scriptblock]$Body) {
-    $scenario=[pscustomobject]@{Kind=$Kind;Status='INCOMPLETE';Detail='Automatic UI test started';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');FinishedUtc=$null;Observations=@();Receipts=@()}
+    $scenario=[pscustomobject]@{Kind=$Kind;Status='INCOMPLETE';Detail='Automatic UI test started';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');FinishedUtc=$null;TimeZoneOffsetMinutes=[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes;FinishedTimeZoneOffsetMinutes=$null;Observations=@();Receipts=@()}
     $state.Scenarios+=$scenario;Save-QuickReport
     try {
         Note-Action ('Running '+$Kind+' test. Leave this desktop unlocked. Escape stops safely.')
@@ -90,31 +176,49 @@ function Run-AutomatedCase($Kind,$Count,[scriptblock]$Body) {
         $scenario.Receipts=@(Test-ScenarioEvidence @(Read-AgentEvents $log ([DateTimeOffset]$scenario.StartedUtc)) $Count $Kind)
         $scenario.Status='LOCAL PASS';$scenario.Detail='Actual Agent UI and save receipts checked; production rows still require verification.'
     } catch {$scenario.Status='FAIL';$scenario.Detail=$_.Exception.Message;throw}
-    finally {$scenario.FinishedUtc=[DateTimeOffset]::UtcNow.ToString('o');Save-QuickReport}
+    finally {$scenario.FinishedUtc=[DateTimeOffset]::UtcNow.ToString('o');$scenario.FinishedTimeZoneOffsetMinutes=[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes;Save-QuickReport}
 }
 try {
-    Write-Host ('MANDALA COMPLETE TEST 1.2.1 - '+$Role.ToUpperInvariant())
+    Write-Host ('MANDALA COMPLETE TEST 1.2.2 - '+$Role.ToUpperInvariant())
     Write-Host 'One result set. No screenshots after each step. Keep the full extracted folder in place.'
+    if($state.Phase -in @('preflight','reboot')) {
+        Require ($state.Computer -eq $env:COMPUTERNAME -and $state.WindowsUser -eq [Security.Principal.WindowsIdentity]::GetCurrent().Name) 'This saved run belongs to another PC or Windows account. No test actions will run; preserve the report for Daniel.'
+    }
+    Update-QuickStateVersion
     $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if($state.Phase -eq 'functional') {
         foreach($item in $state.Scenarios){if($item.Status -eq 'INCOMPLETE'){$item.Status='FAIL';$item.Detail='Runner interrupted. No automatic replay; preserve the pending work.'}}
         foreach($kind in @('stop','offline','switch','idle')){if(-not @($state.Scenarios|Where-Object {$_.Kind -eq $kind}).Count){$state.Scenarios+=[pscustomobject]@{Kind=$kind;Status='BLOCKED';Detail='Runner interrupted; no automatic replay.'}}}
         $state.Phase='stopped';$state.Result='NOT CLEARED'
     }
-    if($state.Phase -in @('complete','stopped')){Write-Host 'This run has finished or stopped. Returning the existing report; time tests will not be repeated.';return}
+    if($Role -eq 'gateway' -and $state.Phase -eq 'complete' -and $state.KitVersion -ne '1.2.2') {
+        Require $admin 'Open the gateway launcher and approve administrator access to audit the updated startup repair.'
+        Ask-Yes ('This gateway report was completed with kit '+$state.KitVersion+'. Preserve that report and run the updated gateway-only checks, repair if needed, and a fresh restart? No employee time tests run on this PC.')
+        $archive=Join-Path $stateDir ('gateway-previous-'+[Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory $archive|Out-Null
+        Copy-Item -LiteralPath $stateFile -Destination (Join-Path $archive 'report.json')
+        if(Test-Path ($reportDir+'.zip')){Copy-Item -LiteralPath ($reportDir+'.zip') -Destination (Join-Path $archive 'report.zip')}
+        $previousRun=[pscustomobject]@{RunId=$state.RunId;KitVersion=$state.KitVersion;Archive=$archive}
+        $state=New-QuickRunState
+        $state|Add-Member -NotePropertyName PreviousGatewayRun -NotePropertyValue $previousRun -Force
+        Save-QuickReport
+    }
+    if($state.Phase -in @('complete','stopped')){Write-Host ('This run has finished or stopped under kit '+$state.KitVersion+'. Returning that existing report; no new audit or time tests have run.');return}
     $state.Checks=@($state.Checks|Where-Object {$_.Id -ne 'test.quick-runner'})
     if($Role -eq 'gateway') {
         Require $admin 'Open Start gateway Test.cmd and approve the Windows administrator prompt.'
         $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
-        $state.Checks=@(Get-GatewayChecks);Show-Checks
-        if($state.Phase -eq 'preflight' -and @($state.Checks|Where-Object {$_.Status -eq 'FAIL' -and $_.Id -in @('gateway.task','gateway.listener','gateway.firewall')}).Count) {
+        if($state.Phase -eq 'reboot'){Check-NewBoot|Out-Null;Wait-GatewayStartup}
+        $state.Checks=@(Get-GatewayChecks);Record-QuickGatewayOrigin;Show-Checks
+        if($state.Phase -eq 'preflight' -and @($state.Checks|Where-Object {$_.Status -eq 'FAIL' -and $_.Id -in @('gateway.task','gateway.listener','gateway.firewall','gateway.startup-configuration')}).Count) {
             $approvedGateway=Get-Content (Join-Path $PSScriptRoot 'gateway-repair\approved-gateway.json') -Raw|ConvertFrom-Json
             $plan=Get-GatewayRepairPlan $approvedGateway
             Ask-Yes ('IT maintenance: confirm NO employee timers are active and this is the trusted office LAN. Repair the gateway task and Local Service read access, preserve certificates/enrollment, and allow ONLY its existing employee subnet ('+($plan.RemoteAddresses -join ', ')+') through '+$plan.InterfaceAlias+' / '+$plan.Address+':8443 on Public as well as Private/Domain profiles? Other firewall rules and the Windows network category stay unchanged.')
-            $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks;TaskBefore=(Get-GatewayTaskEvidence)};Save-QuickReport
+            try {$beforeRepairTask=Get-GatewayTaskEvidence} catch {$beforeRepairTask='Task evidence unavailable; independent checks preserved.'}
+            $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks;TaskBefore=$beforeRepairTask};Save-QuickReport
             $repair=Repair-ConfiguredGateway $plan (Join-Path $PSScriptRoot 'gateway-repair')
             $state|Add-Member -NotePropertyName GatewayRepair -NotePropertyValue $repair -Force
-            $state.Checks=@(Get-GatewayChecks);Show-Checks
+            $state.Checks=@(Get-GatewayChecks);Record-QuickGatewayOrigin;Show-Checks
         }
         if($state.Phase -eq 'preflight') {
             Ask-Yes 'IT: confirm this is the dedicated, awake gateway with reserved IP, no internet port forwarding, isolation from file servers/domain controllers, and employee direct internet blocked while gateway HTTPS is allowed.'
@@ -130,7 +234,7 @@ try {
         Require ($isolation.Count -gt 0) 'Pre-restart network isolation confirmation missing.'
         $state.Checks+=$isolation[-1]
         Require (@($state.Checks|Where-Object {$_.Status -notin @('PASS','OBSERVED')}).Count -eq 0) 'Post-restart gateway check failed.'
-        $state.Phase='complete';$state.Result='GATEWAY LOCAL CHECKS PASSED - EMPLOYEE AND DATABASE VERIFICATION REQUIRED';return
+        $state.Phase='complete';$state.Result='GATEWAY LOCAL CHECKS PASSED - EMPLOYEE AND DATABASE VERIFICATION REQUIRED';$state|Add-Member -NotePropertyName CompletedUtc -NotePropertyValue ([DateTimeOffset]::UtcNow.ToString('o')) -Force;return
     }
     Require (-not $admin) 'Open the employee launcher normally in the employee Windows account, not as administrator.'
     . (Join-Path $PSScriptRoot 'ui-driver.ps1')
@@ -170,13 +274,14 @@ try {
         Show-Checks
         Require (@($state.Checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'Prerequisites failed. See FIXES.txt; every independent check is saved. Correct prerequisites and reopen this launcher before time testing.'
         Require ((Get-AgentText 'ActiveProjectText') -ceq 'No active project') 'Stop any existing real work yourself before testing. The checker will not stop it.'
+        Wait-Ui 'previous pending work to finish before test authorization' {(Get-AgentControl 'StartWorkButton').Current.IsEnabled -and (Get-AgentText 'TrackerMessageText') -notlike '*waiting for the LAN gateway*'} 120|Out-Null
         for($i=0;$i -lt $choices.Count;$i++){Write-Host (($i+1).ToString()+': '+$choices[$i])}
         $a=0;$b=0
         Require ([int]::TryParse((Read-Host 'Number for agreed test project A'),[ref]$a) -and $a -ge 1 -and $a -le $choices.Count) 'Invalid project A selection.'
         Require ([int]::TryParse((Read-Host 'Number for different agreed test project B'),[ref]$b) -and $b -ge 1 -and $b -le $choices.Count -and $a -ne $b) 'Invalid project B selection.'
         $state.ProjectA=$choices[$a-1];$state.ProjectB=$choices[$b-1]
         Require ($state.ProjectA -cne $state.ProjectB) 'Use distinct project names so database verification is unambiguous.'
-        Ask-Yes ('Authorize FIVE real test time entries under '+$state.Email+' using '+$state.ProjectA+' and '+$state.ProjectB+'? After restart this runner clicks only the verified Agent, generates test mouse activity, and waits through idle/offline checks. Reserve this PC; keep it unlocked. Press Escape to abort during automatic work.')
+        Ask-Yes ('Authorize FIVE real test time entries under '+$state.Email+' using '+$state.ProjectA+' and '+$state.ProjectB+'? After restart this runner clicks only the verified Agent, generates test mouse activity including while you answer browser/disconnect prompts, and waits through idle/offline checks. Reserve this PC; keep it unlocked. Press Escape to abort during automatic work.')
         Arm-Reboot;return
     }
     Require ($state.Phase -eq 'reboot') 'Unknown run phase. Return the saved report instead of restarting the test.'
@@ -187,16 +292,28 @@ try {
     Wait-Ui 'Agent automatic startup after sign-in' {@(Get-Process -Name 'Mandala.Agent' -ErrorAction SilentlyContinue|Where-Object {$_.SessionId -eq (Get-Process -Id $PID).SessionId -and $_.StartTime.ToUniversalTime() -ge $boot}).Count -eq 1} 90|Out-Null
     Attach-TestAgent
     Ask-Yes 'Did Mandala Agent open by itself, without you opening it or clicking the gateway/setup button?'
-    $state.Checks+=New-CheckResult 'employee.reboot-observed' 'PASS' 'Different boot; exactly one approved Agent already running; tester confirms automatic launch.'
     Wait-Ui 'signed-in tracker after reboot (sign in in Agent if requested)' {$c=Find-AgentControl 'ProjectComboBox';$c -and -not $c.Current.IsOffscreen} 600|Out-Null
     Require ((Get-AgentText 'SignedInAsText') -like ('Signed in as '+$state.Email+' *')) 'Employee identity changed after restart.'
-    Require (@($state.Checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'A required preflight check did not pass.'
+    $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
+    $state.Candidates=@(Get-MandalaAgentCandidates);$state.Checks=@(Get-EmployeeChecks $state.Candidates $approved)
+    $state.Checks+=Invoke-OfficeCheck 'employee.signed-in-projects' {
+        Require ((Get-AgentText 'SignedInAsText') -like ('Signed in as '+$state.Email+' *')) 'Employee identity changed after restart.'
+        $available=@(Get-AgentProjects)
+        Require (@($available|Where-Object {$_ -ceq $state.ProjectA}).Count -eq 1 -and @($available|Where-Object {$_ -ceq $state.ProjectB}).Count -eq 1) 'Agreed projects changed or are no longer unambiguous after restart.'
+        'Same employee and both agreed projects confirmed after restart.'
+    }
+    $state.Checks+=New-CheckResult 'employee.reboot-observed' 'PASS' 'Different boot; exactly one approved Agent already running; tester confirms automatic launch.'
+    Record-QuickGatewayOrigin;Show-Checks
+    Require (@($state.Checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'A required post-restart prerequisite failed. Fresh independent checks are saved; no time tests started.'
+    $state|Add-Member -NotePropertyName GatewayVerifiedUtc -NotePropertyValue ([DateTimeOffset]::UtcNow.ToString('o')) -Force
+    Require ((Get-AgentText 'ActiveProjectText') -ceq 'No active project') 'Existing work was found after restart. Stop it yourself; no test session has started.'
+    Wait-Ui 'previous pending work to finish before time testing' {(Get-AgentControl 'StartWorkButton').Current.IsEnabled -and (Get-AgentText 'TrackerMessageText') -notlike '*waiting for the LAN gateway*'} 120|Out-Null
     Require ($state.Scenarios.Count -eq 0) 'Prior time tests exist. They will not be repeated.'
     $state.Phase='functional';Save-QuickReport
     Run-AutomatedCase 'stop' 1 {
         param($s,$since)
         Start-AgentProject $state.ProjectA;Wait-TestActivity
-        Ask-Yes ('On an internet-connected browser, sign in as this SAME employee. View '+$state.ProjectB+' and try Start Work. Confirm viewing did not switch the timer AND starting could not take over the desktop session. Leave the browser timer stopped. Did both checks pass?')
+        Ask-Yes ('On an internet-connected browser, sign in as this SAME employee. View '+$state.ProjectB+' and try Start Work. Confirm viewing did not switch the timer AND starting could not take over the desktop session. Leave the browser timer stopped. Did both checks pass?') -KeepTestActive
         Wait-AgentState ('Tracking '+$state.ProjectA)
         Add-Observation $s 'Browser view did not switch project and browser takeover was refused' 'tester confirmation plus Agent state'
         Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project';Wait-Receipts $since 1
@@ -205,7 +322,7 @@ try {
     Run-AutomatedCase 'offline' 1 {
         param($s,$since)
         Start-AgentProject $state.ProjectA;Wait-TestActivity
-        Ask-Yes 'Disconnect ONLY this employee PC from the LAN now (unplug its network cable or use your IT-approved method). Leave the gateway running. Confirm disconnected. The test will call you back when ready to reconnect.'
+        Ask-Yes 'Disconnect ONLY this employee PC from the LAN now (unplug its network cable or use your IT-approved method). Leave the gateway running. Confirm disconnected. The test will call you back when ready to reconnect.' -KeepTestActive
         Require (-not (Test-GatewayReachable)) 'Gateway is still reachable. Offline test was not established.'
         Wait-TestActivity
         Require (-not (Test-GatewayReachable)) 'Network returned before the offline stop.'
@@ -261,8 +378,10 @@ try {
         Add-Observation $s 'Windows idle paused/saved; returning input did not restart the timer'
     }
     $state.Phase='complete';$state.Result='EMPLOYEE LOCAL TESTS PASSED - PRODUCTION ROWS AND GATEWAY SIGNOFF REQUIRED'
+    $state|Add-Member -NotePropertyName CompletedUtc -NotePropertyValue ([DateTimeOffset]::UtcNow.ToString('o')) -Force
     Note-Action 'Finished. Send the employee and gateway report ZIPs together. No screenshots needed.'
 } catch {
+    if($Role -eq 'employee' -and $script:AgentProcessId){Record-AgentFailureSnapshot}
     if($state.Phase -eq 'functional') {
         foreach($kind in @('stop','offline','switch','idle')){if(-not @($state.Scenarios|Where-Object {$_.Kind -eq $kind}).Count){$state.Scenarios+=[pscustomobject]@{Kind=$kind;Status='BLOCKED';Detail='Earlier check failed; further time writes stopped.'}}}
         $state.Phase='stopped'
@@ -273,10 +392,14 @@ try {
     Write-Host ('TEST NEEDS ATTENTION: '+$_.Exception.Message)
     Write-Host 'Reconnect LAN if disconnected. Preserve any active/pending Agent work. Return the report; do not repeat time tests.'
 } finally {
-    Save-QuickReport
+    $exported=$false
+    try {Save-QuickReport;$exported=$true} catch {
+        Write-Host 'Report export needs attention. Do not repeat time tests. Send the preserved state file and report folder below; any existing ZIP may be from an earlier checkpoint:'
+        Write-Host $stateFile;Write-Host $reportDir
+    }
     Write-Progress -Activity 'Automatic Mandala timer check' -Completed
     Write-Progress -Activity 'Automatic Mandala idle check' -Completed
-    if('MandalaTestInput' -as [type]){[MandalaTestInput]::Awake($false)}
-    Write-Host ('REPORT: '+$reportDir+'.zip')
+    if('MandalaTestInput' -as [type]){[void][MandalaTestInput]::EndPromptActivity();[MandalaTestInput]::Awake($false)}
+    if($exported){Write-Host ('REPORT: '+$reportDir+'.zip')}
     $lock.ReleaseMutex();$lock.Dispose()
 }

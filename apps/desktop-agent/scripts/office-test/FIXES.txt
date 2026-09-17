@@ -29,13 +29,17 @@ The updated gateway launcher offers a repair for an already configured gateway.
 Approve it only on the trusted office LAN with no active employee timers.
 It verifies the audited installed gateway files, preserves pairing/configuration
 bytes, backs up the existing task/rule, repairs Local Service read access, and
-registers a delayed boot task with persistent retries. The listener retries if its
+registers a delayed boot task with persistent retries. The gateway setup button
+keeps the repaired startup settings when used again. A running legacy task is
+also detected as needing the update. The listener retries if its
 configured address/port is temporarily unavailable during startup.
 The existing employee subnet is retained. Only the named gateway rule is allowed
 on all network profiles, restricted to the exact adapter, gateway IP, port 8443
 and audited Node executable. The Windows network category and all other rules stay
 unchanged. This avoids enabling unrelated Private-network sharing rules.
 Afterward the checker requires a real reboot without manually opening setup.
+The checker waits up to three minutes after sign-in and verifies which process
+owns the listener, rather than accepting any open port.
 If startup still fails, its report includes the task exit code, action location,
 network/firewall details and sanitized startup status. Preserve that ZIP; do not
 reset certificates, reenroll employees or repeatedly open the setup wizard.
@@ -50,7 +54,8 @@ exact audited Agent 1.0.15 binary; gateway version is 1.1.0.
 CLOCK / FIREWALL / NETWORK
 IT corrects the named failing check using the office's existing configuration.
 Do not disable the firewall, change security policy or turn off certificate checks.
-The test does not alter these settings. All independent findings are retained.
+Only the explicitly approved gateway repair changes its named scoped firewall
+rule. All independent findings are retained.
 
 NO PROJECTS / WRONG PERSON
 Confirm the employee's own active account and allowed projects. Sign in themselves

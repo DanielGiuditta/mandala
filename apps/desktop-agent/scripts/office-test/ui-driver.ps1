@@ -4,6 +4,7 @@ Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 Add-Type -ReferencedAssemblies UIAutomationClient,UIAutomationTypes -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Automation;
 public static class MandalaTestInput {
@@ -16,6 +17,26 @@ public static class MandalaTestInput {
   public static bool Cancelled() { return (GetAsyncKeyState(27) & 0x8000)!=0; }
   public static void Pulse() { mouse_event(1,1,0,0,UIntPtr.Zero); mouse_event(1,unchecked((uint)-1),0,0,UIntPtr.Zero); }
   public static void Awake(bool on) { SetThreadExecutionState(on ? 0x80000003u : 0x80000000u); }
+  private static Timer promptActivity;
+  private static int promptActivityFailed;
+  public static bool PromptActivityActive { get { return promptActivity != null; } }
+  public static void BeginPromptActivity() { BeginPromptActivity(600000); }
+  public static void BeginPromptActivity(int maximumMilliseconds) {
+    EndPromptActivity(); Interlocked.Exchange(ref promptActivityFailed, 0);
+    var deadline=DateTime.UtcNow.AddMilliseconds(maximumMilliseconds);
+    promptActivity = new Timer(_ => {
+      try {
+        if(Interlocked.CompareExchange(ref promptActivityFailed,0,0)!=0 || DateTime.UtcNow >= deadline || Cancelled()) { Interlocked.Exchange(ref promptActivityFailed,1); return; }
+        var before=LastInput(); Pulse(); Thread.Sleep(100);
+        if(LastInput()==before) Interlocked.Exchange(ref promptActivityFailed, 1);
+      } catch { Interlocked.Exchange(ref promptActivityFailed, 1); }
+    }, null, 0, 5000);
+  }
+  public static bool EndPromptActivity() {
+    var timer=Interlocked.Exchange(ref promptActivity, null);
+    if(timer!=null) using(var stopped=new ManualResetEvent(false)) { if(timer.Dispose(stopped)) stopped.WaitOne(); }
+    return Interlocked.CompareExchange(ref promptActivityFailed,0,0)==0;
+  }
   public static Task Invoke(AutomationElement element) { var p=(InvokePattern)element.GetCurrentPattern(InvokePattern.Pattern); return Task.Run(()=>p.Invoke()); }
 }
 '@

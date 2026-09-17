@@ -13,7 +13,7 @@ $fixture=Join-Path $env:ProgramData ('Mandala pairing audit '+[Guid]::NewGuid())
 $data=Join-Path $fixture 'gateway'; $profile=Join-Path $fixture 'employee'
 New-Item -ItemType Directory -Path $fixture | Out-Null
 $requestPath=Join-Path $fixture 'request.json'; $replyPath=Join-Path $fixture 'reply.json'
-$rootThumbs=@(); $leafThumb=$null; $taskCreated=$false
+$rootThumbs=@(); $leafThumb=$null; $taskCreated=$false;$changedAcls=@{}
 # Windows prompts on first trust in a user Root store. This headless runner cannot
 # answer it. Pre-trust only these generated fixture roots in the disposable VM,
 # then exercise the real CurrentUser import. Production still shows Windows' prompt.
@@ -78,8 +78,37 @@ try {
         $evidence=Get-GatewayTaskEvidence
         Assert ($evidence.State -ne 'Running' -and $evidence.LastTaskResult) 'Stopped task evidence was not captured.'
         $approved=Read-PairingJson (Join-Path $RepairFolder 'approved-gateway.json')
+        Assert (-not(Test-MandalaDurableGatewayStartup $InstallDirectory $data $RepairFolder)) 'Running/stopped legacy registration was mistaken for durable startup.'
+        # Remove inherited read rights from actual audited code and pairing files.
+        # Repair must restore only Local Service RX; the earlier fixture grant
+        # cannot conceal a missing install/runtime read-access repair.
+        foreach($path in @((Join-Path $InstallDirectory 'runtime'),(Join-Path $InstallDirectory 'runtime\node.exe'),(Join-Path $InstallDirectory 'gateway.mjs'),(Join-Path $data 'gateway.json'),(Join-Path $data 'gateway.pfx'))) {
+            $changedAcls[$path]=Get-Acl -LiteralPath $path
+            $restricted=Get-Acl -LiteralPath $path
+            $restricted.SetAccessRuleProtection($true,$false)
+            foreach($entry in @($restricted.Access)){$restricted.RemoveAccessRuleSpecific($entry)}
+            foreach($sid in @('S-1-5-18','S-1-5-32-544')){$restricted.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($sid),[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow))}
+            Set-Acl -LiteralPath $path -AclObject $restricted
+        }
         Write-Host 'Repair audit: validate installed bytes and existing network scope'
         $plan=Get-GatewayRepairPlan $approved $data
+        $policyPath=Join-Path $InstallDirectory 'gateway.mjs';$policyAcl=Get-Acl -LiteralPath $policyPath
+        try {
+            $deny=Get-Acl -LiteralPath $policyPath
+            $deny.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-5-19'),[Security.AccessControl.FileSystemRights]::ReadAndExecute,[Security.AccessControl.AccessControlType]::Deny))
+            Set-Acl -LiteralPath $policyPath -AclObject $deny
+            Reject {Get-GatewayRepairPlan $approved $data} 'Explicit service read-deny was not rejected before mutation.'
+        } finally {Set-Acl -LiteralPath $policyPath -AclObject $policyAcl}
+        # Refuse elevated repair into a mutable install and reject link redirection.
+        $unsafeAcl=Get-Acl -LiteralPath $InstallDirectory
+        try {
+            $mutable=Get-Acl -LiteralPath $InstallDirectory
+            $mutable.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-5-32-545'),[Security.AccessControl.FileSystemRights]::Write,[Security.AccessControl.AccessControlType]::Allow))
+            Set-Acl -LiteralPath $InstallDirectory -AclObject $mutable
+            Reject {Get-GatewayRepairPlan $approved $data} 'User-writable installation was accepted for elevated repair.'
+        } finally {Set-Acl -LiteralPath $InstallDirectory -AclObject $unsafeAcl}
+        $redirect=Join-Path $InstallDirectory 'audit-redirect'
+        try {New-Item -ItemType Junction -Path $redirect -Target (Join-Path $InstallDirectory 'runtime')|Out-Null;Reject {Assert-ProtectedGatewayPath (Join-Path $redirect 'node.exe')} 'Redirected code path was accepted.'} finally {if(Test-Path $redirect){[IO.Directory]::Delete($redirect)}}
         foreach($bad in @('Any','0.0.0.0/0','8.8.8.8','10.0.0.0/1','192.168.0.0/8')){Assert (-not(Test-PrivateGatewayScope $bad)) ('Unsafe firewall scope accepted: '+$bad)}
         $categories=@(Get-NetConnectionProfile|ForEach-Object {[string]$_.NetworkCategory}) -join ','
         Write-Host 'Repair audit: apply task/permission/firewall repair without changing pairing bytes'
@@ -92,6 +121,36 @@ try {
         Assert ((@(($rule|Get-NetFirewallAddressFilter).RemoteAddress) -join ',') -eq ($plan.RemoteAddresses -join ',')) 'Employee subnet changed during repair.'
         $fixed=Get-ScheduledTask -TaskName 'Mandala LAN Gateway'
         Assert ($fixed.Settings.RestartCount -eq 999 -and $fixed.Triggers[0].Delay -eq 'PT30S') 'Durable boot/restart settings missing.'
+        Assert (Test-MandalaDurableGatewayStartup $InstallDirectory $data $RepairFolder) 'Exact action/settings/helper audit failed after repair.'
+        Assert (Test-MandalaGatewayListener $InstallDirectory $data) 'Actual audited process command/owner was not recognized.'
+        Write-Host 'Repair audit: rerun original wizard configuration and approve another employee without undoing repair'
+        $beforePairing=@{};foreach($path in $plan.ProtectedFiles){$beforePairing[$path]=(Get-FileHash -LiteralPath $path).Hash}
+        . (Join-Path $InstallDirectory 'pairing-core.ps1')
+        Initialize-PairingGateway $address $data $InstallDirectory|Out-Null
+        # Its textbox can suggest /24; repaired setup must retain approved /32.
+        Enable-PairingGateway $address ($address+'/24') $data $InstallDirectory
+        foreach($path in $plan.ProtectedFiles){Assert ((Get-FileHash -LiteralPath $path).Hash -eq $beforePairing[$path]) 'Reopening setup changed existing pairing bytes.'}
+        Assert (Test-MandalaDurableGatewayStartup $InstallDirectory $data $RepairFolder) 'Wizard configuration reverted repaired startup.'
+        $retained=@((Get-NetFirewallRule -Name $plan.RuleName|Get-NetFirewallAddressFilter).RemoteAddress)
+        Assert (($retained -join ',') -eq ($plan.RemoteAddresses -join ',')) 'Wizard widened the existing employee subnet.'
+        # Enrollment maintenance must preserve the first employee and retain the
+        # durable action when a second valid public request is approved.
+        Approve-EmployeePairing $requestPath $replyPath $data|Out-Null
+        $secondMaterial=[MandalaPairingCertificates]::Create('Mandala second audit employee','',$false,(Get-RandomPassword))
+        $secondLeaf=[Security.Cryptography.X509Certificates.X509Certificate2]::new($secondMaterial.Certificate)
+        $secondRequest=@{kind='MandalaEmployeeRequest';protocol=1;backend='nzlajptokbcgeaifgnoq';requestId=[Guid]::NewGuid().ToString();computer='second-audit';userSid=$request.userSid;createdAt=[DateTime]::UtcNow.ToString('o');thumbprint=$secondLeaf.Thumbprint;root=[Convert]::ToBase64String($secondMaterial.Root);certificate=[Convert]::ToBase64String($secondMaterial.Certificate)}
+        $secondPath=Join-Path $fixture 'second-request.json';Write-PairingJson $secondPath $secondRequest
+        Approve-EmployeePairing $secondPath (Join-Path $fixture 'second-reply.json') $data|Out-Null
+        $secondLeaf.Dispose()
+        $allowed=@(Read-PairingJson (Join-Path $data 'enrolled-devices.json'))
+        Assert ($allowed.Count -eq 2 -and [MandalaPairingCertificates]::Fingerprint([Convert]::FromBase64String($request.certificate)) -in $allowed) 'Second enrollment replaced the original employee.'
+        Restart-PairingGateway
+        Assert (Test-MandalaDurableGatewayStartup $InstallDirectory $data $RepairFolder) 'Enrollment maintenance reverted durable startup.'
+        Assert (Test-MandalaGatewayListener $InstallDirectory $data) 'Enrollment restart did not restore the actual listener.'
+        # A second invocation accepts only the original or shipped pairing code.
+        $again=Get-GatewayRepairPlan $approved $data $RepairFolder
+        Repair-ConfiguredGateway $again $RepairFolder|Out-Null
+        Assert (Test-MandalaDurableGatewayStartup $InstallDirectory $data $RepairFolder) 'Repair was not idempotent.'
         # Occupy only our generated fixture's gateway port, then release it. The
         # same Local Service process must retry and bind without another task start.
         Stop-ScheduledTask -TaskName 'Mandala LAN Gateway';Start-Sleep -Seconds 2
@@ -111,11 +170,15 @@ try {
         $checks=@(Get-GatewayChecks $data)
         $checks|ForEach-Object {Write-Host ('['+$_.Status+'] '+$_.Id+': '+$_.Detail)}
         Assert (@($checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'Repaired gateway did not pass the actual shipped checker.'
-        Write-Host 'PASS: actual stopped-task repair, exact firewall scope including Public, unchanged network category, unchanged pairing, Local Service listener and automatic bind retry.'
+        Write-Host 'PASS: missing code/data read permissions repaired; mutable/link installs rejected; exact durable registration; setup/enrollment maintenance preserved repair and pairing; idempotent repair; scoped firewall; actual Local Service command; bind retry.'
     }
     [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
     Write-Host 'Pairing audit: verify Windows mutual TLS'
     $health=Invoke-WebRequest -Uri ($reply.gatewayUrl+'/health') -Certificate $cert -UseBasicParsing -TimeoutSec 10
+    if($RepairFolder) {
+        $served=([Net.ServicePointManager]::FindServicePoint([Uri]($reply.gatewayUrl+'/health'))).Certificate
+        Assert ((Get-GatewayCertificateSha256 $served) -eq $script:checkedGatewayCertificateSha256) 'Actual TLS certificate did not match the gateway report fingerprint.'
+    }
     $identity=$health.Content | ConvertFrom-Json
     Assert ($identity.backend -eq 'https://nzlajptokbcgeaifgnoq.supabase.co' -and $identity.protocol -eq 1) 'Pairing did not reach the production-configured gateway.'
     Reject { Invoke-WebRequest -Uri ($reply.gatewayUrl+'/health') -UseBasicParsing -TimeoutSec 5 } 'Gateway accepted a request without a client certificate.'
@@ -127,6 +190,7 @@ try {
 } catch { Write-Host $_.ScriptStackTrace; throw } finally {
     if($taskCreated) { Stop-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName 'Mandala LAN Gateway' -Confirm:$false -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1 }
     Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    foreach($path in $changedAcls.Keys){if(Test-Path -LiteralPath $path){Set-Acl -LiteralPath $path -AclObject $changedAcls[$path]}}
     if($leafThumb -and (Test-Path ('Cert:\CurrentUser\My\'+$leafThumb))) { Remove-Item ('Cert:\CurrentUser\My\'+$leafThumb) -DeleteKey }
     foreach($thumb in $rootThumbs) { if(Test-Path ('Cert:\CurrentUser\Root\'+$thumb)) { Remove-Item ('Cert:\CurrentUser\Root\'+$thumb) } }
     foreach($thumb in $script:auditMachineRoots) { if(Test-Path ('Cert:\LocalMachine\Root\'+$thumb)) { Remove-Item ('Cert:\LocalMachine\Root\'+$thumb) } }

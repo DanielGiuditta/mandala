@@ -1,4 +1,4 @@
-MANDALA COMPLETE TEST 1.2.1 - START HERE
+MANDALA COMPLETE TEST 1.2.2 - START HERE
 ONE OFFICE SESSION. SEND BOTH REPORT ZIPS TOGETHER.
 
 Allow roughly 25-35 minutes elapsed. Target: 5-10 minutes of employee attention
@@ -19,15 +19,16 @@ Never add this test or the setup wizard to Startup.
 
 2. GATEWAY FIRST
 Open "Start gateway Test.cmd" and approve administrator access.
-If the configured gateway is stopped, approve the offered repair after confirming
+If the configured gateway needs the startup repair, approve it after confirming
 NO employee timers are active. It preserves certificates and enrollment, repairs
-the startup task and limits gateway access to the existing employee subnet on its
+the startup task and setup button behavior, and limits gateway access to the existing employee subnet on its
 exact adapter/IP/port/program, including Public networks. Other firewall rules and
 the Windows network category are unchanged. Then confirm the network checklist.
 Save other work and approve the requested restart.
 Sign back into the SAME administrator account. Approve the resumed test's prompt.
 If the test does not reopen, open the same launcher. Do NOT open gateway setup or
-start its task manually. Confirm whether it started by itself.
+start its task manually. The checker allows up to three minutes for startup.
+Confirm whether it started by itself.
 Continue only when the gateway report says local checks passed.
 
 3. EMPLOYEE PC
@@ -37,7 +38,8 @@ Approve installation/startup repair if requested. Choose two test projects by
 number and authorize the five entries. Save other work and approve restart.
 Sign back into the SAME employee account. The test reopens; if not, open its
 launcher. Do NOT open Agent/setup manually. Confirm Agent opened by itself.
-Sign in in Agent again only if requested.
+Sign in in Agent again only if requested. Connection, certificate and clock
+checks run again after restart before any time entries are created.
 
 4. RESPOND TO THREE SHORT PROMPTS; THE RUNNER DOES THE TIMER WORK
 - Browser: same employee views project B and tries Start Work. Confirm viewing
@@ -46,7 +48,8 @@ Sign in in Agent again only if requested.
   once, checks pending work, closes/reopens Agent and checks blocked new starts.
 - Reconnect when called back. Confirm, then leave the PC unlocked and untouched.
   Switching and the real idle check run automatically for about 13 more minutes.
-The runner generates small mouse movements during active test sessions, then
+The runner generates small mouse movements during active test sessions and
+active-timer prompts, so a slow browser login does not cause an idle pause. It then
 stops input for the six-minute idle check. Do not use this PC during the test.
 
 5. SEND THESE TWO DESKTOP ZIPs TOGETHER ONCE
@@ -63,7 +66,8 @@ reinstall or delete state. Send the reports; unattempted tests stay BLOCKED.
 If disconnected when it stops, reconnect LAN and preserve active/pending work.
 Hold Escape during automation to stop. Reopening an interrupted test exports its
 evidence without repeating time writes. No passwords, keys or raw journals are
-included in the reports; security checks/firewall settings are not changed.
+included in the reports. Only the explicitly approved gateway repair changes
+its scoped firewall rule. No firewall or certificate checks are disabled.
 
 INCLUDED APPROVED EMPLOYEE INSTALLER
 MandalaAgentSetup-1.0.15.exe - Windows administrator approval required.

@@ -35,3 +35,21 @@ try {
     Assert (@(Read-AgentEvents $file ([DateTimeOffset]'2026-09-17T00:00:00Z')).Count -eq 0) 'Old events contaminated new test.'
     Write-Host 'PASS: all checks continue after missing agent; safe log export; receipt counts; pending-to-confirmed correlation; idle and time-window rejection.'
 } finally {Remove-Item $fixture -Recurse -Force}
+
+# These regressions exercise the exact firewall predicate used by gateway reports.
+function New-FirewallFixture {
+ [pscustomobject]@{Enabled='True';Direction='Inbound';Action='Allow';Profile='Any';Ports=@([pscustomobject]@{Protocol='TCP';LocalPort='8443'});Addresses=@([pscustomobject]@{RemoteAddress=@('192.168.1.0/24');LocalAddress=@('192.168.1.58')});Programs=@([pscustomobject]@{Program='C:\Mandala\runtime\node.exe'});Interfaces=@([pscustomobject]@{InterfaceAlias=@('Ethernet')})}
+}
+function Check-FirewallFixture($Rule,$Category='Private'){Assert-GatewayFirewallShape $Rule '192.168.1.58' 'Ethernet' 'C:\Mandala\runtime\node.exe' @($Category)}
+foreach($category in @('Public','Private','DomainAuthenticated')){Check-FirewallFixture (New-FirewallFixture) $category}
+$rule=New-FirewallFixture;$rule.Profile='Public';Reject {Check-FirewallFixture $rule} 'Private adapter passed a Public-only rule.'
+$rule=New-FirewallFixture;$rule.Profile='Private';Reject {Check-FirewallFixture $rule 'DomainAuthenticated'} 'Domain adapter passed a Private-only rule.'
+$rule=New-FirewallFixture;$rule.Addresses[0].RemoteAddress=@('Any');Reject {Check-FirewallFixture $rule} 'Any remote scope passed.'
+$rule=New-FirewallFixture;$rule.Addresses[0].RemoteAddress=@('192.168.1.0/24','8.8.8.8');Reject {Check-FirewallFixture $rule} 'Public remote address passed.'
+$rule=New-FirewallFixture;$rule.Ports[0].LocalPort=@('8443','443');Reject {Check-FirewallFixture $rule} 'Additional port passed.'
+$rule=New-FirewallFixture;$rule.Programs[0].Program='Any';Reject {Check-FirewallFixture $rule} 'Unrestricted executable passed.'
+$rule=New-FirewallFixture;$rule.Interfaces[0].InterfaceAlias=@('Ethernet','Wi-Fi');Reject {Check-FirewallFixture $rule} 'Additional interface passed.'
+$rule=New-FirewallFixture;$rule.Addresses[0].LocalAddress=@('Any');Reject {Check-FirewallFixture $rule} 'Any local address passed.'
+$rule=New-FirewallFixture;$rule.Enabled='False';Reject {Check-FirewallFixture $rule} 'Disabled rule passed.'
+$rule=New-FirewallFixture;$rule.Ports=@($rule.Ports[0],$rule.Ports[0]);Reject {Check-FirewallFixture $rule} 'Ambiguous filters passed.'
+Write-Host 'PASS: actual firewall check rejects wrong profile, broad scopes, wrong executable/adapter, extra ports and ambiguous filters.'

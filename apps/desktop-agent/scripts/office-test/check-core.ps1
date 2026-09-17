@@ -1,4 +1,10 @@
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'gateway-repair\repair-core.ps1')
+function Get-GatewayCertificateSha256($Certificate) {
+    Require $Certificate 'Verified gateway certificate was not available.'
+    $hash=[Security.Cryptography.SHA256]::Create()
+    try {return [BitConverter]::ToString($hash.ComputeHash($Certificate.GetRawCertData())).Replace('-','').ToLowerInvariant()} finally {$hash.Dispose()}
+}
 function Require($Condition,$Message) { if(-not $Condition) { throw $Message } }
 function Get-IstTime { [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow,'India Standard Time').ToString('yyyy-MM-dd hh:mm:ss tt')+' IST' }
 function New-CheckResult($Id,$Status,$Detail) { [pscustomobject]@{Id=$Id;Status=$Status;Detail=$Detail;Utc=[DateTimeOffset]::UtcNow.ToString('o');Ist=(Get-IstTime)} }
@@ -44,6 +50,7 @@ function Test-ScenarioEvidence($Events,$ExpectedCount,$Kind) {
     return $receipts
 }
 function Get-EmployeeChecks($Candidates,$Approved) {
+    $script:checkedGatewayCertificateSha256=$null
     $selected=Select-MandalaAgent $Candidates
     $agent=if($selected){$selected.Path}else{$null}
     Invoke-OfficeCheck 'employee.account-context' {
@@ -107,6 +114,7 @@ function Get-EmployeeChecks($Candidates,$Approved) {
         try {$response=Invoke-WebRequest -Uri ($lan.gatewayUrl.TrimEnd('/')+'/health') -Certificate $certificate -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0 -DisableKeepAlive}catch{throw ('Gateway TLS/connection failed: '+$_.Exception.GetType().Name)}
         $identity=$response.Content|ConvertFrom-Json
         Require ($identity.backend -eq 'https://nzlajptokbcgeaifgnoq.supabase.co' -and $identity.protocol -eq 1) 'Gateway identifies a different backend or protocol.'
+        $script:checkedGatewayCertificateSha256=Get-GatewayCertificateSha256 ([Net.ServicePointManager]::FindServicePoint([Uri]$lan.gatewayUrl).Certificate)
         $script:checkedHealth=$response
         'Enrolled HTTPS connection reached the production-configured gateway.'
     }
@@ -133,8 +141,8 @@ function Get-EmployeeChecks($Candidates,$Approved) {
     }
 }
 
-function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala Gateway')) {
-    $task=$null;$config=$null;$script:checkedTask=$null
+function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala Gateway'),$RepairSource=(Join-Path $PSScriptRoot 'gateway-repair')) {
+    $task=$null;$config=$null;$script:checkedTask=$null;$script:checkedGatewayCertificateSha256=$null
     Invoke-OfficeCheck 'gateway.task' {
         $script:checkedTask=Get-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction Stop
         Require ($script:checkedTask.State -eq 'Running') 'Gateway task is not running. Complete gateway setup on this dedicated computer.'
@@ -162,36 +170,35 @@ function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala G
         'Gateway 1.1.0; production backend; bundled runtime matches manifest.'
     }
     $config=$script:checkedGatewayConfig
+    Invoke-OfficeCheck 'gateway.startup-configuration' {
+        Require $script:checkedTask 'BLOCKED: gateway task unavailable.'
+        $approvedGateway=Get-Content -LiteralPath (Join-Path $RepairSource 'approved-gateway.json') -Raw|ConvertFrom-Json
+        Get-GatewayRepairPlan $approvedGateway $DataDirectory $RepairSource|Out-Null
+        $startup=Get-MandalaDurableGatewayStartup $script:checkedTask.Actions[0].WorkingDirectory $DataDirectory $RepairSource
+        Require $startup.Passed $startup.Detail
+        'Verified durable launcher, setup integration, boot delay and persistent retry settings.'
+    }
     Invoke-OfficeCheck 'gateway.production-internet' {
         Require $config 'BLOCKED: gateway configuration unavailable.'
         try {Invoke-WebRequest -Uri 'https://nzlajptokbcgeaifgnoq.supabase.co/auth/v1/settings' -Headers @{apikey=$config.supabaseAnonKey} -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0|Out-Null}catch{throw 'Production auth endpoint rejected the gateway key or is unreachable.'}
         'Production reachable and gateway public key accepted.'
     }
     Invoke-OfficeCheck 'gateway.firewall' {
-        $rule=Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction Stop
-        Require (@($rule|Where-Object {$_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow'}).Count -gt 0) 'Expected enabled inbound gateway firewall rule missing.'
-        Require (@($rule|Get-NetFirewallPortFilter|Where-Object {$_.Protocol -eq 'TCP' -and $_.LocalPort -eq '8443'}).Count -gt 0) 'Gateway firewall rule is not restricted to TCP 8443.'
-        $addresses=@($rule|Get-NetFirewallAddressFilter)
-        Require (@($addresses|Where-Object {'Any' -in $_.RemoteAddress}).Count -eq 0) 'Gateway inbound rule allows Any remote address instead of the employee subnet.'
-        Require $config 'BLOCKED: gateway configuration unavailable.'
+        Require ($config -and $script:checkedTask) 'BLOCKED: gateway configuration/task unavailable.'
+        $rules=@(Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -ErrorAction Stop)
+        Require ($rules.Count -eq 1) 'Expected exactly one named gateway firewall rule.'
+        $rule=$rules[0]
         $adapter=@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {$_.IPAddress -eq $config.bindAddress})
         Require ($adapter.Count -eq 1) 'Gateway address must identify one adapter.'
         $profiles=@(Get-NetConnectionProfile -InterfaceIndex $adapter[0].InterfaceIndex -ErrorAction SilentlyContinue)
-        Require ($profiles.Count -gt 0) 'Gateway adapter has no active network profile.'
-        $public=@($profiles|Where-Object {$_.NetworkCategory -eq 'Public'}).Count -gt 0
-        if($public) {
-            Require ([string]$rule.Profile -eq 'Any' -or [string]$rule.Profile -match 'Public') 'Gateway adapter is Public but the gateway firewall rule does not cover Public. Use the scoped gateway repair.'
-            $interfaces=@(($rule|Get-NetFirewallInterfaceFilter).InterfaceAlias)
-            $locals=@(($rule|Get-NetFirewallAddressFilter).LocalAddress)
-            $program=($rule|Get-NetFirewallApplicationFilter).Program
-            Require ($interfaces.Count -eq 1 -and $interfaces[0] -eq $adapter[0].InterfaceAlias -and $locals.Count -eq 1 -and $locals[0] -eq $config.bindAddress -and $program -eq $script:checkedTask.Actions[0].Execute) 'Public-profile access must be restricted to the exact gateway adapter, address and runtime, as well as employee subnet and port.'
-        }
-        'Gateway firewall covers its actual adapter profile; Public access, if enabled, is scoped to the exact gateway adapter/IP/program and existing employee subnet.'
+        $shape=[pscustomobject]@{Enabled=[string]$rule.Enabled;Direction=[string]$rule.Direction;Action=[string]$rule.Action;Profile=[string]$rule.Profile;Ports=@($rule|Get-NetFirewallPortFilter);Addresses=@($rule|Get-NetFirewallAddressFilter);Programs=@($rule|Get-NetFirewallApplicationFilter);Interfaces=@($rule|Get-NetFirewallInterfaceFilter)}
+        Assert-GatewayFirewallShape $shape $config.bindAddress $adapter[0].InterfaceAlias $script:checkedTask.Actions[0].Execute @($profiles|ForEach-Object {[string]$_.NetworkCategory})
+        'One enabled rule covers the actual adapter profile and only the private employee subnet, exact gateway adapter/IP/program and TCP 8443.'
     }
     Invoke-OfficeCheck 'gateway.listener' {
-        Require $config 'BLOCKED: gateway configuration unavailable.'
-        Require (@(Get-NetTCPConnection -LocalPort 8443 -State Listen -ErrorAction SilentlyContinue|Where-Object {$_.LocalAddress -eq $config.bindAddress}).Count -gt 0) 'Gateway is not listening on its configured address and port.'
-        'Configured HTTPS listener present.'
+        Require ($config -and $script:checkedTask) 'BLOCKED: gateway configuration/task unavailable.'
+        Require (Test-MandalaGatewayListener $script:checkedTask.Actions[0].WorkingDirectory $DataDirectory) 'Gateway listener is missing or belongs to a different executable, command or Windows account.'
+        'Configured listener belongs to the expected gateway command running as Local Service.'
     }
     Invoke-OfficeCheck 'gateway.certificate-and-enrollment' {
         Require $config 'BLOCKED: gateway configuration unavailable.'
@@ -201,7 +208,25 @@ function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala G
             Require ($server.HasPrivateKey -and $server.NotBefore -le (Get-Date) -and $server.NotAfter -gt (Get-Date)) 'Gateway certificate/key is missing or outside its validity period.'
             $enrolled=@(Get-Content -LiteralPath $config.enrolledDevices -Raw|ConvertFrom-Json)
             Require ($enrolled.Count -gt 0) 'No employee devices are enrolled.'
+            $script:checkedGatewayCertificateSha256=Get-GatewayCertificateSha256 $server
             'Server certificate valid until '+$server.NotAfter.ToString('o')+'; enrolled device count='+$enrolled.Count
         } finally {$server.Dispose()}
+    }
+}
+
+function Assert-GatewayFirewallShape($Rule,$Address,$InterfaceAlias,$Node,$Categories) {
+    Require ($Rule.Enabled -eq 'True' -and $Rule.Direction -eq 'Inbound' -and $Rule.Action -eq 'Allow') 'Expected enabled inbound allow gateway rule.'
+    Require ($Rule.Ports.Count -eq 1 -and $Rule.Ports[0].Protocol -eq 'TCP' -and @($Rule.Ports[0].LocalPort).Count -eq 1 -and $Rule.Ports[0].LocalPort -eq '8443') 'Gateway rule must allow only TCP 8443.'
+    Require ($Rule.Addresses.Count -eq 1) 'Gateway address filter is ambiguous.'
+    $remotes=@($Rule.Addresses[0].RemoteAddress);$locals=@($Rule.Addresses[0].LocalAddress)
+    Require ($remotes.Count -gt 0 -and @($remotes|Where-Object {-not(Test-PrivateGatewayScope $_)}).Count -eq 0) 'Gateway remote scope must contain only explicit private employee IP addresses/subnets.'
+    Require ($locals.Count -eq 1 -and $locals[0] -eq $Address) 'Gateway rule local address is not restricted to the configured IP.'
+    Require ($Rule.Interfaces.Count -eq 1 -and @($Rule.Interfaces[0].InterfaceAlias).Count -eq 1 -and $Rule.Interfaces[0].InterfaceAlias -eq $InterfaceAlias) 'Gateway rule is not restricted to its exact adapter.'
+    Require ($Rule.Programs.Count -eq 1 -and $Rule.Programs[0].Program -eq $Node) 'Gateway rule is not restricted to its audited runtime.'
+    Require ($Categories.Count -gt 0) 'Gateway adapter has no active network profile.'
+    $allowed=@($Rule.Profile.Split(',')|ForEach-Object {$_.Trim()})
+    foreach($category in $Categories) {
+        $profile=if($category -eq 'DomainAuthenticated'){'Domain'}else{$category}
+        Require ($profile -in @('Domain','Private','Public') -and ('Any' -in $allowed -or $profile -in $allowed)) ('Gateway rule does not cover active profile '+$profile+'.')
     }
 }

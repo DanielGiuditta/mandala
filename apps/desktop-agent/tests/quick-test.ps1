@@ -20,6 +20,14 @@ try {
  Assert ((Get-AgentText 'TrackerMessageText') -like '*saved successfully*') 'Confirmation text unavailable.'
  $failed=$false;try{Select-AgentProject 'missing'}catch{$failed=$true};Assert $failed 'Unknown project accepted.'
  $failed=$false;try{Wait-Ui 'deliberate timeout' {$false} 1}catch{$failed=$true};Assert $failed 'Timeout did not stop automation.'
+ $beforePrompt=[MandalaTestInput]::LastInput()
+ [MandalaTestInput]::BeginPromptActivity()
+ try {Start-Sleep -Milliseconds 800;Assert ([MandalaTestInput]::PromptActivityActive -and [MandalaTestInput]::LastInput() -ne $beforePrompt) 'Active prompt did not keep the authorized test input alive.'}
+ finally {$promptOk=[MandalaTestInput]::EndPromptActivity()}
+ Assert ($promptOk -and -not [MandalaTestInput]::PromptActivityActive) 'Prompt activity did not stop cleanly before the idle test.'
+ [MandalaTestInput]::BeginPromptActivity(500)
+ try {Start-Sleep -Milliseconds 5400} finally {$expiredOk=[MandalaTestInput]::EndPromptActivity()}
+ Assert (-not $expiredOk -and -not [MandalaTestInput]::PromptActivityActive) 'Unanswered prompt could generate indefinite test activity.'
  Close-TestAgent
  Write-Host 'PASS: real WPF accessibility: project selection, start/stop, asynchronous modal cancel/confirm, status text, missing project, bounded wait, normal close.'
 } finally {if(-not $p.HasExited){$p.Kill()}}
@@ -59,15 +67,67 @@ try {
  & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
  Assert ($LASTEXITCODE -eq 0) 'Interrupted main entry point failed to export.'
  $restored=Get-Content (Join-Path $folder 'employee.json') -Raw|ConvertFrom-Json
+ Assert ($restored.KitVersion -eq '1.2.0') 'Interrupted historical report was silently relabeled.'
  Assert ($restored.Phase -eq 'stopped' -and $restored.Result -eq 'NOT CLEARED') 'Interrupted run was not blocked.'
  Assert ($restored.Scenarios.Count -eq 4 -and $restored.Scenarios[0].Status -eq 'FAIL') 'Interrupted/remaining tests not recorded.'
  Assert (Test-Path ($reportDir+'.zip')) 'Interrupted report ZIP missing.'
- Write-Host 'PASS: actual quick launcher preserves interruption, blocks remaining writes and exports a report.'
+ $restored.KitVersion='1.2.2';$restored.Phase='preflight';$restored.WindowsUser='another-account';$restored.Scenarios=@();$restored.Checks=@()
+ $restored|ConvertTo-Json -Depth 15|Set-Content (Join-Path $folder 'employee.json')
+ & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
+ $wrongAccount=Get-Content (Join-Path $folder 'employee.json') -Raw|ConvertFrom-Json
+ Assert ($wrongAccount.Scenarios.Count -eq 0 -and @($wrongAccount.Checks|Where-Object {$_.Detail -like '*another PC or Windows account*'}).Count -eq 1) 'Copied state ran actions in the wrong Windows account.'
+ $corrupt='{ deliberately invalid state';$corrupt|Set-Content (Join-Path $folder 'employee.json')
+ & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
+ Assert ($LASTEXITCODE -eq 1 -and (Get-Content (Join-Path $folder 'employee.json') -Raw).Trim() -eq $corrupt) 'Corrupt saved state was overwritten or silently restarted.'
+ Write-Host 'PASS: actual quick launcher preserves interruption, blocks repeated writes/copied state, exports evidence, and keeps corrupted state intact.'
 } finally {
  $env:LOCALAPPDATA=$savedLocal;$env:COMPUTERNAME=$savedComputer
  Remove-Item $isolated -Recurse -Force
  Remove-Item $reportDir -Recurse -Force -ErrorAction SilentlyContinue
  Remove-Item ($reportDir+'.zip') -Force -ErrorAction SilentlyContinue
+}
+# Execute the actual startup wait with a delayed probe and a never-ready probe.
+# It must observe repeatedly without starting a process/task or requesting repair.
+& {
+ foreach($name in @('Wait-GatewayStartup','Update-QuickStateVersion')) {
+  $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
+  Invoke-Expression $node.Extent.Text
+ }
+ function Start-ScheduledTask {throw 'Readiness wait must not manually start the gateway.'}
+ function Start-Process {throw 'Readiness wait must not launch the gateway.'}
+ $script:probes=0
+ function Test-GatewayStartupReady {$script:probes++;return $script:probes -ge 3}
+ $state=[pscustomobject]@{KitVersion='1.2.1';Phase='preflight';History=@();Checks=@();BootBefore='old'}
+ Wait-GatewayStartup 2 20
+ Assert ($state.GatewayStartupWait.Ready -and $state.GatewayStartupWait.Attempts -eq 3) 'Delayed gateway readiness was not awaited.'
+ function Test-GatewayStartupReady {return $false}
+ Wait-GatewayStartup 1 50
+ Assert (-not $state.GatewayStartupWait.Ready -and $state.GatewayStartupWait.ElapsedSeconds -lt 2) 'Unavailable gateway wait was not bounded.'
+ $Role='gateway';$state.Phase='reboot';Update-QuickStateVersion
+ Assert ($state.KitVersion -eq '1.2.2' -and $state.PreviousKitVersions[0].Version -eq '1.2.1' -and $state.Phase -eq 'preflight' -and -not $state.BootBefore) 'Legacy partial gateway test did not require fresh startup validation.'
+ $Role='employee';$state.KitVersion='1.2.0';$state.Phase='complete';Update-QuickStateVersion
+ Assert ($state.KitVersion -eq '1.2.0' -and $state.Phase -eq 'complete') 'Finished employee run was relabeled or reopened.'
+ Write-Host 'PASS: delayed/failed boot readiness is passive and bounded; old gateway runs require a fresh boot; completed employee reports remain historical.'
+}
+# Optional OS/log diagnostics must never stop all report export. Exercise the real
+# report function with all three independent evidence readers failing.
+& {
+ $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Save-QuickReport'},$true)
+ Invoke-Expression $node.Extent.Text
+ function Get-GatewayTaskEvidence {throw 'fixture task evidence failure'}
+ function Get-NetConnectionProfile {throw 'fixture network evidence failure'}
+ function Get-NetFirewallRule {throw 'fixture firewall evidence failure'}
+ function Read-AgentEvents {throw 'fixture unreadable log'}
+ $Role='gateway';$temporary=Join-Path $env:RUNNER_TEMP ('Quick Evidence '+[Guid]::NewGuid())
+ New-Item -ItemType Directory $temporary|Out-Null
+ $stateFile=Join-Path $temporary 'state.json';$reportDir=Join-Path $temporary 'report';New-Item -ItemType Directory $reportDir|Out-Null
+ $state=[pscustomobject]@{KitVersion='1.2.2';Computer='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Result='NOT CLEARED';Events=@([pscustomobject]@{Event='previous preserved receipt'});Checks=@();Scenarios=@()}
+ try {
+  Save-QuickReport
+  $saved=Get-Content $stateFile -Raw|ConvertFrom-Json
+  Assert ((Test-Path ($reportDir+'.zip')) -and $saved.Events[0].Event -eq 'previous preserved receipt' -and $saved.GatewayEvidence.Task -like '*unavailable*' -and $saved.AgentEventCollection) 'Independent evidence failures prevented the complete report or discarded prior events.'
+ } finally {Remove-Item $temporary -Recurse -Force}
+ Write-Host 'PASS: task/network/firewall/log evidence failures preserve state, prior events, and exported report.'
 }
 # Test the real restart helper with only side effects stubbed. Never reboot CI.
 $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Arm-Reboot'},$true)
