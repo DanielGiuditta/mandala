@@ -1,5 +1,12 @@
 # Complete office acceptance test
 
+## Audit follow-up 1.2.2
+
+The independent September 17 audit found material gaps in 1.2.1. That package is
+superseded. See [the audit findings and acceptance gates](gateway-startup-audit-2026-09-17.md)
+for corrections, regression coverage and the office evidence still required.
+Historical delivery records below do not establish current rollout clearance.
+
 ## Gateway repair follow-up 1.2.1
 
 The September 17 screenshot from STP54 establishes that gateway 1.1.0 is installed,
