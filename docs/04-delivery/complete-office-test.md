@@ -74,6 +74,19 @@ Database tests reject missing/wrong/extra entries, missing reboot/IT evidence,
 wrong durations/projects/people, and interrupted runs. The fixture tests do not
 claim that the production time scenarios have run on the office computers.
 
+Final handoff audit:
+
+- [Windows CI run 35169191973](https://github.com/DanielGiuditta/mandala/actions/runs/35169191973)
+  passed every step for source commit `f76e47d`.
+- The Mac download of that audited `MandalaOfficeTest-1.2.0.zip` is 50,546,938 bytes,
+  SHA-256 `6dd3173b367e0562893443f0840465d1fd98600c5e762689968ea1771649ebde`.
+- All 13 expected package files were verified, scripts/instructions matched source
+  after newline normalization, and the included installer and installed-binary
+  fingerprint matched the production 1.0.15 audit. The live production manifest
+  was rechecked and still selects that same installer SHA/size/backend.
+- No production time writes were performed by CI. The real office scenarios and
+  subsequent read-only database verification remain the acceptance gates.
+
 No product entity, field, authorization rule, time semantics or office relationship
 changes. No divisions/cost centers added; no domain-model deviations. Test prompts
 reuse the existing console workflow and the Agent's existing controls.
