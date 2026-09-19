@@ -83,7 +83,7 @@ function Test-MandalaGatewayListener($InstallDirectory,$DataDirectory,$Address) 
         return ($process.ExecutablePath -eq $node -and $owner.Sid -eq 'S-1-5-19' -and ($process.CommandLine -eq ('"'+$node+'" '+$expected) -or $process.CommandLine -eq ($node+' '+$expected)) -and (Get-ScheduledTask -TaskName 'Mandala LAN Gateway').State -eq 'Running')
     } catch {return $false}
 }
-function Set-MandalaDurableGatewayStartup($Address,$RemoteAddresses,$DataDirectory,$InstallDirectory) {
+function Set-MandalaDurableGatewayStartup($Address,$RemoteAddresses,$DataDirectory,$InstallDirectory,[scriptblock]$Checkpoint=$null) {
     if(-not(Test-PrivateGatewayScope $Address) -or -not @($RemoteAddresses).Count -or @($RemoteAddresses|Where-Object {-not(Test-PrivateGatewayScope $_)}).Count){throw 'Gateway requires its existing private IPv4 employee scope.'}
     $adapter=@(Get-NetIPAddress -AddressFamily IPv4|Where-Object {$_.IPAddress -eq $Address})
     if($adapter.Count -ne 1){throw 'Gateway address must identify exactly one adapter.'}
@@ -101,11 +101,13 @@ function Set-MandalaDurableGatewayStartup($Address,$RemoteAddresses,$DataDirecto
     if($rules.Count -gt 1){throw 'Multiple gateway firewall rules require IT review.'}
     if($rules.Count -eq 1){Set-NetFirewallRule -Name $rules[0].Name -Enabled True -Direction Inbound -Action Allow -Profile Any -InterfaceAlias $adapter[0].InterfaceAlias -LocalAddress $Address -RemoteAddress $RemoteAddresses -Protocol TCP -LocalPort 8443 -Program $node|Out-Null}
     else{New-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS' -Enabled True -Direction Inbound -Action Allow -Profile Any -InterfaceAlias $adapter[0].InterfaceAlias -LocalAddress $Address -RemoteAddress $RemoteAddresses -Protocol TCP -LocalPort 8443 -Program $node|Out-Null}
+    if($Checkpoint){& $Checkpoint 'firewall-configured'}
     $action=New-ScheduledTaskAction -Execute $node -Argument (Get-MandalaGatewayArguments $InstallDirectory $DataDirectory) -WorkingDirectory $InstallDirectory
     $principal=New-ScheduledTaskPrincipal -UserId 'S-1-5-19' -LogonType ServiceAccount -RunLevel Limited
     $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     $trigger=New-ScheduledTaskTrigger -AtStartup;$trigger.Delay='PT30S'
     Register-ScheduledTask -TaskName 'Mandala LAN Gateway' -Action $action -Principal $principal -Settings $settings -Trigger $trigger -Force|Out-Null
+    if($Checkpoint){& $Checkpoint 'task-configured'}
 }
 function Test-PrivateGatewayScope($Scope) {
     $parts=$Scope.Split('/');$ip=$null;$prefix=32
@@ -158,10 +160,10 @@ function Get-GatewayRepairPlan($Approved,$DataDirectory=(Join-Path $env:ProgramD
     Assert-MandalaServiceReadPolicy (@($install,(Join-Path $install 'runtime'),$data)+$paths+$audited)
     [pscustomobject]@{Install=$install;Data=$data;Address=$config.bindAddress;InterfaceAlias=$ip[0].InterfaceAlias;InterfaceIndex=$ip[0].InterfaceIndex;NetworkCategory=@($profiles|ForEach-Object {[string]$_.NetworkCategory});RemoteAddresses=$remotes;RuleName=$rules[0].Name;ProtectedFiles=$paths;AuditedCode=$audited}
 }
-function Repair-ConfiguredGateway($Plan,$RepairSource) {
+function Repair-ConfiguredGateway($Plan,$RepairSource,[scriptblock]$Checkpoint=$null) {
     # Caller obtains the explicit IT maintenance confirmation before this function.
     $before=@{};foreach($path in $Plan.ProtectedFiles){$before[$path]=(Get-FileHash -LiteralPath $path).Hash}
-    $stamp=[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')
+    $stamp=[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')+'-'+[Guid]::NewGuid().ToString('N')
     $backup=Join-Path $Plan.Data ('startup-backup-'+$stamp)
     New-Item -ItemType Directory $backup|Out-Null
     Export-ScheduledTask -TaskName 'Mandala LAN Gateway'|Set-Content (Join-Path $backup 'task.xml') -Encoding UTF8
@@ -169,31 +171,48 @@ function Repair-ConfiguredGateway($Plan,$RepairSource) {
     # Preserve exact old firewall properties for IT; do not back up secret configs.
     $rule=Get-NetFirewallRule -Name $Plan.RuleName
     @{Name=$rule.Name;Profile=[string]$rule.Profile;Enabled=[string]$rule.Enabled;Direction=[string]$rule.Direction;Action=[string]$rule.Action;RemoteAddress=$Plan.RemoteAddresses;LocalAddress=@(($rule|Get-NetFirewallAddressFilter).LocalAddress);Program=($rule|Get-NetFirewallApplicationFilter).Program;InterfaceAlias=@(($rule|Get-NetFirewallInterfaceFilter).InterfaceAlias)}|ConvertTo-Json -Depth 5|Set-Content (Join-Path $backup 'firewall-before.json')
+    # Back up all existing helpers and ACLs before the first service mutation.
+    $maps=@(@('start-gateway-resilient.mjs','start-gateway-resilient.mjs'),@('gateway-startup-core.ps1','repair-core.ps1'),@('pairing-core.ps1','pairing-core.ps1'))
+    foreach($map in $maps) {
+        $destination=Join-Path $Plan.Install $map[0]
+        if(Test-Path -LiteralPath $destination){Assert-ProtectedGatewayPath $destination;Copy-Item -LiteralPath $destination -Destination (Join-Path $backup ('previous-'+$map[0]))}
+    }
+    @(@($Plan.Data)+$Plan.ProtectedFiles+$Plan.AuditedCode|Select-Object -Unique|ForEach-Object {[pscustomobject]@{Path=$_;Sddl=(Get-Acl -LiteralPath $_).Sddl}})|ConvertTo-Json -Depth 5|Set-Content (Join-Path $backup 'permissions-before.json')
+    if($Checkpoint){& $Checkpoint 'backups-complete'}
     Stop-ScheduledTask -TaskName 'Mandala LAN Gateway' -ErrorAction Stop
     for($i=0;$i -lt 50 -and (Get-ScheduledTask -TaskName 'Mandala LAN Gateway').State -eq 'Running';$i++){Start-Sleep -Milliseconds 200}
     if((Get-ScheduledTask -TaskName 'Mandala LAN Gateway').State -eq 'Running'){throw 'Existing gateway task did not stop; no unrelated process will be killed.'}
     if(@(Get-NetTCPConnection -LocalPort 8443 -State Listen -ErrorAction SilentlyContinue|Where-Object {$_.LocalAddress -eq $Plan.Address}).Count){throw 'Port 8443 is still occupied after stopping the task. Close the manually launched gateway; do not kill an unknown process.'}
+    if($Checkpoint){& $Checkpoint 'task-stopped'}
     # Protect installed maintenance code as well as the task action. Later use of
     # the existing wizard must retain the same durable registration and scope.
-    foreach($map in @(@('start-gateway-resilient.mjs','start-gateway-resilient.mjs'),@('gateway-startup-core.ps1','repair-core.ps1'),@('pairing-core.ps1','pairing-core.ps1'))) {
+    foreach($map in $maps) {
         $destination=Join-Path $Plan.Install $map[0]
-        if(Test-Path -LiteralPath $destination){Assert-ProtectedGatewayPath $destination;Copy-Item -LiteralPath $destination -Destination (Join-Path $backup ('previous-'+$map[0]))}
-        Copy-Item -LiteralPath (Join-Path $RepairSource $map[1]) -Destination $destination -Force
+        $temporary=Join-Path $Plan.Install ('repair-'+[Guid]::NewGuid().ToString('N')+'.tmp')
+        try {
+            Copy-Item -LiteralPath (Join-Path $RepairSource $map[1]) -Destination $temporary
+            Assert-ProtectedGatewayPath $temporary
+            if(Test-Path -LiteralPath $destination){Assert-ProtectedGatewayPath $destination;[IO.File]::Replace($temporary,$destination,$null)}else{[IO.File]::Move($temporary,$destination)}
+        } finally {if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue}}
         Assert-ProtectedGatewayPath $destination
+        if($Checkpoint){& $Checkpoint ('helper-installed:'+ $map[0])}
     }
     # Fix missing read access to the audited runtime/modules too. No code directory
     # is made writable by Local Service; certificate/configuration bytes stay intact.
     $codePaths=@($Plan.Install,(Join-Path $Plan.Install 'runtime'))+@($Plan.AuditedCode)+@('start-gateway-resilient.mjs','gateway-startup-core.ps1','pairing-core.ps1'|ForEach-Object {Join-Path $Plan.Install $_})
     Grant-MandalaServiceRead (@($Plan.Data)+$Plan.ProtectedFiles+$codePaths)
-    Set-MandalaDurableGatewayStartup $Plan.Address $Plan.RemoteAddresses $Plan.Data $Plan.Install
+    if($Checkpoint){& $Checkpoint 'service-permissions-configured'}
+    Set-MandalaDurableGatewayStartup $Plan.Address $Plan.RemoteAddresses $Plan.Data $Plan.Install $Checkpoint
     $durable=Get-MandalaDurableGatewayStartup $Plan.Install $Plan.Data $RepairSource
     if(-not $durable.Passed){throw $durable.Detail}
     foreach($path in $Plan.ProtectedFiles){if((Get-FileHash -LiteralPath $path).Hash -ne $before[$path]){throw 'Pairing/configuration content changed unexpectedly; gateway has not been started.'}}
     Start-ScheduledTask -TaskName 'Mandala LAN Gateway'
+    if($Checkpoint){& $Checkpoint 'task-start-requested'}
     $deadline=[DateTime]::UtcNow.AddSeconds(90)
     do {
         Start-Sleep -Seconds 2
         if(Test-MandalaGatewayListener $Plan.Install $Plan.Data $Plan.Address){
+            if($Checkpoint){& $Checkpoint 'owned-listener-verified'}
             return [pscustomobject]@{Backup=$backup;PreservedFiles=$Plan.ProtectedFiles.Count;Listener=$Plan.Address+':8443';Owner='Local Service';Firewall='Existing employee subnet; exact adapter/IP/program/port; all network categories';RebootRequired=$true}
         }
     } while([DateTime]::UtcNow -lt $deadline)

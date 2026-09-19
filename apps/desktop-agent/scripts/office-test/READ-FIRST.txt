@@ -1,0 +1,50 @@
+MANDALA LAN TIME TRACKING 1.2.3
+ENGINEERING CANDIDATE - DO NOT SEND TO OFFICE IT UNTIL RELEASE REVIEW CLEARS IT
+
+One package; one entry point: Start Mandala.cmd.
+Time tracking only. The gateway must already be configured and the employee
+must already be paired in their original Windows account.
+
+Before the planned office session, Daniel must confirm this exact package
+passed the Windows rehearsal, including actual restarts and real Agent saves.
+Daniel must be available to verify production entries during the session.
+
+1. Extract the whole package on both computers. Keep both extracted folders
+   in place until the session finishes. Open Start Mandala normally on the
+   employee PC and choose 1 (read-only baseline). It does not open Agent or
+   touch existing work. Keep its report for the final return set.
+2. Save work. Ensure no employee timers are active. On the dedicated gateway,
+   open Start Mandala and choose 2. Windows ADMINISTRATOR APPROVAL is required.
+   Confirm maintenance only when interruption is safe. Follow its restart
+   prompt; sign into the SAME administrator account. If it does not resume,
+   reopen Start Mandala and choose 2. Do not open gateway setup or manually
+   start the task. The automatic-start check may take up to three minutes.
+3. If gateway checks do not pass, STOP time testing. Return the current gateway
+   report and employee baseline together. Do not repeat the repair yourself.
+4. If gateway checks pass, open Start Mandala NORMALLY in the original employee
+   account and choose 3. Sign in only inside Agent. Select two permitted projects
+   and consent to five REAL production entries. Approve its employee restart,
+   sign into the SAME employee account, and let the test resume. If necessary
+   reopen Start Mandala and choose 3. Do not launch Agent manually after reboot.
+5. Follow the timed prompts for the separate internet browser, employee-only
+   LAN disconnect/reconnect, and untouched idle test. Do not disconnect gateway
+   internet. No pre-existing work may be cleared to make a test pass.
+6. Send the files shown as SEND THIS CURRENT REPORT together in one message.
+   Include the employee baseline. If Desktop saving fails, use the exact local
+   fallback path displayed. Each snapshot has its own name; old copies remain.
+   If the test stopped, choose 4 only to export existing evidence. It does not
+   run repairs or time tests. Keep any native Agent diagnostics it produced.
+
+No manual commands, Startup folder edits, separate downloads or reinstall of
+old gateway 1.1.0 are part of this sequence. Do not clear app data, re-pair,
+delete time journals, or retry an uncertain save. Reconnect employee LAN if
+it remains disconnected. Preserve the existing certificates and enrollment.
+
+The included employee installer, if needed by the checked workflow, is exactly
+MandalaAgentSetup-1.0.15.exe and requires Windows administrator approval.
+Pairing material is NOT a generic installer setting and cannot be copied to a
+different Windows account. A missing pairing is a reported blocker for Daniel.
+
+Only Daniel's production verification and review can accept time tracking.
+A running window, project list or report export alone is not acceptance.
+Rehearsal timing and release clearance are not yet available for this candidate.

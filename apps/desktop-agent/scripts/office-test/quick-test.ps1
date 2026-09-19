@@ -1,21 +1,33 @@
-param([ValidateSet('employee','gateway')][string]$Role='employee')
+param([ValidateSet('employee','gateway')][string]$Role='employee',[ValidateSet('Run','Baseline','Export')][string]$Mode='Run')
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'startup-repair\startup-core.ps1')
 . (Join-Path $PSScriptRoot 'check-core.ps1')
+. (Join-Path $PSScriptRoot 'report-core.ps1')
+. (Join-Path $PSScriptRoot 'recovery-evidence.ps1')
 . (Join-Path $PSScriptRoot 'gateway-repair\repair-core.ps1')
-$stateDir=Join-Path $env:LOCALAPPDATA 'Mandala Office Test 1.2.0'
-New-Item -ItemType Directory $stateDir -Force|Out-Null
-$stateFile=Join-Path $stateDir ($Role+'.json')
-$reportDir=Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) ('Mandala-Quick-Test-'+$env:COMPUTERNAME+'-'+$Role)
-New-Item -ItemType Directory $reportDir -Force|Out-Null
+$legacyStateFile=Join-Path (Join-Path $env:LOCALAPPDATA 'Mandala Office Test 1.2.0') ($Role+'.json')
+$storage=Initialize-OfficeStorage $Role
+$stateDir=$storage.Root
+$stateFile=$storage.StateFile
+$reportDir=$storage.Reports
+$desktopDirectory=[Environment]::GetFolderPath('DesktopDirectory')
+$script:lastReport=$null
+$script:publishDesktop=$false
 $log=Join-Path $env:LOCALAPPDATA 'Mandala Agent\agent.log'
 $lock=New-Object Threading.Mutex($false,('Local\MandalaOfficeQuickTest-'+$Role))
 if(-not $lock.WaitOne(0)) {Write-Host 'This test is already running. Use the existing window.';exit 1}
 function New-QuickRunState {
-    [pscustomobject]@{SchemaVersion=1;KitVersion='1.2.2';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}
+    [pscustomobject]@{SchemaVersion=1;KitVersion='1.2.3';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}
 }
 try {
-    if(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;Require ($state.SchemaVersion -eq 1 -and $state.Role -eq $Role -and $state.RunId -and $state.Phase -in @('preflight','reboot','functional','complete','stopped')) 'Saved test state is not recognized.'}
+    if($Mode -ne 'Baseline' -and -not(Test-Path -LiteralPath $stateFile) -and (Test-Path -LiteralPath $legacyStateFile)) {
+        [void](Assert-OfficeLocalPath $legacyStateFile)
+        $legacy=Get-Content -LiteralPath $legacyStateFile -Raw|ConvertFrom-Json
+        Require ($legacy.SchemaVersion -eq 1 -and $legacy.Role -eq $Role -and $legacy.RunId) 'Historical state is invalid; preserved without importing.'
+        Write-OfficeCheckpoint $legacy $stateFile
+    }
+    if($Mode -eq 'Baseline'){$state=New-QuickRunState}
+    elseif(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;Require ($state.SchemaVersion -eq 1 -and $state.Role -eq $Role -and $state.RunId -and $state.Phase -in @('preflight','reboot','functional','complete','stopped')) 'Saved test state is not recognized.'}
     else {$state=New-QuickRunState}
 } catch {
     Write-Host 'Saved test state cannot be resumed. No test actions were performed. Keep this file for Daniel; do not delete it or repeat time tests:'
@@ -25,10 +37,10 @@ try {
 function Update-QuickStateVersion {
     # A report describes the code that actually performed its checks. Never rename
     # a finished/interrupted employee run or silently replay its real time writes.
-    if($state.KitVersion -ne '1.2.2' -and $state.Phase -in @('preflight','reboot')) {
+    if($state.KitVersion -ne '1.2.3' -and $state.Phase -in @('preflight','reboot')) {
         $previous=@($state.PreviousKitVersions|Where-Object {$null -ne $_})+@([pscustomobject]@{Version=$state.KitVersion;UpgradedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase=$state.Phase})
         $state|Add-Member -NotePropertyName PreviousKitVersions -NotePropertyValue $previous -Force
-        $state.KitVersion='1.2.2'
+        $state.KitVersion='1.2.3'
         if($Role -eq 'gateway' -and $state.Phase -eq 'reboot') {
             # An older partially completed gateway check has not proved the new
             # persistent startup contract. Repair/check again, then require a new boot.
@@ -105,16 +117,13 @@ function Save-QuickReport {
     }
     try {$state.Events=@(Read-AgentEvents $log ([DateTimeOffset]$state.StartedUtc))}
     catch {$state|Add-Member -NotePropertyName AgentEventCollection -NotePropertyValue 'Agent log could not be read; previous events and all independent checks preserved.' -Force}
-    $json=$state|ConvertTo-Json -Depth 20
-    $temp=$stateFile+'.tmp';[IO.File]::WriteAllText($temp,$json,(New-Object Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $temp -Destination $stateFile -Force
-    [IO.File]::WriteAllText((Join-Path $reportDir 'report.json'),$json,(New-Object Text.UTF8Encoding($false)))
-    $lines=@(('MANDALA COMPLETE TEST '+$state.KitVersion),('Computer: '+$state.Computer),('Role: '+$Role),('Phase: '+$state.Phase),('Result: '+$state.Result),('Saved: '+(Get-IstTime)),'')
-    foreach($c in $state.Checks){$lines+=('['+$c.Status+'] '+$c.Id+': '+$c.Detail)}
-    foreach($s in $state.Scenarios){$lines+=('['+$s.Status+'] '+$s.Kind+': '+$s.Detail)}
-    $lines+=@('','Return this ZIP with the other PC report once. Do not repeat uncertain time tests.','Production row verification and gateway/IT observations are required before clearance.','If stopped during offline testing, reconnect the employee LAN now. Pending work is preserved.')
-    $lines|Set-Content (Join-Path $reportDir 'SUMMARY.txt') -Encoding UTF8
-    Compress-Archive -Path (Join-Path $reportDir '*') -DestinationPath ($reportDir+'.zip') -Force
+    if($Role -eq 'gateway') {
+        try {$state|Add-Member -NotePropertyName GatewayRecoveryEvidence -NotePropertyValue (Get-GatewayRecoveryEvidence) -Force}
+        catch {$state|Add-Member -NotePropertyName GatewayRecoveryEvidence -NotePropertyValue 'Additional diagnostics unavailable; primary checks preserved.' -Force}
+    }
+    $destination=if($script:publishDesktop){$desktopDirectory}else{''}
+    $script:lastReport=Save-OfficeSnapshot $state $storage $destination
+
 }
 function Note-Action($Message) {
     Write-Host $Message
@@ -137,13 +146,13 @@ function Ask-Yes($Message,[switch]$KeepTestActive) {
 }
 function Show-Checks {foreach($c in $state.Checks){Write-Host ('['+$c.Status+'] '+$c.Id+': '+$c.Detail)};Save-QuickReport}
 function Arm-Reboot {
-    $launcher=Join-Path $PSScriptRoot ('Start '+$Role+' Test.cmd')
+    $launcher=Join-Path $PSScriptRoot 'Start Mandala.cmd'
     Require (Test-Path $launcher) 'Keep the complete extracted package in its folder.'
     Ask-Yes 'Save all other work. Restart this PC now? After signing into THIS SAME Windows account the test should reopen. If it does not, open the same Start Test file. Do not open Agent/setup manually.'
     # One-time launcher only, in this Windows account. Never replace Agent startup.
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
     New-Item $key -Force|Out-Null
-    $command='"'+$env:WINDIR+'\System32\cmd.exe" /d /c start "" "'+$launcher+'"'
+    $command='"'+$env:WINDIR+'\System32\cmd.exe" /d /c start "" "'+$launcher+'" '+$Role+' Run'
     New-ItemProperty $key -Name ('MandalaOfficeTest-'+$Role) -Value $command -PropertyType String -Force|Out-Null
     $state.BootBefore=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
     $state.Phase='reboot';Save-QuickReport
@@ -179,10 +188,28 @@ function Run-AutomatedCase($Kind,$Count,[scriptblock]$Body) {
     finally {$scenario.FinishedUtc=[DateTimeOffset]::UtcNow.ToString('o');$scenario.FinishedTimeZoneOffsetMinutes=[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes;Save-QuickReport}
 }
 try {
-    Write-Host ('MANDALA COMPLETE TEST 1.2.2 - '+$Role.ToUpperInvariant())
+    Write-Host ('MANDALA TIME TRACKING 1.2.3 - '+$Role.ToUpperInvariant())
     Write-Host 'One result set. No screenshots after each step. Keep the full extracted folder in place.'
-    if($state.Phase -in @('preflight','reboot')) {
+    if($Mode -ne 'Baseline') {
         Require ($state.Computer -eq $env:COMPUTERNAME -and $state.WindowsUser -eq [Security.Principal.WindowsIdentity]::GetCurrent().Name) 'This saved run belongs to another PC or Windows account. No test actions will run; preserve the report for Daniel.'
+    }
+    if($Mode -eq 'Export') {Write-Host 'Returning saved evidence only. No repairs or time tests will run.';return}
+    if($Mode -eq 'Baseline') {
+        # The saved functional run remains untouched; baseline gets its own record.
+        $state=New-QuickRunState
+        $stateFile=Join-Path $storage.Root ('baseline-'+$state.RunId+'.json')
+        $storage.StateFile=$stateFile
+        $state.Phase='baseline';$state.Result='NOT CLEARED - READ-ONLY BASELINE; FUNCTIONAL TESTS NOT RUN'
+        if($Role -eq 'employee') {
+            Require (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) 'Open the baseline in the original employee account without administrator elevation.'
+            $state.Candidates=@(Get-MandalaAgentCandidates)
+            $approved=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'approved-agent.json') -Raw|ConvertFrom-Json
+            $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved)
+            $state|Add-Member -NotePropertyName EmployeeBaseline -NotePropertyValue (Get-EmployeeReadOnlyEvidence) -Force
+        } else {$state.Checks=@(Get-GatewayChecks)}
+        Record-QuickGatewayOrigin
+        $state.Scenarios=@('stop','offline','switch','idle'|ForEach-Object {[pscustomobject]@{Kind=$_;Status='BLOCKED';Detail='Read-only baseline; no sign-in, repair or time writes attempted.'}})
+        return
     }
     Update-QuickStateVersion
     $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -191,7 +218,7 @@ try {
         foreach($kind in @('stop','offline','switch','idle')){if(-not @($state.Scenarios|Where-Object {$_.Kind -eq $kind}).Count){$state.Scenarios+=[pscustomobject]@{Kind=$kind;Status='BLOCKED';Detail='Runner interrupted; no automatic replay.'}}}
         $state.Phase='stopped';$state.Result='NOT CLEARED'
     }
-    if($Role -eq 'gateway' -and $state.Phase -eq 'complete' -and $state.KitVersion -ne '1.2.2') {
+    if($Role -eq 'gateway' -and $state.Phase -eq 'complete' -and $state.KitVersion -ne '1.2.3') {
         Require $admin 'Open the gateway launcher and approve administrator access to audit the updated startup repair.'
         Ask-Yes ('This gateway report was completed with kit '+$state.KitVersion+'. Preserve that report and run the updated gateway-only checks, repair if needed, and a fresh restart? No employee time tests run on this PC.')
         $archive=Join-Path $stateDir ('gateway-previous-'+[Guid]::NewGuid().ToString('N'))
@@ -216,7 +243,23 @@ try {
             Ask-Yes ('IT maintenance: confirm NO employee timers are active and this is the trusted office LAN. Repair the gateway task and Local Service read access, preserve certificates/enrollment, and allow ONLY its existing employee subnet ('+($plan.RemoteAddresses -join ', ')+') through '+$plan.InterfaceAlias+' / '+$plan.Address+':8443 on Public as well as Private/Domain profiles? Other firewall rules and the Windows network category stay unchanged.')
             try {$beforeRepairTask=Get-GatewayTaskEvidence} catch {$beforeRepairTask='Task evidence unavailable; independent checks preserved.'}
             $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks;TaskBefore=$beforeRepairTask};Save-QuickReport
-            $repair=Repair-ConfiguredGateway $plan (Join-Path $PSScriptRoot 'gateway-repair')
+            $state|Add-Member -NotePropertyName RecoveryStages -NotePropertyValue (@($state.RecoveryStages|Where-Object {$null -ne $_})+@([pscustomobject]@{Stage='repair-started';Utc=[DateTimeOffset]::UtcNow.ToString('o')})) -Force
+            Save-QuickReport
+            $script:repairCheckpointErrors=@()
+            # Once the initial repair checkpoint is committed, a later disk failure
+            # must not strand a half-applied configuration. Finish the prevalidated,
+            # bounded repair in memory, then prohibit reboot/time tests until saved.
+            $checkpoint={param($stage)
+                $state.RecoveryStages+= [pscustomobject]@{Stage=$stage;Utc=[DateTimeOffset]::UtcNow.ToString('o')}
+                try {Write-OfficeCheckpoint $state $stateFile}
+                catch {$script:repairCheckpointErrors+= [pscustomobject]@{Stage=$stage;Code=$_.Exception.GetType().Name}}
+            }
+            $repair=Repair-ConfiguredGateway $plan (Join-Path $PSScriptRoot 'gateway-repair') $checkpoint
+            if($script:repairCheckpointErrors.Count) {
+                $state|Add-Member -NotePropertyName CheckpointErrors -NotePropertyValue $script:repairCheckpointErrors -Force
+                $state|Add-Member -NotePropertyName GatewayRepair -NotePropertyValue $repair -Force
+                throw 'Gateway configuration repair finished, but recovery storage failed during the operation. No reboot or employee tests were started. Preserve the report for maintainer review.'
+            }
             $state|Add-Member -NotePropertyName GatewayRepair -NotePropertyValue $repair -Force
             $state.Checks=@(Get-GatewayChecks);Record-QuickGatewayOrigin;Show-Checks
         }
@@ -241,6 +284,7 @@ try {
     [MandalaTestInput]::Awake($true)
     $approved=Get-Content (Join-Path $PSScriptRoot 'approved-agent.json') -Raw|ConvertFrom-Json
     if($state.Phase -eq 'preflight') {
+        Ask-Yes 'Have the gateway repair and automatic restart checks passed in this office session? Employee time tests must wait until they do.'
         if(-not $state.Email){$state.Email=(Read-Host 'Employee Mandala email (never type a password here)').Trim()}
         $state.Candidates=@(Get-MandalaAgentCandidates)
         $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved);Show-Checks
@@ -387,12 +431,14 @@ try {
         $state.Phase='stopped'
     }
     $state.Result='NOT CLEARED'
+    $state|Add-Member -NotePropertyName PrimaryError -NotePropertyValue ([pscustomobject]@{Code=$_.Exception.GetType().Name;Detail=$_.Exception.Message;Utc=[DateTimeOffset]::UtcNow.ToString('o')}) -Force
     # Transient prerequisites may be corrected without repeating a time-writing run.
     $state.Checks=@($state.Checks|Where-Object {$_.Id -ne 'test.quick-runner'})+@(New-CheckResult 'test.quick-runner' 'BLOCKED' $_.Exception.Message)
     Write-Host ('TEST NEEDS ATTENTION: '+$_.Exception.Message)
     Write-Host 'Reconnect LAN if disconnected. Preserve any active/pending Agent work. Return the report; do not repeat time tests.'
 } finally {
     $exported=$false
+    $script:publishDesktop=$true
     try {Save-QuickReport;$exported=$true} catch {
         Write-Host 'Report export needs attention. Do not repeat time tests. Send the preserved state file and report folder below; any existing ZIP may be from an earlier checkpoint:'
         Write-Host $stateFile;Write-Host $reportDir
@@ -400,6 +446,11 @@ try {
     Write-Progress -Activity 'Automatic Mandala timer check' -Completed
     Write-Progress -Activity 'Automatic Mandala idle check' -Completed
     if('MandalaTestInput' -as [type]){[void][MandalaTestInput]::EndPromptActivity();[MandalaTestInput]::Awake($false)}
-    if($exported){Write-Host ('REPORT: '+$reportDir+'.zip')}
+    if($exported) {
+        $current=if($script:lastReport.DesktopBundle){$script:lastReport.DesktopBundle}elseif($script:lastReport.LocalBundle){$script:lastReport.LocalBundle}else{$stateFile}
+        Write-Host ('CURRENT RESULT: '+$state.Result)
+        Write-Host ('SEND THIS CURRENT REPORT: '+$current)
+        Write-Host ('Snapshot UTC: '+$state.SavedUtc+' | Run: '+$state.RunId)
+    }
     $lock.ReleaseMutex();$lock.Dispose()
 }

@@ -2,7 +2,7 @@ name: Audit employee startup repair
 on:
   workflow_dispatch:
   push:
-    branches: [codex/fix-employee-startup]
+    branches: [codex/fix-employee-startup, codex/lan-recovery-1.2.3]
 permissions:
   contents: read
   actions: read
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   startup:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -27,6 +27,9 @@ jobs:
       - name: Exercise real Windows UI automation and scenario failure handling
         shell: powershell
         run: ./apps/desktop-agent/tests/quick-test.ps1
+      - name: Exercise recovery checkpoints and report destination failures
+        shell: powershell
+        run: ./apps/desktop-agent/tests/recovery-report.ps1
       - name: Check read-only production verification with failure fixtures
         run: node --test apps/desktop-agent/tests/verify-office-test.test.mjs apps/desktop-agent/tests/gateway-startup.test.mjs
       - name: Run desktop regression checks
@@ -133,20 +136,28 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $zip).Length
           "Repair audit passed: version=1.0.1 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
-          $kitZip='MandalaOfficeTest-1.2.2.zip'
+          $kitZip='MandalaRecoveryCandidate-1.2.3.zip'
           $stage=Join-Path $env:RUNNER_TEMP 'Mandala Office Test Handoff'
           New-Item -ItemType Directory $stage -Force|Out-Null
-          foreach($name in @('Start employee Test.cmd','Start gateway Test.cmd','START HERE.txt','FIXES.txt','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.15.exe','startup-repair','gateway-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
+          foreach($name in @('Start Mandala.cmd','READ-FIRST.txt','package-entry.ps1','report-core.ps1','recovery-evidence.ps1','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.15.exe','startup-repair','gateway-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
+          $inventory=@(Get-ChildItem -LiteralPath $stage -Recurse -File|ForEach-Object {@{name=$_.FullName.Substring($stage.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
+          @{version='1.2.3';backend='nzlajptokbcgeaifgnoq';sourceCommit=$env:GITHUB_SHA;releaseStatus='REHEARSAL_REQUIRED';files=$inventory}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $stage 'package-manifest.json')
+          & powershell.exe -NoProfile -File apps/desktop-agent/tests/package-integrity.ps1 -PackageDirectory $stage
+          if($LASTEXITCODE -ne 0){throw 'Staged package integrity tests failed.'}
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $kitZip
+          $extracted=Join-Path $env:RUNNER_TEMP 'Downloaded Candidate With Spaces'
+          Expand-Archive -LiteralPath $kitZip -DestinationPath $extracted
+          & powershell.exe -NoProfile -File (Join-Path $extracted 'package-entry.ps1') -Role gateway -Mode Export
+          if($LASTEXITCODE -ne 0){throw 'Packaged export entry point failed.'}
           $kitHash=(Get-FileHash $kitZip -Algorithm SHA256).Hash.ToLowerInvariant()
           $kitSize=(Get-Item $kitZip).Length
-          "Office test audit passed: version=1.2.2 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
+          "Candidate CI checks passed; real reboot and Agent rehearsal still required: version=1.2.3 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MandalaOfficeTest-1.2.2
+          name: MandalaRecoveryCandidate-1.2.3
           path: |
             MandalaAgentStartupRepair-1.0.1.zip
             startup-repair-audit.txt
-            MandalaOfficeTest-1.2.2.zip
+            MandalaRecoveryCandidate-1.2.3.zip
             office-test-audit.txt
           if-no-files-found: error

@@ -55,7 +55,7 @@ $folder=Join-Path $isolated 'Mandala Office Test 1.2.0'
 New-Item -ItemType Directory $folder -Force|Out-Null
 $computer='MANDALA-CI-'+[Guid]::NewGuid().ToString('N').Substring(0,8)
 $reportDir=Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) ('Mandala-Quick-Test-'+$computer+'-employee')
-$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.0';RunId=[Guid]::NewGuid().ToString();Role='employee';Computer=$computer;WindowsUser='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='functional';Email='fixture@example.test';ProjectA='A';ProjectB='B';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@([pscustomobject]@{Kind='stop';Status='INCOMPLETE';Detail='Interrupted'});Events=@();DatabaseVerification='PENDING';Result='NOT CLEARED'}
+$state=[pscustomobject]@{SchemaVersion=1;KitVersion='1.2.0';RunId=[Guid]::NewGuid().ToString();Role='employee';Computer=$computer;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='functional';Email='fixture@example.test';ProjectA='A';ProjectB='B';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@([pscustomobject]@{Kind='stop';Status='INCOMPLETE';Detail='Interrupted'});Events=@();DatabaseVerification='PENDING';Result='NOT CLEARED'}
 $state|ConvertTo-Json -Depth 15|Set-Content (Join-Path $folder 'employee.json')
 # The staged startup core is needed by the entry point, as in the actual kit.
 $kit=Split-Path $file
@@ -66,19 +66,20 @@ try {
  $env:LOCALAPPDATA=$isolated;$env:COMPUTERNAME=$computer
  & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
  Assert ($LASTEXITCODE -eq 0) 'Interrupted main entry point failed to export.'
- $restored=Get-Content (Join-Path $folder 'employee.json') -Raw|ConvertFrom-Json
+ $newFolder=Join-Path (Join-Path $isolated 'Mandala Office Recovery') ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+ $restored=Get-Content (Join-Path $newFolder 'employee.json') -Raw|ConvertFrom-Json
  Assert ($restored.KitVersion -eq '1.2.0') 'Interrupted historical report was silently relabeled.'
  Assert ($restored.Phase -eq 'stopped' -and $restored.Result -eq 'NOT CLEARED') 'Interrupted run was not blocked.'
  Assert ($restored.Scenarios.Count -eq 4 -and $restored.Scenarios[0].Status -eq 'FAIL') 'Interrupted/remaining tests not recorded.'
- Assert (Test-Path ($reportDir+'.zip')) 'Interrupted report ZIP missing.'
- $restored.KitVersion='1.2.2';$restored.Phase='preflight';$restored.WindowsUser='another-account';$restored.Scenarios=@();$restored.Checks=@()
- $restored|ConvertTo-Json -Depth 15|Set-Content (Join-Path $folder 'employee.json')
+ Assert (@(Get-ChildItem -LiteralPath (Join-Path $newFolder 'reports') -Filter '*.zip').Count -gt 0) 'Interrupted report ZIP missing.'
+ $restored.KitVersion='1.2.3';$restored.Phase='preflight';$restored.WindowsUser='another-account';$restored.Scenarios=@();$restored.Checks=@()
+ $restored|ConvertTo-Json -Depth 15|Set-Content (Join-Path $newFolder 'employee.json')
  & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
- $wrongAccount=Get-Content (Join-Path $folder 'employee.json') -Raw|ConvertFrom-Json
+ $wrongAccount=Get-Content (Join-Path $newFolder 'employee.json') -Raw|ConvertFrom-Json
  Assert ($wrongAccount.Scenarios.Count -eq 0 -and @($wrongAccount.Checks|Where-Object {$_.Detail -like '*another PC or Windows account*'}).Count -eq 1) 'Copied state ran actions in the wrong Windows account.'
- $corrupt='{ deliberately invalid state';$corrupt|Set-Content (Join-Path $folder 'employee.json')
+ $corrupt='{ deliberately invalid state';$corrupt|Set-Content (Join-Path $newFolder 'employee.json')
  & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
- Assert ($LASTEXITCODE -eq 1 -and (Get-Content (Join-Path $folder 'employee.json') -Raw).Trim() -eq $corrupt) 'Corrupt saved state was overwritten or silently restarted.'
+ Assert ($LASTEXITCODE -eq 1 -and (Get-Content (Join-Path $newFolder 'employee.json') -Raw).Trim() -eq $corrupt) 'Corrupt saved state was overwritten or silently restarted.'
  Write-Host 'PASS: actual quick launcher preserves interruption, blocks repeated writes/copied state, exports evidence, and keeps corrupted state intact.'
 } finally {
  $env:LOCALAPPDATA=$savedLocal;$env:COMPUTERNAME=$savedComputer
@@ -104,7 +105,7 @@ try {
  Wait-GatewayStartup 1 50
  Assert (-not $state.GatewayStartupWait.Ready -and $state.GatewayStartupWait.ElapsedSeconds -lt 2) 'Unavailable gateway wait was not bounded.'
  $Role='gateway';$state.Phase='reboot';Update-QuickStateVersion
- Assert ($state.KitVersion -eq '1.2.2' -and $state.PreviousKitVersions[0].Version -eq '1.2.1' -and $state.Phase -eq 'preflight' -and -not $state.BootBefore) 'Legacy partial gateway test did not require fresh startup validation.'
+ Assert ($state.KitVersion -eq '1.2.3' -and $state.PreviousKitVersions[0].Version -eq '1.2.1' -and $state.Phase -eq 'preflight' -and -not $state.BootBefore) 'Legacy partial gateway test did not require fresh startup validation.'
  $Role='employee';$state.KitVersion='1.2.0';$state.Phase='complete';Update-QuickStateVersion
  Assert ($state.KitVersion -eq '1.2.0' -and $state.Phase -eq 'complete') 'Finished employee run was relabeled or reopened.'
  Write-Host 'PASS: delayed/failed boot readiness is passive and bounded; old gateway runs require a fresh boot; completed employee reports remain historical.'
@@ -120,12 +121,15 @@ try {
  function Read-AgentEvents {throw 'fixture unreadable log'}
  $Role='gateway';$temporary=Join-Path $env:RUNNER_TEMP ('Quick Evidence '+[Guid]::NewGuid())
  New-Item -ItemType Directory $temporary|Out-Null
- $stateFile=Join-Path $temporary 'state.json';$reportDir=Join-Path $temporary 'report';New-Item -ItemType Directory $reportDir|Out-Null
- $state=[pscustomobject]@{KitVersion='1.2.2';Computer='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Result='NOT CLEARED';Events=@([pscustomobject]@{Event='previous preserved receipt'});Checks=@();Scenarios=@()}
+ . (Join-Path $PSScriptRoot '..\scripts\office-test\report-core.ps1')
+ $stateFile=Join-Path $temporary 'state.json';$reportDir=New-OfficePrivateDirectory (Join-Path $temporary 'report')
+ $storage=[pscustomobject]@{StateFile=$stateFile;Reports=$reportDir;AdministratorsOnly=$false}
+ $script:publishDesktop=$false
+ $state=[pscustomobject]@{KitVersion='1.2.3';Role='gateway';RunId=[Guid]::NewGuid().ToString();Computer='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Result='NOT CLEARED';Events=@([pscustomobject]@{Event='previous preserved receipt'});Checks=@();Scenarios=@()}
  try {
   Save-QuickReport
   $saved=Get-Content $stateFile -Raw|ConvertFrom-Json
-  Assert ((Test-Path ($reportDir+'.zip')) -and $saved.Events[0].Event -eq 'previous preserved receipt' -and $saved.GatewayEvidence.Task -like '*unavailable*' -and $saved.AgentEventCollection) 'Independent evidence failures prevented the complete report or discarded prior events.'
+  Assert ((Test-Path $script:lastReport.LocalBundle) -and $saved.Events[0].Event -eq 'previous preserved receipt' -and $saved.GatewayEvidence.Task -like '*unavailable*' -and $saved.AgentEventCollection) 'Independent evidence failures prevented the complete report or discarded prior events.'
  } finally {Remove-Item $temporary -Recurse -Force}
  Write-Host 'PASS: task/network/firewall/log evidence failures preserve state, prior events, and exported report.'
 }
