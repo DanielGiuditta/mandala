@@ -57,7 +57,7 @@ function Write-OfficeCheckpoint($State,[string]$Path) {
         $stream=[IO.File]::Open($temporary,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
         $stream.Write($bytes,0,$bytes.Length);$stream.Flush($true);$stream.Dispose();$stream=$null
         [void](Assert-OfficeLocalPath $Path)
-        if(Test-Path -LiteralPath $Path){[IO.File]::Replace($temporary,$Path,$null)}else{[IO.File]::Move($temporary,$Path)}
+        if(Test-Path -LiteralPath $Path){[IO.File]::Replace($temporary,$Path,[NullString]::Value)}else{[IO.File]::Move($temporary,$Path)}
     } finally {
         if($stream){$stream.Dispose()}
         if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue}
@@ -72,7 +72,10 @@ function Write-OfficeNewText([string]$Path,[string]$Text) {
 function Export-OfficeSnapshot($State,$Storage,[string]$DesktopDirectory) {
     $errors=@();$localBundle=$null;$desktopBundle=$null;$snapshotDirectory=$null
     $safeComputer=$State.Computer -replace '[^a-zA-Z0-9_-]','_'
-    $name='Mandala-'+$safeComputer+'-'+$State.Role+'-'+$State.KitVersion+'-'+$State.SnapshotId
+    $safeRole=[string]$State.Role -replace '[^a-zA-Z0-9_-]','_'
+    $safeVersion=[string]$State.KitVersion -replace '[^a-zA-Z0-9._-]','_'
+    $safeSnapshot=[string]$State.SnapshotId -replace '[^a-zA-Z0-9_-]','_'
+    $name='Mandala-'+$safeComputer+'-'+$safeRole+'-'+$safeVersion+'-'+$safeSnapshot
     try {
         $snapshotDirectory=New-OfficePrivateDirectory (Join-Path $Storage.Reports $name) -AdministratorsOnly:$Storage.AdministratorsOnly
         Write-OfficeNewText (Join-Path $snapshotDirectory 'report.json') ($State|ConvertTo-Json -Depth 30)
@@ -90,7 +93,7 @@ function Export-OfficeSnapshot($State,$Storage,[string]$DesktopDirectory) {
             # reports, links or locked files from becoming elevated write targets.
             [void](Assert-OfficeLocalPath $DesktopDirectory)
             if(-not(Test-Path -LiteralPath $DesktopDirectory -PathType Container)){throw 'Desktop is unavailable.'}
-            $destination=New-OfficePrivateDirectory (Join-Path $DesktopDirectory ('Mandala report '+$State.SnapshotId)) -AdministratorsOnly:$Storage.AdministratorsOnly
+            $destination=New-OfficePrivateDirectory (Join-Path $DesktopDirectory ('Mandala report '+$safeSnapshot)) -AdministratorsOnly:$Storage.AdministratorsOnly
             $desktopBundle=Join-Path $destination ($name+'.zip')
             [IO.File]::Copy($localBundle,$desktopBundle,$false)
         } catch {$desktopBundle=$null;$errors+=[pscustomobject]@{Stage='desktop-copy';Code=$_.Exception.GetType().Name;Detail='Desktop copy unavailable. Use the protected local report.'}} }

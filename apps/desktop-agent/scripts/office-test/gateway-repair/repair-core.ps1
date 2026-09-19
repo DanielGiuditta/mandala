@@ -192,7 +192,7 @@ function Repair-ConfiguredGateway($Plan,$RepairSource,[scriptblock]$Checkpoint=$
         try {
             Copy-Item -LiteralPath (Join-Path $RepairSource $map[1]) -Destination $temporary
             Assert-ProtectedGatewayPath $temporary
-            if(Test-Path -LiteralPath $destination){Assert-ProtectedGatewayPath $destination;[IO.File]::Replace($temporary,$destination,$null)}else{[IO.File]::Move($temporary,$destination)}
+            if(Test-Path -LiteralPath $destination){Assert-ProtectedGatewayPath $destination;[IO.File]::Replace($temporary,$destination,[NullString]::Value)}else{[IO.File]::Move($temporary,$destination)}
         } finally {if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue}}
         Assert-ProtectedGatewayPath $destination
         if($Checkpoint){& $Checkpoint ('helper-installed:'+ $map[0])}

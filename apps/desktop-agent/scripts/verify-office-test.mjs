@@ -34,6 +34,7 @@ export async function verifyReport(report, get) {
     if (automaticKit(report.KitVersion)) assert(report.Phase === 'complete', 'Automatic run did not finish.')
     assert(typeof report.ProjectA === 'string' && report.ProjectA && typeof report.ProjectB === 'string' && report.ProjectB && report.ProjectA !== report.ProjectB, 'Two different test projects are required.')
     if (report.KitVersion === currentKit) {
+      assert(!report.PrimaryError && !(report.CheckpointErrors?.length), 'Unresolved operation or checkpoint failure remains.')
       const started = timestamp(report.StartedUtc, 'Employee run start')
       const verified = timestamp(report.GatewayVerifiedUtc, 'Employee gateway verification')
       const completed = timestamp(report.CompletedUtc, 'Employee run completion')
@@ -42,6 +43,7 @@ export async function verifyReport(report, get) {
       assert(/^[a-f0-9]{64}$/i.test(report.GatewayCertificateSha256 ?? ''), 'Validated gateway certificate fingerprint is missing.')
     }
     const required = ['account-context','installed-agent','version-and-binary','production-backend','startup-shortcut','startup-enabled','lan-settings','certificate','gateway-mutual-tls','gateway-clock','unenrolled-request-denied','diagnostics-readable','signed-in-projects','reboot-observed']
+    if (report.KitVersion === currentKit) required.push('direct-production-blocked')
     assert(required.every(id => report.Checks?.some(c => c.Id === 'employee.' + id && c.Status === 'PASS')), 'Not every required employee check passed.')
     assert(report.Checks.every(c => c.Status === 'PASS'), 'A failed or blocked local check remains.')
     return 'All required employee checks passed.'
@@ -143,6 +145,7 @@ export async function verifyOfficeReports(employee, gateway, get, { now = Date.n
   const network = verifyGatewayReport(gateway)
   const checks = []
   try {
+    assert(!gateway.PrimaryError && !(gateway.CheckpointErrors?.length), 'Unresolved gateway operation or checkpoint failure remains.')
     assert(employee.KitVersion === currentKit && gateway.KitVersion === currentKit, 'Current office acceptance requires both reports from kit ' + currentKit + '; preserve older time evidence for maintainer review, do not repeat it automatically.')
     assert(origin(employee.GatewayOrigin) === origin(gateway.GatewayOrigin), 'Employee and gateway reports identify different gateway addresses.')
     assert(/^[a-f0-9]{64}$/i.test(gateway.GatewayCertificateSha256 ?? '') && gateway.GatewayCertificateSha256.toLowerCase() === employee.GatewayCertificateSha256?.toLowerCase(), 'Employee TLS connection and gateway report identify different server certificates.')

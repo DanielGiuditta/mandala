@@ -26,8 +26,12 @@ try {
         Require ($legacy.SchemaVersion -eq 1 -and $legacy.Role -eq $Role -and $legacy.RunId) 'Historical state is invalid; preserved without importing.'
         Write-OfficeCheckpoint $legacy $stateFile
     }
+    if($Mode -eq 'Export' -and -not(Test-Path -LiteralPath $stateFile)) {
+        $baseline=@(Get-ChildItem -LiteralPath $storage.Root -Filter 'baseline-*.json' -File|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 1)
+        if($baseline.Count){$stateFile=$baseline[0].FullName;$storage.StateFile=$stateFile}
+    }
     if($Mode -eq 'Baseline'){$state=New-QuickRunState}
-    elseif(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;Require ($state.SchemaVersion -eq 1 -and $state.Role -eq $Role -and $state.RunId -and $state.Phase -in @('preflight','reboot','functional','complete','stopped')) 'Saved test state is not recognized.'}
+    elseif(Test-Path $stateFile){$state=Get-Content $stateFile -Raw|ConvertFrom-Json;Require ($state.SchemaVersion -eq 1 -and $state.Role -eq $Role -and $state.RunId -and $state.Phase -in @('preflight','reboot','functional','complete','stopped','baseline')) 'Saved test state is not recognized.'}
     else {$state=New-QuickRunState}
 } catch {
     Write-Host 'Saved test state cannot be resumed. No test actions were performed. Keep this file for Daniel; do not delete it or repeat time tests:'
@@ -132,7 +136,7 @@ function Note-Action($Message) {
 }
 function Ask-Yes($Message,[switch]$KeepTestActive) {
     Write-Host '';Write-Host $Message
-    [Console]::Beep(750,250)
+    try {[Console]::Beep(750,250)}catch{Write-Verbose 'Audio notification unavailable; the written prompt remains active.'}
     if($KeepTestActive) {
         Write-Host 'Authorized test mouse activity continues for up to 10 minutes while you answer. Reply within 10 minutes; type no and Enter to stop. Holding Escape stops the activity; press Enter to save the report.'
         [MandalaTestInput]::BeginPromptActivity()
@@ -193,6 +197,7 @@ try {
     if($Mode -ne 'Baseline') {
         Require ($state.Computer -eq $env:COMPUTERNAME -and $state.WindowsUser -eq [Security.Principal.WindowsIdentity]::GetCurrent().Name) 'This saved run belongs to another PC or Windows account. No test actions will run; preserve the report for Daniel.'
     }
+    if($Mode -eq 'Run' -and $state.Phase -eq 'baseline'){throw 'Baseline records cannot become time-writing runs.'}
     if($Mode -eq 'Export') {Write-Host 'Returning saved evidence only. No repairs or time tests will run.';return}
     if($Mode -eq 'Baseline') {
         # The saved functional run remains untouched; baseline gets its own record.
@@ -204,7 +209,7 @@ try {
             Require (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) 'Open the baseline in the original employee account without administrator elevation.'
             $state.Candidates=@(Get-MandalaAgentCandidates)
             $approved=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'approved-agent.json') -Raw|ConvertFrom-Json
-            $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved)
+            $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved;Get-EmployeeRoutingCheck)
             $state|Add-Member -NotePropertyName EmployeeBaseline -NotePropertyValue (Get-EmployeeReadOnlyEvidence) -Force
         } else {$state.Checks=@(Get-GatewayChecks)}
         Record-QuickGatewayOrigin
@@ -232,6 +237,7 @@ try {
     }
     if($state.Phase -in @('complete','stopped')){Write-Host ('This run has finished or stopped under kit '+$state.KitVersion+'. Returning that existing report; no new audit or time tests have run.');return}
     $state.Checks=@($state.Checks|Where-Object {$_.Id -ne 'test.quick-runner'})
+    if($state.PrimaryError){$state|Add-Member -NotePropertyName PreviousErrors -NotePropertyValue (@($state.PreviousErrors|Where-Object {$null -ne $_})+@($state.PrimaryError)) -Force;$state.PSObject.Properties.Remove('PrimaryError')}
     if($Role -eq 'gateway') {
         Require $admin 'Open Start gateway Test.cmd and approve the Windows administrator prompt.'
         $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
@@ -287,7 +293,7 @@ try {
         Ask-Yes 'Have the gateway repair and automatic restart checks passed in this office session? Employee time tests must wait until they do.'
         if(-not $state.Email){$state.Email=(Read-Host 'Employee Mandala email (never type a password here)').Trim()}
         $state.Candidates=@(Get-MandalaAgentCandidates)
-        $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved);Show-Checks
+        $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved;Get-EmployeeRoutingCheck);Show-Checks
         if(-not (Select-MandalaAgent $state.Candidates)) {
             Ask-Yes 'No Agent was found in the checked locations. Install the included approved employee Agent 1.0.15? Windows administrator approval is required.'
             $installer=Join-Path $PSScriptRoot 'MandalaAgentSetup-1.0.15.exe'
@@ -309,7 +315,7 @@ try {
         Write-Host 'Sign in in the Agent if needed. This test waits up to 10 minutes and never reads the password field.'
         Wait-Ui 'signed-in Agent and available projects' { $c=Find-AgentControl 'ProjectComboBox';$c -and -not $c.Current.IsOffscreen } 600|Out-Null
         $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
-        $state.Candidates=@(Get-MandalaAgentCandidates);$state.Checks=@(Get-EmployeeChecks $state.Candidates $approved)
+        $state.Candidates=@(Get-MandalaAgentCandidates);$state.Checks=@(Get-EmployeeChecks $state.Candidates $approved;Get-EmployeeRoutingCheck)
         $state.Checks+=Invoke-OfficeCheck 'employee.signed-in-projects' {
             Require ((Get-AgentText 'SignedInAsText') -like ('Signed in as '+$state.Email+' *')) 'Signed-in employee differs from the supplied email.'
             $script:choices=@(Get-AgentProjects);Require ($script:choices.Count -ge 2) 'At least two allowed projects are required.'
@@ -339,7 +345,7 @@ try {
     Wait-Ui 'signed-in tracker after reboot (sign in in Agent if requested)' {$c=Find-AgentControl 'ProjectComboBox';$c -and -not $c.Current.IsOffscreen} 600|Out-Null
     Require ((Get-AgentText 'SignedInAsText') -like ('Signed in as '+$state.Email+' *')) 'Employee identity changed after restart.'
     $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
-    $state.Candidates=@(Get-MandalaAgentCandidates);$state.Checks=@(Get-EmployeeChecks $state.Candidates $approved)
+    $state.Candidates=@(Get-MandalaAgentCandidates);$state.Checks=@(Get-EmployeeChecks $state.Candidates $approved;Get-EmployeeRoutingCheck)
     $state.Checks+=Invoke-OfficeCheck 'employee.signed-in-projects' {
         Require ((Get-AgentText 'SignedInAsText') -like ('Signed in as '+$state.Email+' *')) 'Employee identity changed after restart.'
         $available=@(Get-AgentProjects)
@@ -431,6 +437,7 @@ try {
         $state.Phase='stopped'
     }
     $state.Result='NOT CLEARED'
+    if($script:repairCheckpointErrors){$state|Add-Member -NotePropertyName CheckpointErrors -NotePropertyValue $script:repairCheckpointErrors -Force}
     $state|Add-Member -NotePropertyName PrimaryError -NotePropertyValue ([pscustomobject]@{Code=$_.Exception.GetType().Name;Detail=$_.Exception.Message;Utc=[DateTimeOffset]::UtcNow.ToString('o')}) -Force
     # Transient prerequisites may be corrected without repeating a time-writing run.
     $state.Checks=@($state.Checks|Where-Object {$_.Id -ne 'test.quick-runner'})+@(New-CheckResult 'test.quick-runner' 'BLOCKED' $_.Exception.Message)

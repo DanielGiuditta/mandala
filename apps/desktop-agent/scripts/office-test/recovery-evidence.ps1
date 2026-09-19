@@ -65,15 +65,32 @@ function Get-EmployeeReadOnlyEvidence {
         $events=@(Read-AgentEvents (Join-Path $env:LOCALAPPDATA 'Mandala Agent\agent.log') ([DateTimeOffset]::UtcNow.AddDays(-3)))
         $result.RecentSafeEvents=@($events|Select-Object -Last 30)
     } catch {$result.RecentSafeEvents='Unavailable'}
-    try {
-        # Only the fixed authorized production endpoint; no credentials are sent.
-        $request=[Net.HttpWebRequest]::Create('https://nzlajptokbcgeaifgnoq.supabase.co/auth/v1/settings')
-        $request.Timeout=8000;$request.ReadWriteTimeout=8000;$request.AllowAutoRedirect=$false;$request.Method='GET'
-        try {$response=$request.GetResponse();$response.Close();$result.DirectProductionAccess='REACHABLE - LAN-only routing requirement not met'}
-        catch [Net.WebException] {
-            if($_.Exception.Response){$_.Exception.Response.Close();$result.DirectProductionAccess='REACHABLE - HTTP rejection still proves direct production access'}
-            else {$result.DirectProductionAccess='No response observed; IT firewall policy confirmation still required';$result.DirectProbeStatus=[string]$_.Exception.Status}
-        }
-    } catch {$result.DirectProductionAccess='Probe unavailable; IT policy confirmation required'}
+    $result.DirectProductionProbe=if($script:directProductionProbe){$script:directProductionProbe}else{Get-EmployeeProductionProbe}
     return [pscustomobject]$result
+}
+function Get-EmployeeProductionProbe {
+    $result=[ordered]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Endpoint='https://nzlajptokbcgeaifgnoq.supabase.co/auth/v1/settings';Outcome='Unavailable';Code=''}
+    try {
+        # Fixed authorized endpoint, no credentials; both success and HTTP rejection
+        # demonstrate a bypass. A timeout is an observation, not proof of policy.
+        $request=[Net.HttpWebRequest]::Create($result.Endpoint)
+        $request.Timeout=8000;$request.ReadWriteTimeout=8000;$request.AllowAutoRedirect=$false;$request.Method='GET'
+        try {$response=$request.GetResponse();$response.Close();$result.Outcome='Reachable'}
+        catch [Net.WebException] {
+            $result.Code=[string]$_.Exception.Status
+            if($_.Exception.Response){$_.Exception.Response.Close();$result.Outcome='Reachable'}
+            elseif($_.Exception.Status -in @([Net.WebExceptionStatus]::ConnectFailure,[Net.WebExceptionStatus]::Timeout,[Net.WebExceptionStatus]::NameResolutionFailure,[Net.WebExceptionStatus]::ProxyNameResolutionFailure)){$result.Outcome='NoRouteObserved'}
+            else {$result.Outcome='Inconclusive'}
+        }
+    } catch {$result.Code=$_.Exception.GetType().Name}
+    return [pscustomobject]$result
+}
+function Get-EmployeeRoutingCheck {
+    $script:directProductionProbe=Get-EmployeeProductionProbe
+    $probe=$script:directProductionProbe
+    switch($probe.Outcome) {
+        'Reachable' {New-CheckResult 'employee.direct-production-blocked' 'FAIL' 'Direct production HTTPS is reachable from this employee account. IT must enforce LAN-only routing before acceptance.'}
+        'NoRouteObserved' {New-CheckResult 'employee.direct-production-blocked' 'PASS' ('No direct production response observed ('+$probe.Code+'). This bounded probe supplements the required IT firewall policy confirmation.')}
+        default {New-CheckResult 'employee.direct-production-blocked' 'BLOCKED' ('Direct production routing could not be established ('+$probe.Code+'). Do not infer LAN-only isolation from a failed TLS handshake.')}
+    }
 }

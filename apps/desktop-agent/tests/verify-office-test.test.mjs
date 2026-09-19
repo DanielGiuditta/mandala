@@ -4,7 +4,7 @@ import { verifyReport, verifyGatewayReport, verifyOfficeReports } from '../scrip
 const now = Date.parse('2026-09-16T13:00:00Z')
 const id = n => '00000000-0000-0000-0000-' + String(n).padStart(12, '0')
 function fixture() {
-  const required = ['account-context','installed-agent','version-and-binary','production-backend','startup-shortcut','startup-enabled','lan-settings','certificate','gateway-mutual-tls','gateway-clock','unenrolled-request-denied','diagnostics-readable','signed-in-projects','reboot-observed']
+  const required = ['account-context','installed-agent','version-and-binary','production-backend','startup-shortcut','startup-enabled','lan-settings','certificate','gateway-mutual-tls','gateway-clock','unenrolled-request-denied','diagnostics-readable','signed-in-projects','reboot-observed','direct-production-blocked']
   const report = { SchemaVersion: 1, KitVersion: '1.2.3', Phase: 'complete', StartedUtc: '2026-09-16T09:00:00Z', GatewayVerifiedUtc: '2026-09-16T09:05:00Z', CompletedUtc: '2026-09-16T12:00:00Z', GatewayOrigin: 'https://192.168.1.58:8443', GatewayCertificateSha256:'a'.repeat(64), Role: 'employee', Email: 'employee@example.test', Computer: 'TEST-PC', ProjectA: 'A', ProjectB: 'B', Checks: required.map(Id => ({ Id: 'employee.' + Id, Status: 'PASS' })), Scenarios: [] }
   const sessions = []; const entries = []
   let n = 1
@@ -34,6 +34,10 @@ for(const [name,change] of Object.entries({
   'wrong hours': f=>{f.entries[0].hours=3},
   'wrong project': f=>{f.sessions[0].project_id=id(201);f.entries[0].project_id=id(201)},
   'extra session': f=>{f.sessions.push({...f.sessions[0],id:id(888)})},
+  'unresolved employee checkpoint failure': f=>{f.report.CheckpointErrors=[{Stage:'fixture'}]},
+  'unresolved employee operation failure': f=>{f.report.PrimaryError={Detail:'fixture'}},
+  'direct production bypass': f=>{f.report.Checks.find(c=>c.Id==='employee.direct-production-blocked').Status='FAIL'},
+  'missing routing check': f=>{f.report.Checks=f.report.Checks.filter(c=>c.Id!=='employee.direct-production-blocked')},
   'missing reboot evidence': f=>{f.report.Checks=f.report.Checks.filter(c=>c.Id!=='employee.reboot-observed')},
   'incomplete scenario': f=>{f.report.Scenarios[0].Status='INCOMPLETE'},
   'wrong receipt': f=>{f.report.Scenarios[0].Receipts[0].EntryId=id(999)},
@@ -43,7 +47,7 @@ for(const [name,change] of Object.entries({
   'receipt before finalized stop': f=>{f.report.Scenarios[0].Receipts[0].Utc=f.sessions[0].started_at},
   'missing timezone evidence': f=>{delete f.report.Scenarios[0].TimeZoneOffsetMinutes},
   'timezone changed during test': f=>{f.report.Scenarios[0].FinishedTimeZoneOffsetMinutes=0},
-  'future kit cannot bypass complete phase': f=>{f.report.KitVersion='1.2.3';f.report.Phase='functional'},
+  'future kit cannot bypass complete phase': f=>{f.report.KitVersion='9.9.9';f.report.Phase='functional'},
   'missing kit cannot bypass complete phase': f=>{delete f.report.KitVersion;f.report.Phase='functional'},
   'repeated observations': f=>{f.report.Scenarios[0].Observations[1].Check=f.report.Scenarios[0].Observations[0].Check},
   'current run missing completion': f=>{delete f.report.CompletedUtc},
@@ -134,3 +138,5 @@ test('local date near midnight allows only the permitted 30-second server-clock 
  f.report.CompletedUtc='2026-09-16T23:00:00Z'
  assert.ok((await verifyReport(f.report,f.get)).checks.every(c=>c.status==='PASS'))
 })
+
+test('unresolved gateway checkpoint failure prevents clearance',async()=>{const f=fixture();const g=gatewayFixture();g.CheckpointErrors=[{Stage:'task-stopped'}];assert.equal((await verifyOfficeReports(f.report,g,f.get,{now})).status,'NOT CLEARED')})

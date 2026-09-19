@@ -1,0 +1,84 @@
+{
+  "SchemaVersion": 1,
+  "KitVersion": "1.2.2",
+  "Role": "gateway",
+  "StartedUtc": "2026-09-17T10:18:23.2282874+00:00",
+  "Phase": "preflight",
+  "BootBefore": "",
+  "Candidates": [],
+  "Scenarios": [],
+  "Events": [],
+  "DatabaseVerification": "PENDING - maintainer must verify actual production rows",
+  "Result": "NOT CLEARED",
+  "PreviousKitVersions": [
+    {
+      "Version": "1.2.0",
+      "UpgradedUtc": "2026-09-19T09:27:22.7032289+00:00",
+      "Phase": "preflight"
+    }
+  ],
+  "RunId": "11111111-1111-4111-8111-111111111111",
+  "Computer": "GATEWAY-FIXTURE",
+  "WindowsUser": "FIXTURE\\admin",
+  "Email": "",
+  "ProjectA": "",
+  "ProjectB": "",
+  "Actions": [],
+  "History": [],
+  "Checks": [
+    {
+      "Id": "gateway.task",
+      "Status": "FAIL",
+      "Utc": "2026-09-19T09:27:23.6018275+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.configuration",
+      "Status": "PASS",
+      "Utc": "2026-09-19T09:27:24.0229914+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.installed-release",
+      "Status": "PASS",
+      "Utc": "2026-09-19T09:27:24.5331160+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.startup-configuration",
+      "Status": "FAIL",
+      "Utc": "2026-09-19T09:27:29.2382793+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.production-internet",
+      "Status": "PASS",
+      "Utc": "2026-09-19T09:27:30.2221826+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.firewall",
+      "Status": "FAIL",
+      "Utc": "2026-09-19T09:27:37.6667983+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.listener",
+      "Status": "FAIL",
+      "Utc": "2026-09-19T09:27:37.7233024+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "gateway.certificate-and-enrollment",
+      "Status": "PASS",
+      "Utc": "2026-09-19T09:27:37.7633108+00:00",
+      "Detail": "Sanitized office prerequisite evidence"
+    },
+    {
+      "Id": "test.quick-runner",
+      "Status": "BLOCKED",
+      "Utc": "2026-09-19T09:45:32.7387812+00:00",
+      "Detail": "Desktop report directory unavailable before repair"
+    }
+  ]
+}
