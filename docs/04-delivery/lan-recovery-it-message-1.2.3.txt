@@ -1,7 +1,7 @@
-Attach only Mandala-Surjith-1.2.3.zip. Copy the message below.
+Current short-test message. Attach the unchanged Mandala-Surjith-1.2.3.zip and Mandala-Quick-LAN-Check.txt. These instructions supersede the earlier full-test message.
 
-hi surjith, please use the attached 1.2.3 package for one planned time-tracking session on gateway stp54 and the same already-paired employee pc/account.
+hi surjith, we have shortened this to one two-minute time entry. please follow the attached quick-check instructions instead of the longer READ-FIRST test sequence. allow roughly 10-20 minutes including the gateway restart.
 
-extract the whole zip into a new folder on each pc and follow read-first.txt. open “Start Mandala.cmd”: employee option 1 first (its “not cleared” result is expected), gateway option 2 next, then employee option 3 only after the gateway's final pass after restart. have administrator approval, the employee login, two projects and a separate internet browser ready. follow the restart prompts without manually opening gateway setup or agent.
+use employee option 1 to collect the initial report, then gateway stp54 option 2 for repair and restart. only after its final pass, open agent normally on the same paired employee account, choose one project, work for two minutes and stop once. then run employee option 1 again to capture the result. do not choose option 3.
 
-send the current reports together, including the employee baseline. no step-by-step screenshots needed. if anything stops, preserve the work and return the reports; don’t repeat tests, reinstall or clear data. i’ll verify the five saved test entries before confirming completion.
+send the current gateway report and latest employee report together, with the employee email, project and approximate test time. if the gateway repair fails, return its report with the initial employee report. if the employee test fails or a save stays pending, stop time testing and collect a fresh employee report with option 1; don't repeat the timer or clear work. i'll verify the exact saved entry in production.

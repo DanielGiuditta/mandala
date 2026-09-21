@@ -1,0 +1,27 @@
+MANDALA - SHORT LAN TIME-SAVING CHECK
+Use the existing Mandala-Surjith-1.2.3.zip unchanged.
+These instructions replace the long test sequence in READ-FIRST.txt for this session.
+DO NOT choose option 3: that starts the longer five-entry acceptance test.
+
+Purpose: prove that this employee can save ONE real time entry through the LAN gateway.
+Allow roughly 10-20 minutes including gateway repair/restart; the employee timer runs for two minutes. This is a planning estimate, not a guaranteed office duration.
+
+Have administrator approval, the original paired employee Windows account, the employee's Mandala login and ONE permitted project ready. Save other work. No employee timers may be active during gateway maintenance. Preserve existing pending work.
+
+1. Extract the whole ZIP into a new folder on each PC. On the employee PC, open Start Mandala.cmd normally and choose 1. Keep the report. Its overall NOT CLEARED result is expected: this option only collects evidence. It may also show gateway failures before repair; keep that evidence and proceed to step 2.
+
+2. On gateway STP54, open Start Mandala.cmd and choose 2. Approve safe maintenance and its restart. Sign back into the SAME administrator account. If necessary reopen the same launcher and choose 2 to resume. Do not open gateway setup or manually start its task. Continue only after the final GATEWAY LOCAL CHECKS PASSED result after restart.
+   If it fails: STOP. Return the gateway report and employee baseline together. Do not repeat repair or start an employee timer.
+
+3. In the original employee Windows account, open Mandala Agent normally. It must show version 1.0.15 and backend nzlajptokbcgeaifgnoq.supabase.co. Sign in. If existing work is active or pending, STOP time testing and collect the fresh report in step 4; do not overwrite it.
+   Choose ONE agreed project. This will create ONE real production test entry. Click Start Work, use the PC normally for TWO minutes, then click Stop once. Wait for "Time saved successfully. Reference: ..." and "No active project". A pending-upload message is not a saved result. If confirmation is absent after two minutes, or any other Agent error occurs, STOP time testing and preserve the current state; collect the fresh report in step 4. Do not start again.
+
+4. On the employee PC, open Start Mandala.cmd normally and choose 1 once more. This only exports fresh evidence, including the save reference; it does not repeat the timer. Its NOT CLEARED heading remains expected because the full acceptance suite was not run.
+
+5. Send the CURRENT gateway report and the LAST employee report shown by SEND THIS CURRENT REPORT in one message. If a Desktop copy fails, use the local fallback path shown. Include the employee email, chosen project, approximate start/stop time in IST and whether the save confirmation appeared. No step-by-step screenshots are needed.
+
+After gateway repair or the manual employee test reports a failure, stop that operation and return its evidence. The initial read-only baseline does not prevent the supported gateway repair. Do not reinstall, re-pair, clear data, repeat an uncertain save or launch the full option 3 test.
+
+Daniel will verify the exact session and saved entry in the production database. A matching row, correct LAN receipt and current gateway evidence are required before calling this basic LAN time-saving check passed.
+
+This short check does not accept employee automatic startup, project switching, offline recovery, idle pausing or wider rollout. The gateway restart stays in the sequence because the last office repair did not complete.

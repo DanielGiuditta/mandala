@@ -1,5 +1,23 @@
 # LAN time-tracking handoff — 20 September 2026
 
+> **Current recipient scope changed at the user's request:** use
+> [the short LAN check](lan-quick-check-1.2.3.txt) with the same immutable ZIP.
+> It retains gateway repair/restart but uses one two-minute manual employee save
+> and fresh read-only evidence. Do not select employee option 3 for that session.
+> The full five-entry acceptance sequence below remains available as historical
+> release documentation; it is not the current IT instruction.
+>
+> For the short check, review the latest employee baseline evidence and the
+> gateway report (the initial baseline is sufficient if gateway repair failed). Correlate the new `EmployeeBaseline.RecentSafeEvents`
+> `lan-time-confirmed` session/entry IDs, reported employee/project/time and
+> gateway origin/certificate. Read only the exact production session and entry;
+> check ownership, project, date, finalized duration/hours, `windows-tracker`
+> source and unexpected sessions in the reported interval. Confirm no unresolved
+> new pending save. The five-entry verifier below intentionally does not accept
+> this baseline-only evidence; do not weaken it or rerun writes to make it pass.
+> Record any success as **BASIC LAN TIME-SAVING VERIFIED**, with employee boot,
+> offline, switch and idle acceptance still pending.
+
 ## Release status
 
 **READY FOR ONE CONTROLLED IT TIME-TRACKING SESSION.** The Windows audit, exact-ZIP
