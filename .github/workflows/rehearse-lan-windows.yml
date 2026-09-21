@@ -1,7 +1,17 @@
-name: Probe isolated Windows rehearsal host
+name: Rehearse isolated Windows gateway restart
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Host capability only, or actual disposable gateway guest reboot
+        type: choice
+        options: [capability, gateway-reboot]
+        default: capability
+      candidate_run_id:
+        description: Successful employee-startup audit run containing the exact candidate ZIP
+        type: string
+        required: false
   push:
     branches: [codex/lan-recovery-1.2.3]
     paths:
@@ -10,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   capability:
@@ -39,4 +50,29 @@ jobs:
         with:
           name: Mandala-Windows-rehearsal-host-capability
           path: ${{ runner.temp }}/mandala-rehearsal/*.txt
+          if-no-files-found: warn
+  gateway-reboot:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'gateway-reboot'
+    needs: capability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare disposable virtualization tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf libguestfs-tools python3-pil acl
+      - name: Verify audited artifacts and run real guest reboot observation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          GH_REPO: ${{ github.repository }}
+          LIBGUESTFS_BACKEND: direct
+        run: python3 apps/desktop-agent/tests/rehearsal/run-gateway-guest.py
+      - name: Preserve bounded rehearsal evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mandala-gateway-real-reboot-evidence
+          path: ${{ runner.temp }}/mandala-gateway-rehearsal/evidence/
           if-no-files-found: warn

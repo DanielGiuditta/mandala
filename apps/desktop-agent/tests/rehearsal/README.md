@@ -30,7 +30,31 @@ installing, and requires online activation within 10 days to avoid shutdown.
 Follow Microsoft's evaluation terms; do not substitute third-party Windows images
 or treat the evaluation as an employee deployment license.
 
-## Subsequent rehearsal route
+## Run the gateway-only rehearsal
+
+Dispatch `rehearse-lan-windows.yml` on the recovery branch with
+`mode=gateway-reboot` and `candidate_run_id` naming a successful
+`Audit employee startup repair` run. The controller verifies that run, downloads
+its exact candidate ZIP and approved gateway installer, checks hashes and every
+inventory item, then downloads the official evaluation VHDX. No GitHub credential
+or private production credential is copied into the guest. The base image is not
+modified or uploaded; only its disposable overlay is changed.
+
+The generated unattended setup uses a random local Administrator password. The
+guest removes temporary automatic login, then a separate SYSTEM task observes
+the gateway across two actual guest restarts. This observer never starts the
+gateway during either boot observation. Between the two boots it invokes the
+installed corrected setup helper and confirms that the approved firewall scope
+and pairing remain unchanged. The controller receives only fixed-field evidence
+over its loopback-bound endpoint and retains screenshots if startup stalls.
+
+The first execution remains a rehearsal of this new lab harness, not a claimed
+pass. Inspect the run artifacts; a timeout, exception, missing phase or repeated
+boot identity fails. The overall job is capped at 60 minutes, with a 35-minute
+guest observation limit. The output explicitly excludes employee authentication,
+production time saves, UAC and checker RunOnce acceptance.
+
+## Why the guest is separate from the Actions runner
 
 A guest disk and its controller must persist across the guest's real reboots.
 Rebooting the Actions runner itself does not provide that guarantee. A QEMU guest
@@ -45,15 +69,11 @@ and host-only report transport. Pass the exact already-audited installer and
 recovery ZIP into the guest; retain their SHA-256 values in the resulting evidence.
 Do not pass a GitHub token or Supabase service-role key into the guest.
 
-The gateway rehearsal can proceed without an employee login: create fixture
-pairing material in the disposable guest, repair a stopped legacy task using the
-shipped package, then reboot twice. A guest-local resume task may collect evidence
-but must not start the Mandala task. Compare boot identifiers, observe the exact
-Local Service process/listener, task settings, pairing/configuration hashes and
-trusted mutual-TLS health after each boot. Re-enter setup and verify that durable
-startup survives. Export fixed-field evidence to the controller after every phase.
-The guest may reach only required public production health/config endpoints; do
-not make authenticated time RPCs without a designated authorized test account.
+The gateway rehearsal uses synthetic pairing material and the guest's exact
+`10.0.2.15/32` scope. It observes the exact Local Service process/listener, task
+settings, pairing/configuration hashes and trusted mutual-TLS health after each
+boot. Its QEMU network has no host shares or inbound forwarding. It does not call
+authenticated production RPCs. The synthetic device is not an office enrollment.
 
 Full employee acceptance additionally needs a separate employee Windows profile
 and machine/guest, restricted routing, the real approved Agent, two permitted
