@@ -29,7 +29,7 @@ $env:LOCALAPPDATA=[Environment]::GetFolderPath('LocalApplicationData')
 $env:APPDATA=[Environment]::GetFolderPath('ApplicationData')
 $env:USERPROFILE=[Environment]::GetFolderPath('UserProfile')
 $env:ProgramData=[Environment]::GetFolderPath('CommonApplicationData')
-& $env:ComSpec /d /c ('""'+$Launcher+'" '+$Role+' '+$Mode+'"')
+& $Launcher $Role $Mode
 exit $LASTEXITCODE
 '@|Set-Content -LiteralPath $profileEntry -Encoding UTF8
         $parameters.FilePath=Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
