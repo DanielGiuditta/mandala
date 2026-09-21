@@ -100,7 +100,14 @@ try {
     $inputFile = Join-Path $fixture 'input.txt'
     'x' | Set-Content $inputFile
     $wrapper = Start-Process -FilePath $env:ComSpec -ArgumentList ('/d /c ""' + $launcher + '""') -RedirectStandardInput $inputFile -RedirectStandardOutput (Join-Path $fixture 'wrapper-output.txt') -RedirectStandardError (Join-Path $fixture 'wrapper-error.txt') -PassThru
-    if (-not $wrapper.WaitForExit(15000)) { Stop-Process -Id $wrapper.Id -Force; throw 'Double-click wrapper timed out.' }
+    if (-not $wrapper.WaitForExit(60000)) {
+        # Terminate only this fixture process tree; child PowerShell can otherwise
+        # retain redirected handles and hide the primary timeout during cleanup.
+        & taskkill.exe /PID $wrapper.Id /T /F | Out-Null
+        [void]$wrapper.WaitForExit(5000)
+        throw ('Double-click fixture wrapper timed out: '+(Get-Content (Join-Path $fixture 'wrapper-output.txt') -Raw -ErrorAction SilentlyContinue)+' '+(Get-Content (Join-Path $fixture 'wrapper-error.txt') -Raw -ErrorAction SilentlyContinue))
+    }
+    $wrapper.WaitForExit();$wrapper.Dispose();$wrapper=$null
     Assert (Test-Path (Join-Path $download 'wrapper-passed.txt')) ('Downloaded repair wrapper failed: ' + (Get-Content (Join-Path $fixture 'wrapper-output.txt') -Raw))
     Assert ($null -ne (Get-Item -LiteralPath (Join-Path $download 'unrelated.ps1') -Stream Zone.Identifier -ErrorAction SilentlyContinue)) 'Wrapper unblocked an unrelated script.'
     Write-Host 'PASS: missing/wrong shortcut repair; wizard backup; repeat repair; duplicate cleanup; unrelated files/config/pending work preserved; actual .lnk launch on Windows.'
@@ -108,5 +115,6 @@ try {
     Write-Host 'PASS: stale registration fallback, custom shortcut discovery, user/machine scope isolation and explicit 32/64-bit registry views.'
 } finally {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
-    Remove-Item $fixture -Recurse -Force
+    if($wrapper){if(-not $wrapper.HasExited){& taskkill.exe /PID $wrapper.Id /T /F | Out-Null;[void]$wrapper.WaitForExit(5000)};$wrapper.Dispose()}
+    Remove-Item $fixture -Recurse -Force -ErrorAction SilentlyContinue
 }

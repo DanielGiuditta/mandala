@@ -59,3 +59,4 @@ if($Role -eq 'gateway' -and -not $admin) {
 }
 Write-Host ('This computer: '+$env:COMPUTERNAME+' | Role: '+$Role+' | Operation: '+$Mode)
 & (Join-Path $PSScriptRoot 'quick-test.ps1') -Role $Role -Mode $Mode
+if($Elevated){[void](Read-Host 'Keep the report path above. Press Enter to close this gateway window')}
