@@ -1,0 +1,7 @@
+Attach only Mandala-Surjith-1.2.3.zip. Copy the message below.
+
+hi surjith, please use the attached 1.2.3 package for one planned time-tracking session on gateway stp54 and the same already-paired employee pc/account.
+
+extract the whole zip into a new folder on each pc and follow read-first.txt. open “Start Mandala.cmd”: employee option 1 first (its “not cleared” result is expected), gateway option 2 next, then employee option 3 only after the gateway's final pass after restart. have administrator approval, the employee login, two projects and a separate internet browser ready. follow the restart prompts without manually opening gateway setup or agent.
+
+send the current reports together, including the employee baseline. no step-by-step screenshots needed. if anything stops, preserve the work and return the reports; don’t repeat tests, reinstall or clear data. i’ll verify the five saved test entries before confirming completion.

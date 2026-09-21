@@ -2,9 +2,10 @@
 
 ## Status
 
-**NOT READY FOR IT.** Version 1.2.3 is an engineering candidate on
-`codex/lan-recovery-1.2.3`. No office repair, employee test, production acceptance,
-real Windows reboot rehearsal or wider rollout is claimed.
+**Historical engineering working log.** The final Windows audit, exact-ZIP
+reboot replay and independent review passed. See the [current handoff record](lan-time-tracking-handoff-2026-09-20.md)
+for release status and precise evidence limits. No office repair, employee test,
+production acceptance or wider rollout is claimed.
 
 The user's scope is time tracking on the LAN Windows employee computer. LAN web,
 previews, file shares and wider employee rollout are excluded. The current flow
@@ -69,6 +70,51 @@ and office checks, 52 Node regressions, installed Local Service gateway lifecycl
 approved Agent installer/UI/discovery, and extracted package inventory/export.
 This is preliminary evidence, not the final artifact approval.
 
+Subsequent Windows audit `35546950916` passed the actual gateway orchestration
+and all four locked mutation checkpoints plus three subprocess interruptions.
+It stopped later on an invalid address-prefix expression in the new Agent test
+fixture. Audit `35547525132` passed those gateway checks again and exercised the
+unchanged approved Agent through sign-in, project selection, a saved receipt and
+offline journal creation. It then exposed an early UI lookup after offline
+reopening: a missing tracker control threw before the intended wait could run.
+The same pattern in the shipped checker was corrected in `fcafe3d` with a bounded
+control-readiness wait that retains process identity checks. Neither failed
+overall audit is a release pass. In audit `35548221326`, the approved-Agent stage
+passed at 00:45:07 UTC on September 21: five distinct synthetic saved receipts,
+offline journal preservation through normal close/reopen, switch/cancel behavior
+and the real five-minute idle pause. That overall audit later failed its packaged
+launcher test on missing process exit-code capture. The focused probe then found
+test-harness double quoting in the standard-user wrapper. Those harness issues
+were corrected in `279588d` and `6970144`; no production change was needed.
+No production writes were made.
+
+The final full Windows audit
+[35549274713](https://github.com/DanielGiuditta/mandala/actions/runs/35549274713)
+passed at `6970144`. Its exact downloaded ZIP is 50,573,096 bytes with SHA-256
+`6e094282d285970940bbab6dfcd3efdf6c3c14efd1076c3af6dd219886221dbd`.
+All 19 files, inventory and approved installer bytes were checked on the Mac.
+The final exact-artifact guest replay `35550359605` subsequently passed both
+actual restarts and setup re-entry. Independent artifact/evidence review cleared
+the controlled IT session; see [the current handoff record](lan-time-tracking-handoff-2026-09-20.md).
+
+The initial real Windows guest rehearsal `35547294996` booted official Server
+2025 evaluation media and ran the gateway repair. Its lab assertion incorrectly
+compared a canonical single-address firewall value with the equivalent `/32`
+spelling, so it stopped before reboot. The lab comparison was corrected; no
+firewall broadening or office configuration change was needed. The next guest
+run exercised the downloaded CMD, shipped restart and same-account fallback.
+
+**Preliminary real reboot rehearsal passed:** `35548016342`, using candidate
+`6e747ce` (ZIP SHA-256
+`885bc69850008741489f65ae9645bec0bbc4893cabfdab3dd3893a7e946ec9a7`). The exact CMD
+ran the shipped gateway branch and restart; same SYSTEM-account fallback completed
+the native checker with ten checks and none failed. Boot timestamps were
+00:41:04, 00:47:14 and 00:50:07 UTC on September 21. Both post-boot listeners were
+owned by Local Service; trusted mutual TLS, unchanged pairing bytes, exact single-
+address firewall scope and setup re-entry passed. All prompt replies were marked
+synthetic lab inputs. This does not establish office isolation, employee startup,
+interactive UAC or RunOnce execution. The final artifact still needs replay.
+
 The subsequent audit adds the actual shipped gateway orchestration over a real
 installed gateway: missing Desktop at approval, required initial/approval saves,
 four locked mutation checkpoints and three terminated repair processes. It also
@@ -76,7 +122,11 @@ adds an unchanged approved Agent with real enrolled HTTPS and an isolated in-mem
 upstream. Synthetic account/projects/receipts cannot reach production; this tests
 binary behavior and journal recovery, not SQL or office acceptance.
 
-## Remaining release gates
+## Original release checklist (historical)
+
+The following checklist was written before the Windows work below completed.
+Use the current handoff record for completed evidence and remaining limitations,
+including the distinction between injected elevation tests and interactive UAC.
 
 - Windows CI, including actual Local Service/permissions/firewall/pairing lifecycle
   with these changes, must pass and the downloaded candidate must match its audit.
