@@ -64,7 +64,8 @@ function Evidence($Phase){
     Assert ($health.backend -eq 'https://nzlajptokbcgeaifgnoq.supabase.co' -and $health.protocol -eq 1) 'Trusted mutual-TLS health reached the wrong backend/protocol.'
     $rule=Get-NetFirewallRule -DisplayName 'Mandala guided gateway HTTPS'
     $remote=@(($rule|Get-NetFirewallAddressFilter).RemoteAddress)
-    Assert (($remote -join ',') -eq $scope) 'Firewall scope changed from the exact fixture address.'
+    Assert ($remote.Count -eq 1 -and $remote[0] -in @($address,$scope)) ('Firewall scope is not the exact fixture address: '+($remote -join ','))
+    Assert (($remote -join ',') -eq (@($state.firewallRemoteAddresses) -join ',')) 'Firewall scope changed from the observed pre-repair rule.'
     $connection=@(Get-NetTCPConnection -LocalPort 8443 -State Listen|Where-Object {$_.LocalAddress -eq $address})
     $process=Get-CimInstance Win32_Process -Filter ('ProcessId='+$connection[0].OwningProcess)
     $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
@@ -130,10 +131,11 @@ try {
         $approved=Get-Content (Join-Path $repair 'approved-gateway.json') -Raw|ConvertFrom-Json
         $plan=Get-GatewayRepairPlan $approved $data $repair
         $pairing=Pairing-Hashes
-        Emit @{phase='progress';step='repair-stopped-configured-gateway';task=(Get-GatewayTaskEvidence)}
+        Emit @{phase='progress';step='repair-stopped-configured-gateway';task=(Get-GatewayTaskEvidence);firewallRemoteAddresses=@($plan.RemoteAddresses)}
         $state=[pscustomobject]@{
             phase='first-reboot';initialBoot=(Boot-Identity);firstBoot=$null;reboots=0
             exercise=$metadata.exercise
+            firewallRemoteAddresses=@($plan.RemoteAddresses)
             sourceCommit=$metadata.sourceCommit;packageSha256=$metadata.packageSha256;gatewayInstallerSha256=$metadata.gatewayInstallerSha256
             clientThumbprint=$request.thumbprint;pairing=[pscustomobject]$pairing
         }
