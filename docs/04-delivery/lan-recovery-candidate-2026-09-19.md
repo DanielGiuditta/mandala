@@ -63,12 +63,18 @@ ZIP failure, mandatory checkpoint failure, old-snapshot preservation and output
 path confinement. The portable test intentionally substitutes folder creation;
 it **does not test Windows ACL enforcement**.
 
-Windows report tests are prepared using a sanitized supplied-state fixture,
-including the actual approval function with missing/unwritable/redirected Desktop,
-locked checkpoint and ZIP failures. The current approval regression substitutes
-the repair side effect; it is **not** the required end-to-end launcher/UAC/repair
-reproduction. Existing Windows integration tests and new package-integrity checks
-are configured in the candidate workflow but have not run for this candidate.
+Windows audit [35546643236](https://github.com/DanielGiuditta/mandala/actions/runs/35546643236)
+passed at `6e747ce`: Windows PowerShell 5 report/checkpoint tests, existing startup
+and office checks, 52 Node regressions, installed Local Service gateway lifecycle,
+approved Agent installer/UI/discovery, and extracted package inventory/export.
+This is preliminary evidence, not the final artifact approval.
+
+The subsequent audit adds the actual shipped gateway orchestration over a real
+installed gateway: missing Desktop at approval, required initial/approval saves,
+four locked mutation checkpoints and three terminated repair processes. It also
+adds an unchanged approved Agent with real enrolled HTTPS and an isolated in-memory
+upstream. Synthetic account/projects/receipts cannot reach production; this tests
+binary behavior and journal recovery, not SQL or office acceptance.
 
 ## Remaining release gates
 
@@ -80,24 +86,32 @@ are configured in the candidate workflow but have not run for this candidate.
   state recovery, including actual stop/helper/firewall/task boundaries.
 - Exact packaged UAC cancel/approve and standard-user employee baseline tests,
   including role mismatch and corrupt-state paths, need execution.
-- Two maintainer-controlled Windows machines/VMs are needed for actual gateway
-  reboot/resume, a second persistence reboot, setup re-entry, and real Agent
-  login/start/stop/offline/switch/idle behavior. Explicit rehearsal test identity
-  and two allowed projects are required. None are currently established.
+- A disposable Windows guest is being established for actual gateway reboot,
+  a second persistence reboot and setup re-entry. The actual approved Agent's
+  login/start/stop/offline/switch/idle behavior uses synthetic authorized fixture
+  data on a separate Windows CI host. Neither substitutes for office production
+  acceptance; no production test identity or authenticated writes are assumed.
 - Independent review must assess the final artifact and those results before
   replacing the candidate banner or distributing the package.
 
-The current host has no discovered Windows VM installation, and the repository
-has zero self-hosted Actions runners. Hosted CI does not satisfy a real reboot
-rehearsal. The user is not familiar with Windows; do not ask them to configure
-runners or make routine engineering choices. Do not use Surjith's office as the
-first full rehearsal or silently create production test identities.
+The local Mac has no Windows VM and the repository has zero self-hosted Actions
+runners. [KVM capability run 35546643249](https://github.com/DanielGiuditta/mandala/actions/runs/35546643249)
+executed a small real guest successfully on an Ubuntu host. The next rehearsal
+uses official Microsoft evaluation media in a Windows guest while the controller
+survives guest reboots. The capability probe alone proves no Windows behavior.
+The user need not configure runners or coordinate engineering decisions.
 
-Automatic approval review rejected a push because the remote destination trust
-was not established. Inspection confirmed `DanielGiuditta/mandala` belongs to the
-signed-in account, but is public. Explicit user approval to publish the recovery
-branch is pending. Original office reports and credentials are excluded from the
-prepared commits. No remote push or deployment has occurred in this task.
+After the earlier automatic approval rejection, the user explicitly instructed
+publication/completion of this handoff. The recovery branch was pushed to the
+user-owned public `DanielGiuditta/mandala` repository. Original office reports,
+private credentials and pairing material are excluded from commits and artifacts.
+
+Fresh maintainer Mac downloads on September 20 New York / September 21 UTC matched
+the live production manifests and the original audited installer bytes: Agent
+1.0.15 `acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed`
+(51,056,706 bytes), gateway 1.1.0
+`0fd024c0cf69d8e913c048f5e3e20c2e50d2fdf0c4584dbc6108d5ac98150ce3`
+(24,825,179 bytes). Only the employee installer is included in the recovery ZIP.
 
 ## Domain and release boundaries
 

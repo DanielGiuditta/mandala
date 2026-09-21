@@ -133,6 +133,20 @@ try {
  } finally {Remove-Item $temporary -Recurse -Force}
  Write-Host 'PASS: task/network/firewall/log evidence failures preserve state, prior events, and exported report.'
 }
+# A secondary checkpoint failure must not hide the original uncertain-save error.
+& {
+ $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Run-AutomatedCase'},$true)
+ Invoke-Expression $node.Extent.Text
+ $script:scenarioSaves=0
+ function Save-QuickReport {$script:scenarioSaves++;if($script:scenarioSaves -eq 2){throw 'fixture checkpoint unavailable'}}
+ function Note-Action {}
+ $state=[pscustomobject]@{Scenarios=@()}
+ $caught=''
+ try {Run-AutomatedCase 'fixture' 1 {throw 'original uncertain save'}}catch{$caught=$_.Exception.Message}
+ Assert ($caught -eq 'original uncertain save' -and $state.Scenarios[0].Detail -eq $caught) 'A secondary checkpoint failure hid the original operation failure.'
+ Assert ($state.CheckpointErrors.Count -eq 1 -and $state.CheckpointErrors[0].Stage -eq 'scenario:fixture') 'Checkpoint failure was not retained separately.'
+ Write-Host 'PASS: original scenario error survives a secondary mandatory-checkpoint failure.'
+}
 # Test the real restart helper with only side effects stubbed. Never reboot CI.
 $node=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Arm-Reboot'},$true)
 $script:fixtureKitRoot=Split-Path $file

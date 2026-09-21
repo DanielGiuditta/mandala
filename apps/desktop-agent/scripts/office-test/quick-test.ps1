@@ -282,7 +282,7 @@ try {
         if($state.Phase -eq 'preflight') {
             Ask-Yes 'IT: confirm this is the dedicated, awake gateway with reserved IP, no internet port forwarding, isolation from file servers/domain controllers, and employee direct internet blocked while gateway HTTPS is allowed.'
             $state.Checks+=New-CheckResult 'gateway.isolation' 'OBSERVED' 'IT confirmed dedicated gateway, reserved IP, network isolation and employee internet restriction.'
-            Require (@($state.Checks|Where-Object {$_.Status -notin @('PASS','OBSERVED')}).Count -eq 0) 'Gateway prerequisites failed. See FIXES.txt; all independent checks are saved.'
+            Require (@($state.Checks|Where-Object {$_.Status -notin @('PASS','OBSERVED')}).Count -eq 0) 'Gateway checks did not pass. Return the current gateway report and employee baseline together as described in READ-FIRST.txt. Do not repeat repairs or run time tests.'
             Ask-Yes 'Confirm there are NO active employee timers before this gateway restart.'
             Arm-Reboot;return
         }
@@ -332,7 +332,7 @@ try {
             'Employee identity and two or more visible allowed projects confirmed through Agent UI.'
         }
         Show-Checks
-        Require (@($state.Checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'Prerequisites failed. See FIXES.txt; every independent check is saved. Correct prerequisites and reopen this launcher before time testing.'
+        Require (@($state.Checks|Where-Object {$_.Status -ne 'PASS'}).Count -eq 0) 'Employee checks did not pass. Return the current reports together as described in READ-FIRST.txt. Independent checks are saved; do not repeat time tests or clear existing work.'
         Require ((Get-AgentText 'ActiveProjectText') -ceq 'No active project') 'Stop any existing real work yourself before testing. The checker will not stop it.'
         Wait-Ui 'previous pending work to finish before test authorization' {(Get-AgentControl 'StartWorkButton').Current.IsEnabled -and (Get-AgentText 'TrackerMessageText') -notlike '*waiting for the LAN gateway*'} 120|Out-Null
         for($i=0;$i -lt $choices.Count;$i++){Write-Host (($i+1).ToString()+': '+$choices[$i])}

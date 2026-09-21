@@ -11,7 +11,7 @@ permissions:
   actions: read
 concurrency:
   group: employee-startup-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   startup:
     runs-on: windows-latest
@@ -154,6 +154,8 @@ jobs:
           Expand-Archive -LiteralPath $kitZip -DestinationPath $extracted
           & powershell.exe -NoProfile -File (Join-Path $extracted 'package-entry.ps1') -Role gateway -Mode Export
           if($LASTEXITCODE -ne 0){throw 'Packaged export entry point failed.'}
+          & powershell.exe -NoProfile -File apps/desktop-agent/tests/package-launcher.ps1 -PackageDirectory $extracted
+          if($LASTEXITCODE -ne 0){throw 'Exact downloaded CMD and standard-user baseline audit failed.'}
           $kitHash=(Get-FileHash $kitZip -Algorithm SHA256).Hash.ToLowerInvariant()
           $kitSize=(Get-Item $kitZip).Length
           "Candidate CI checks passed; real reboot and Agent rehearsal still required: version=1.2.3 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
@@ -166,4 +168,5 @@ jobs:
             MandalaRecoveryCandidate-1.2.3.zip
             office-test-audit.txt
             ${{ runner.temp }}/approved-agent-lan-audit.json
+            ${{ runner.temp }}/mandala-package-launcher-audit.json
           if-no-files-found: error

@@ -1,4 +1,7 @@
-KNOWN PREREQUISITE FIXES - USE IN THE SAME SESSION
+HISTORICAL PREREQUISITE REFERENCE - NOT INCLUDED IN THE 1.2.3 HANDOFF
+
+For recovery 1.2.3 use READ-FIRST.txt and Start Mandala.cmd. Return the current
+reports if a check blocks the session; do not improvise or repeat time tests.
 
 These fixes are only for BEFORE automated time tests have started. If a time save
 is uncertain, preserve work and return both reports instead of repeating it.
@@ -68,7 +71,9 @@ A locked/RDP-disconnected desktop, policy blocking accessibility, unknown dialog
 user activity during the idle test can block automation; those are NOT passes.
 
 REPORT LOCATION
-Desktop: Mandala-Quick-Test-<PC>-employee.zip or -gateway.zip.
-Progress: LocalAppData / Mandala Office Test 1.2.0 (do not delete/reset to retry).
+Use the exact SEND THIS CURRENT REPORT path displayed by the 1.2.3 runner.
+Every new report name includes its version and unique timestamp/snapshot.
+Progress: Mandala Office Recovery / <Windows SID> under ProgramData for gateway
+or LocalAppData for employee. Legacy state is retained (never delete/reset it).
 The temporary resume entry is HKCU RunOnce / MandalaOfficeTest-employee or -gateway.
 It runs once after sign-in. It is separate from the actual Agent startup shortcut.

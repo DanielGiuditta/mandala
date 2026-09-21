@@ -1,13 +1,14 @@
 MANDALA LAN TIME TRACKING 1.2.3
-ENGINEERING CANDIDATE - DO NOT SEND TO OFFICE IT UNTIL RELEASE REVIEW CLEARS IT
+ONE PLANNED IT SESSION - USE THE VERSION SUPPLIED BY DANIEL
 
 One package; one entry point: Start Mandala.cmd.
 Time tracking only. The gateway must already be configured and the employee
 must already be paired in their original Windows account.
 
-Before the planned office session, Daniel must confirm this exact package
-passed the Windows rehearsal, including actual restarts and real Agent saves.
-Daniel must be available to verify production entries during the session.
+Have Windows administrator approval, the employee's own Mandala login, two
+permitted projects, and a separate internet-connected browser available.
+Daniel must be available to verify the saved production entries. Keep the
+desktop unlocked during automatic checks and allow the timed idle check to finish.
 
 1. Extract the whole package on both computers. Keep both extracted folders
    in place until the session finishes. Open Start Mandala normally on the
@@ -47,4 +48,5 @@ different Windows account. A missing pairing is a reported blocker for Daniel.
 
 Only Daniel's production verification and review can accept time tracking.
 A running window, project list or report export alone is not acceptance.
-Rehearsal timing and release clearance are not yet available for this candidate.
+Keep both computers and their original Windows accounts available until Daniel
+reviews the returned evidence. This session covers one already-paired employee.
