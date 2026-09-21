@@ -1,0 +1,42 @@
+name: Probe isolated Windows rehearsal host
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/lan-recovery-1.2.3]
+    paths:
+      - '.github/workflows/rehearse-lan-windows.yml'
+      - 'apps/desktop-agent/tests/rehearsal/**'
+
+permissions:
+  contents: read
+
+jobs:
+  capability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute a minimal nested guest without downloading Windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mandala-rehearsal"
+          cc -std=c11 -Wall -Wextra -Werror \
+            apps/desktop-agent/tests/rehearsal/probe-kvm.c \
+            -o "$RUNNER_TEMP/mandala-rehearsal/probe-kvm"
+          sudo "$RUNNER_TEMP/mandala-rehearsal/probe-kvm" \
+            | tee "$RUNNER_TEMP/mandala-rehearsal/kvm-result.txt"
+          {
+            printf '\nHost resources (not Windows acceptance evidence):\n'
+            uname -m
+            free -h
+            df -h "$RUNNER_TEMP"
+            printf '\nNo Windows image, production credentials or employee records were used.\n'
+          } | tee "$RUNNER_TEMP/mandala-rehearsal/host-resources.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mandala-Windows-rehearsal-host-capability
+          path: ${{ runner.temp }}/mandala-rehearsal/*.txt
+          if-no-files-found: warn
