@@ -1,7 +1,15 @@
 # LAN time-tracking handoff — 20 September 2026
 
-> **Current recipient scope changed at the user's request:** use
-> [the short LAN check](lan-quick-check-1.2.3.txt) with the same immutable ZIP.
+> **Current recipient package:** send only `Mandala-LAN-Quick-Check-1.2.3.zip`
+> from Downloads. It contains [the short LAN guide](lan-quick-check-bundle-readme-1.2.3.txt)
+> as `00 START HERE.txt` and all 19 original audited files unchanged under
+> `Mandala files/`, with no nested ZIP. Its size is **50,565,439 bytes** and
+> SHA-256 is `7e1aa8998fbdaa4638f03938c7c5e6417dc310fcf41f8448515b536127849b42`.
+> This is a documentation-only repackage, not new executable code or a claim
+> that the outer archive was rerun on Windows. Every original file and its
+> internal manifest match the Windows-tested artifact byte for byte.
+>
+> **Current recipient scope changed at the user's request:** use that short guide.
 > It retains gateway repair/restart but uses one two-minute manual employee save
 > and fresh read-only evidence. Do not select employee option 3 for that session.
 > The full five-entry acceptance sequence below remains available as historical
@@ -33,7 +41,7 @@ file shares, new employee pairing and wider rollout are outside this handoff.
 ## Exact artifact and Windows evidence
 
 - Kit version: **1.2.3**.
-- Recipient file: **`Mandala-Surjith-1.2.3.zip`**, in Daniel's Downloads folder.
+- Original audited file: **`Mandala-Surjith-1.2.3.zip`**. The current short-check recipient package is identified in the banner above.
 - Tested source: `697014494898ba26e033e47efb5016ed4c029c46`.
 - ZIP size: **50,573,096 bytes**.
 - ZIP SHA-256: `6e094282d285970940bbab6dfcd3efdf6c3c14efd1076c3af6dd219886221dbd`.
