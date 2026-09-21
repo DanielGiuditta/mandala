@@ -7,6 +7,7 @@ Add-Type -AssemblyName PresentationFramework
 <Button x:Name="StartWorkButton">Start Work</Button><Button x:Name="StopButton">Stop</Button>
 <TextBlock x:Name="ActiveProjectText" Text="No active project"/><TextBlock x:Name="TrackerMessageText"/>
 <Button x:Name="CopyDiagnosticsButton">Save / copy diagnostics for IT</Button>
+<Button x:Name="ShowDelayedStatusButton">Show delayed tracker status</Button>
 </StackPanel></Window>
 '@
 $window=[Windows.Markup.XamlReader]::Load([Xml.XmlNodeReader]::new($xaml))
@@ -19,4 +20,14 @@ $window.FindName('StartWorkButton').Add_Click({
  $active.Text='Tracking '+$name
 })
 $window.FindName('StopButton').Add_Click({$active.Text='No active project';$message.Text='Time saved successfully. Reference: fixture'})
+$delayedStatusTimer=New-Object Windows.Threading.DispatcherTimer
+$delayedStatusTimer.Interval=[TimeSpan]::FromMilliseconds(1600)
+$delayedStatusTimer.Add_Tick({
+ $delayedStatusTimer.Stop()
+ $text=New-Object Windows.Controls.TextBlock
+ [Windows.Automation.AutomationProperties]::SetAutomationId($text,'DelayedStatusText')
+ $text.Text='Pending fixture work restored'
+ $window.Content.Children.Add($text)|Out-Null
+})
+$window.FindName('ShowDelayedStatusButton').Add_Click({$delayedStatusTimer.Start()})
 $window.ShowDialog()|Out-Null

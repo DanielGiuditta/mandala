@@ -62,6 +62,18 @@ function Find-AgentControl($Id) {
 }
 function Get-AgentControl($Id) { $control=Find-AgentControl $Id; Require ($null -ne $control) ('Expected Agent control unavailable: '+$Id); return $control }
 function Get-AgentText($Id) { (Get-AgentControl $Id).Current.Name }
+function Wait-AgentText($Id,[scriptblock]$TextCondition,[int]$Seconds=60,[string]$Description='') {
+    if(-not $Description){$Description='Agent text '+$Id}
+    Wait-Ui $Description {
+        # During restored sign-in the window can exist before tracker controls.
+        # Missing/hidden text is a pending condition, not a failed assertion.
+        # Find-AgentControl still checks the live process identity each poll;
+        # process, window and unexpected UI errors are never swallowed here.
+        $control=Find-AgentControl $Id
+        if($null -eq $control -or $control.Current.IsOffscreen){return $false}
+        return (& $TextCondition ([string]$control.Current.Name))
+    } $Seconds|Out-Null
+}
 function Invoke-AgentButton($Id,[switch]$Async) {
     $control=Get-AgentControl $Id
     Require ($control.Current.IsEnabled -and -not $control.Current.IsOffscreen) ('Agent action unavailable: '+$Id)
@@ -105,7 +117,7 @@ function Confirm-AgentSwitch([bool]$Yes) {
     Wait-Ui 'switch dialog response' {$task.IsCompleted} 15|Out-Null
     $task.GetAwaiter().GetResult()
 }
-function Wait-AgentState($Text,[int]$Seconds=60) { Wait-Ui ('Agent state '+$Text) {(Get-AgentText 'ActiveProjectText') -ceq $Text} $Seconds|Out-Null }
+function Wait-AgentState($Text,[int]$Seconds=60) { Wait-AgentText 'ActiveProjectText' {param($value) $value -ceq $Text} $Seconds ('Agent state '+$Text) }
 function Start-AgentProject($Name) {
     Require ((Get-AgentText 'ActiveProjectText') -ceq 'No active project') 'Existing work found. Do not let the test alter a real work session.'
     Select-AgentProject $Name

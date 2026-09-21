@@ -387,13 +387,13 @@ try {
         Wait-TestActivity
         Require (-not (Test-GatewayReachable)) 'Network returned before the offline stop.'
         Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project' 90
-        Wait-Ui 'durable pending-save message' {(Get-AgentText 'TrackerMessageText') -like '*Time saved on this computer; waiting for the LAN gateway*'} 90|Out-Null
+        Wait-AgentText 'TrackerMessageText' {param($text) $text -like '*Time saved on this computer; waiting for the LAN gateway*'} 90 'durable pending-save message'
         Require (@(Read-Receipts $since).Count -eq 0) 'Agent reported a server receipt while offline.'
         Add-Observation $s 'Offline stop showed pending, not cloud-saved'
         Invoke-AgentButton 'CopyDiagnosticsButton'
         Close-TestAgent
         Start-Process -FilePath $script:AgentPath -WorkingDirectory (Split-Path $script:AgentPath)|Out-Null;Start-Sleep -Seconds 2;Attach-TestAgent
-        Wait-Ui 'pending work restored after offline app restart' {(Get-AgentText 'TrackerMessageText') -like '*Time saved on this computer; waiting for the LAN gateway*'} 120|Out-Null
+        Wait-AgentText 'TrackerMessageText' {param($text) $text -like '*Time saved on this computer; waiting for the LAN gateway*'} 120 'pending work restored after offline app restart'
         Add-Observation $s 'Pending save survived normal close/reopen in the same employee account'
         Require (-not (Test-GatewayReachable)) 'Connection returned before the blocked-start check.'
         $start=Get-AgentControl 'StartWorkButton'

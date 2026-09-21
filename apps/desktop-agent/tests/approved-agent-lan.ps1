@@ -99,7 +99,7 @@ try {
     $script:started=[DateTimeOffset]::UtcNow
     [MandalaTestInput]::Awake($true);[MandalaTestInput]::Pulse()
     Start-FixtureAgent
-    Require ((Get-AgentText 'BuildIdentityText') -like '*LAN https://127.0.0.1:8443*') 'Actual Agent did not select the loopback LAN fixture.'
+    Wait-AgentText 'BuildIdentityText' {param($text) $text -like '*LAN https://127.0.0.1:8443*'} 30 'actual Agent loopback LAN identity'
     ([Windows.Automation.ValuePattern](Get-AgentControl 'EmailTextBox').GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)).SetValue('lan-fixture@example.test')
     $shell=New-Object -ComObject WScript.Shell
     try {Require ($shell.AppActivate($script:AgentProcessId)) 'Could not focus the fixture Agent.';(Get-AgentControl 'PasswordBox').SetFocus();Start-Sleep -Milliseconds 200;$shell.SendKeys('fixtureonly',$true)}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)}
@@ -113,17 +113,17 @@ try {
     Start-AgentProject 'CI protocol project B';Start-Sleep -Seconds 3
     Set-FixtureOnline $false
     Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project' 90
-    Wait-Ui 'durable pending receipt state' {(Get-AgentText 'TrackerMessageText') -match 'waiting for the LAN gateway|Pending time remains'} 60|Out-Null
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for the LAN gateway|Pending time remains'} 60 'durable pending receipt state'
     Require (Test-Path -LiteralPath $journal) 'Actual Agent did not write its fixture journal.'
     Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq 1) 'Offline stop falsely reported a second server receipt.'
     Close-TestAgent
     Start-FixtureAgent
-    Wait-Ui 'offline pending work survives normal close/reopen' {(Get-AgentText 'TrackerMessageText') -match 'waiting for the LAN gateway|Pending time remains'} 90|Out-Null
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for the LAN gateway|Pending time remains'} 90 'offline pending work survives normal close/reopen'
     Require (-not (Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Actual Agent allowed another start while the offline save was pending.'
     Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq 1) 'Offline restore fabricated a server receipt.'
     Set-FixtureOnline $true
     Wait-FixtureReceipts 2
-    Wait-Ui 'reconciled save confirmation' {(Get-AgentText 'TrackerMessageText') -like '*Time saved successfully. Reference:*'} 60|Out-Null
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -like '*Time saved successfully. Reference:*'} 60 'reconciled save confirmation'
     # Exercise the actual production binary's two-stage project switch UI.
     # Merely selecting B and cancelling confirmation must leave A active.
     [MandalaTestInput]::Pulse()
@@ -153,7 +153,7 @@ try {
     Start-AgentProject 'CI protocol project A'
     [MandalaTestInput]::Pulse();$idleStarted=[DateTimeOffset]::UtcNow
     Write-Host 'Approved Agent protocol fixture: waiting for its real five-minute idle pause. No test mouse/keyboard input will be generated.'
-    Wait-Ui 'actual five-minute idle pause and save confirmation' {(Get-AgentText 'TrackerMessageText') -like 'Timer paused after 5 minutes*Time saved successfully*'} 380|Out-Null
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -like 'Timer paused after 5 minutes*Time saved successfully*'} 380 'actual five-minute idle pause and save confirmation'
     $idleSeconds=([DateTimeOffset]::UtcNow-$idleStarted).TotalSeconds
     Require ($idleSeconds -ge 295 -and $idleSeconds -le 380) 'Idle result did not follow the actual bounded five-minute Windows inactivity interval.'
     Wait-AgentState 'No active project';Wait-FixtureReceipts 5
@@ -175,6 +175,16 @@ try {
 } catch {
     $primaryError=$_
     try {if(Test-Path -LiteralPath (Join-Path $fixture 'server-error.txt')){Get-Content -LiteralPath (Join-Path $fixture 'server-error.txt')|Write-Host}}catch{Write-Warning 'Fixture server diagnostics unavailable; original test error is preserved.'}
+    # Fixed-field diagnostics distinguish delayed tracker controls from failed
+    # session restoration without reading passwords or decrypting any journal.
+    $safeControls=@()
+    foreach($id in @('BuildIdentityText','LoginMessageText','TrackerMessageText','ProjectComboBox','StartWorkButton')) {
+        try {
+            $c=Find-AgentControl $id
+            $safeControls+=[pscustomobject]@{Id=$id;Present=($null -ne $c);Visible=($c -and -not $c.Current.IsOffscreen);Enabled=($c -and $c.Current.IsEnabled);ErrorCodes=@(if($c){[regex]::Matches($c.Current.Name,'\bAGENT-[A-Z0-9-]+-\d{3}\b')|ForEach-Object {$_.Value}})}
+        } catch {$safeControls+=[pscustomobject]@{Id=$id;Evidence='Unavailable'}}
+    }
+    try {$safeControls|ConvertTo-Json -Depth 5|Write-Host;if($script:started){@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started)|Select-Object -Last 15|ConvertTo-Json -Depth 5|Write-Host}}catch{Write-Warning 'Additional fixture evidence unavailable; original error is preserved.'}
     Write-Host $primaryError.ScriptStackTrace
 } finally {
     Invoke-FixtureCleanup 'Agent process' {if($script:fixtureAgent -and -not $script:fixtureAgent.HasExited){$script:fixtureAgent.Kill();$script:fixtureAgent.WaitForExit(10000)|Out-Null}}

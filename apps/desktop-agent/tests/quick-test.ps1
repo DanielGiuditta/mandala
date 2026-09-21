@@ -7,6 +7,12 @@ $p=Start-Process powershell.exe -ArgumentList '-NoProfile','-STA','-File',('"'+$
 try {
  $script:AgentPath=$p.Path;$script:AgentProcessId=$p.Id
  Wait-Ui 'fixture window' {try{Get-AgentRoot}catch{$null}} 30|Out-Null
+ Assert ($null -eq (Find-AgentControl 'DelayedStatusText')) 'Delayed fixture control unexpectedly exists before its restore step.'
+ Invoke-AgentButton 'ShowDelayedStatusButton'
+ Wait-AgentText 'DelayedStatusText' {param($text) $text -ceq 'Pending fixture work restored'} 10 'delayed tracker control appears after window'
+ $failed=$false;try{Wait-AgentText 'NeverPresentText' {param($text) $true} 1}catch{$failed=$true};Assert $failed 'Missing text control wait was not bounded.'
+ $verifiedPath=$script:AgentPath
+ try {$script:AgentPath='unexpected-process-path';$failed=$false;try{Wait-AgentText 'DelayedStatusText' {param($text) $true} 10}catch{$failed=$_.Exception.Message -like '*identity changed*'};Assert $failed 'Text readiness wait swallowed a process identity failure.'}finally{$script:AgentPath=$verifiedPath}
  Assert ((Get-AgentText 'ActiveProjectText') -eq 'No active project') 'Initial fixture state not found.'
  $projects=@(Get-AgentProjects);Assert ($projects.Count -eq 2 -and $projects[0] -eq 'A' -and $projects[1] -eq 'B') 'Accessible project enumeration failed.'
  Start-AgentProject 'A'
