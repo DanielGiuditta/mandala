@@ -82,7 +82,8 @@ function Evidence($Phase){
         gatewayVersion=$release.version;runtimeSha256=(Get-FileHash (Join-Path $install 'runtime\node.exe')).Hash.ToLowerInvariant();serverCertificateSha256=$serverFingerprint
         task=(Get-GatewayTaskEvidence);listenerOwner=$owner.Sid;listenerStartedUtc=$process.CreationDate.ToUniversalTime().ToString('o')
         gatewayAddress=$address;firewallRemoteAddresses=$remote;pairingUnchanged=$true;trustedMutualTls=$true
-        backend=$health.backend;observerStartsGateway=$false;gatewayRebootCount=$state.reboots
+        backend=$health.backend;observerStartsGatewayDuringBootCheck=$false;gatewayRebootCount=$state.reboots
+        setupMaintenanceInvokedGatewayRestart=($Phase -eq 'setup-reentry')
         limitations=@('Fixture device and SYSTEM profile; no employee authentication or time writes.','Synthetic yes responses are not office IT/isolation evidence. No interactive UAC or RunOnce acceptance.','Same-guest mutual TLS; no separate employee networking acceptance.')
     }
 }
