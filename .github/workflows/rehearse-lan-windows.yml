@@ -12,6 +12,11 @@ on:
         description: Successful employee-startup audit run containing the exact candidate ZIP
         type: string
         required: false
+      exercise:
+        description: Exact downloaded launcher flow, or repair-module comparison only
+        type: choice
+        options: [packaged, module]
+        default: packaged
   push:
     branches: [codex/lan-recovery-1.2.3]
     paths:
@@ -66,6 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          GATEWAY_EXERCISE: ${{ inputs.exercise }}
           GH_REPO: ${{ github.repository }}
           LIBGUESTFS_BACKEND: direct
         run: python3 apps/desktop-agent/tests/rehearsal/run-gateway-guest.py

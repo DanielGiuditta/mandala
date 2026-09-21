@@ -40,6 +40,15 @@ inventory item, then downloads the official evaluation VHDX. No GitHub credentia
 or private production credential is copied into the guest. The base image is not
 modified or uploaded; only its disposable overlay is changed.
 
+The default `exercise=packaged` invokes the unchanged downloaded
+`Start Mandala.cmd gateway Run`, feeds explicitly synthetic fixture confirmations,
+and lets its shipped `Arm-Reboot` request the first actual reboot. After verifying
+that the correct listener started without intervention, the observer opens the
+same packaged entry point in the same SYSTEM account as the documented fallback.
+The native gateway report is exported in a wrapper marked synthetic and excluded
+from office acceptance. Prompt responses do not establish real IT isolation.
+`exercise=module` retains the narrower direct repair-module comparison.
+
 The generated unattended setup uses a random local Administrator password. The
 guest removes temporary automatic login, then a separate SYSTEM task observes
 the gateway across two actual guest restarts. This observer never starts the
@@ -51,8 +60,10 @@ over its loopback-bound endpoint and retains screenshots if startup stalls.
 The first execution remains a rehearsal of this new lab harness, not a claimed
 pass. Inspect the run artifacts; a timeout, exception, missing phase or repeated
 boot identity fails. The overall job is capped at 60 minutes, with a 35-minute
-guest observation limit. The output explicitly excludes employee authentication,
-production time saves, UAC and checker RunOnce acceptance.
+guest observation limit and a 12-minute initial-evidence deadline. The output
+explicitly excludes employee authentication, production time saves, UAC and
+interactive RunOnce acceptance. The SYSTEM fallback demonstrates the packaged
+resume code; it does not pretend to be an employee or interactive admin login.
 
 ## Why the guest is separate from the Actions runner
 

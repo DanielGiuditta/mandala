@@ -104,7 +104,9 @@ def prepare_payload():
     shutil.copy2(gateway, payload / gateway.name)
     for name in ("bootstrap.ps1", "gateway-guest.ps1"):
         shutil.copy2(SOURCE / name, payload / name)
-    metadata = {"sourceCommit": audit["head_sha"], "candidateRunId": run_id,
+    exercise = os.environ.get("GATEWAY_EXERCISE", "packaged")
+    require(exercise in {"packaged", "module"}, "Unknown gateway rehearsal exercise")
+    metadata = {"sourceCommit": audit["head_sha"], "candidateRunId": run_id, "exercise": exercise,
                 "packageSha256": package_sha, "packageBytes": package.stat().st_size,
                 "gatewayInstallerSha256": GATEWAY_SHA}
     for path in (payload / "artifact-metadata.json", OUT / "artifact-metadata.json"):
@@ -188,7 +190,7 @@ class EvidenceReceiver(http.server.BaseHTTPRequestHandler):
             return
         try:
             item = json.loads(self.rfile.read(length).decode("utf-8-sig"))
-            require(item.get("phase") in {"progress", "prepared", "first-reboot", "setup-reentry", "complete", "failed"},
+            require(item.get("phase") in {"progress", "prepared", "package-requested", "package-report", "first-reboot", "setup-reentry", "complete", "failed"},
                     "Unknown evidence phase")
             EVENTS.append(item)
             path = OUT / f"guest-{len(EVENTS):02d}-{item['phase']}.json"
@@ -263,17 +265,26 @@ def boot_and_observe(disk, uefi):
                 print(f"Waiting for guest evidence ({int(elapsed)}s elapsed).", flush=True)
                 last_capture = elapsed
             require(elapsed < 35 * 60, "Guest did not complete within bounded observation window")
+            require(EVENTS or elapsed < 12 * 60,
+                    "Guest produced no initial evidence within 12 minutes; inspect startup screenshots")
         screenshot(monitor, "final-screen")
         require(EVENTS[-1]["phase"] == "complete" and EVENTS[-1].get("result") == "PASS",
                 "Guest reported a rehearsal failure; inspect fixed-field evidence")
+        initial_phase = "package-requested" if os.environ.get("GATEWAY_EXERCISE", "packaged") == "packaged" else "prepared"
         required = {phase: next((event for event in EVENTS if event["phase"] == phase), None)
-                    for phase in ("prepared", "first-reboot", "setup-reentry", "complete")}
+                    for phase in (initial_phase, "first-reboot", "setup-reentry", "complete")}
         require(all(required.values()), "Missing a required guest rehearsal phase")
-        boots = [required[phase]["bootUtc"] for phase in ("prepared", "first-reboot", "complete")]
+        boots = [required[phase]["bootUtc"] for phase in (initial_phase, "first-reboot", "complete")]
         require(len(set(boots)) == 3, "Rehearsal did not observe two distinct guest reboots")
         require(required["complete"]["gatewayRebootCount"] == 2, "Unexpected reboot count")
+        if initial_phase == "package-requested":
+            native = next((event for event in EVENTS if event["phase"] == "package-report"), None)
+            require(native and native.get("syntheticFixtureOnly") is True and
+                    native["nativeReport"]["Phase"] == "complete" and
+                    native["nativeReport"]["Result"].startswith("GATEWAY LOCAL CHECKS PASSED"),
+                    "Exact packaged gateway flow did not complete its native report")
         print("PASS: actual Windows gateway survived two guest reboots and setup re-entry.", flush=True)
-        print("NOT TESTED: employee sign-in, production time writes, UAC or office acceptance.", flush=True)
+        print("NOT TESTED: employee sign-in, production time writes, UAC, interactive RunOnce or office acceptance.", flush=True)
     finally:
         screenshot(monitor, "last-screen")
         if process.poll() is None:
@@ -285,6 +296,20 @@ def boot_and_observe(disk, uefi):
                 process.wait(timeout=5)
         server.shutdown()
         log.close()
+        # If guest networking failed, retrieve only our own fixed-field JSON.
+        # Never export the disk, answer file, certificate keys or raw setup logs.
+        try:
+            offline = subprocess.run(
+                ["sudo", "env", "LIBGUESTFS_BACKEND=direct", "guestfish", "--ro",
+                 "-a", str(disk), "-i", "cat", "/MandalaRehearsal/last-evidence.json"],
+                capture_output=True, text=True, timeout=180)
+            if offline.returncode == 0:
+                item = json.loads(offline.stdout.lstrip("\ufeff"))
+                require(item.get("phase") in {"progress", "prepared", "package-requested", "package-report", "first-reboot", "setup-reentry", "complete", "failed"},
+                        "Unexpected offline evidence schema")
+                (OUT / "offline-last-evidence.json").write_text(json.dumps(item, indent=2))
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+            pass
 
 
 def main():

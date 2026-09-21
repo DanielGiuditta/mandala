@@ -9,6 +9,7 @@ $repair=Join-Path $kit 'gateway-repair'
 $profile=Join-Path $root 'fixture-profile'
 $address='10.0.2.15'
 $scope=$address+'/32'
+$nativeStatePath=Join-Path $env:ProgramData 'Mandala Office Recovery\S-1-5-18\gateway.json'
 function Assert($Condition,$Message){if(-not $Condition){throw $Message}}
 function Emit($Value){
     $json=$Value|ConvertTo-Json -Depth 15
@@ -19,6 +20,19 @@ function Emit($Value){
     }
 }
 function Save-State { $state|ConvertTo-Json -Depth 15|Set-Content -LiteralPath $statePath -Encoding UTF8 }
+function Invoke-PackagedGateway {
+    # All answers describe this synthetic, disposable engineering fixture. They
+    # are explicitly excluded from office IT/isolation acceptance evidence.
+    $answers=Join-Path $root 'synthetic-answers.txt'
+    [IO.File]::WriteAllText($answers,((1..8|ForEach-Object {'yes'}) -join "`r`n")+"`r`n")
+    $p=Start-Process -FilePath $env:ComSpec -ArgumentList ('/d /c ""'+(Join-Path $kit 'Start Mandala.cmd')+'" gateway Run"') -RedirectStandardInput $answers -RedirectStandardOutput (Join-Path $root 'package-stdout.txt') -RedirectStandardError (Join-Path $root 'package-stderr.txt') -Wait -PassThru
+    Assert ($p.ExitCode -eq 0) ('Exact package launcher failed with exit '+$p.ExitCode)
+    Assert (Test-Path -LiteralPath $nativeStatePath) 'Exact package did not save its authoritative gateway state.'
+    $native=Get-Content -LiteralPath $nativeStatePath -Raw|ConvertFrom-Json
+    if($native.PrimaryError){throw ('Packaged gateway report: '+$native.PrimaryError.Detail)}
+    Assert (@($native.CheckpointErrors|Where-Object {$null -ne $_}).Count -eq 0) 'Packaged gateway recorded a checkpoint error.'
+    return $native
+}
 function Boot-Identity { return (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o') }
 function Require-Listener {
     $until=[DateTime]::UtcNow.AddMinutes(3)
@@ -61,13 +75,14 @@ function Evidence($Phase){
     try{$serverFingerprint=([BitConverter]::ToString($sha.ComputeHash($serverCertificate.GetRawCertData()))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
     return [pscustomobject]@{
         phase=$Phase;result='PASS';observedUtc=[DateTime]::UtcNow.ToString('o');bootUtc=(Boot-Identity)
+        exercise=$state.exercise;syntheticFixtureOnly=$true
         sourceCommit=$state.sourceCommit;packageSha256=$state.packageSha256;gatewayInstallerSha256=$state.gatewayInstallerSha256
         operatingSystem=$os.Caption;operatingSystemVersion=$os.Version
         gatewayVersion=$release.version;runtimeSha256=(Get-FileHash (Join-Path $install 'runtime\node.exe')).Hash.ToLowerInvariant();serverCertificateSha256=$serverFingerprint
         task=(Get-GatewayTaskEvidence);listenerOwner=$owner.Sid;listenerStartedUtc=$process.CreationDate.ToUniversalTime().ToString('o')
         gatewayAddress=$address;firewallRemoteAddresses=$remote;pairingUnchanged=$true;trustedMutualTls=$true
         backend=$health.backend;observerStartsGateway=$false;gatewayRebootCount=$state.reboots
-        limitations=@('Fixture device and SYSTEM profile; no employee authentication or time writes.','Repair module harness; no interactive UAC or checker RunOnce acceptance.','Same-guest mutual TLS; no separate employee networking acceptance.')
+        limitations=@('Fixture device and SYSTEM profile; no employee authentication or time writes.','Synthetic yes responses are not office IT/isolation evidence. No interactive UAC or RunOnce acceptance.','Same-guest mutual TLS; no separate employee networking acceptance.')
     }
 }
 try {
@@ -116,13 +131,22 @@ try {
         $plan=Get-GatewayRepairPlan $approved $data $repair
         $pairing=Pairing-Hashes
         Emit @{phase='progress';step='repair-stopped-configured-gateway';task=(Get-GatewayTaskEvidence)}
-        Repair-ConfiguredGateway $plan $repair|Out-Null
         $state=[pscustomobject]@{
             phase='first-reboot';initialBoot=(Boot-Identity);firstBoot=$null;reboots=0
+            exercise=$metadata.exercise
             sourceCommit=$metadata.sourceCommit;packageSha256=$metadata.packageSha256;gatewayInstallerSha256=$metadata.gatewayInstallerSha256
             clientThumbprint=$request.thumbprint;pairing=[pscustomobject]$pairing
         }
         Save-State
+        if($state.exercise -eq 'packaged'){
+            Emit @{phase='package-requested';result='PENDING';bootUtc=(Boot-Identity);syntheticFixtureOnly=$true;sourceCommit=$state.sourceCommit;packageSha256=$state.packageSha256;operation='Unchanged Start Mandala.cmd gateway Run; scripted lab-only answers; shipped Arm-Reboot'}
+            $native=Invoke-PackagedGateway
+            Assert ($native.Phase -eq 'reboot' -and $native.BootBefore -eq $state.initialBoot) 'Packaged gateway did not arm its own reboot.'
+            # The shipped Arm-Reboot requests an immediate real restart. Do not
+            # substitute a controller restart if that request fails to occur.
+            exit 0
+        }
+        Repair-ConfiguredGateway $plan $repair|Out-Null
         Require-Listener
         Emit (Evidence 'prepared')
         & shutdown.exe /r /t 5 /d p:4:1 /c 'Mandala disposable gateway reboot rehearsal 1'
@@ -138,6 +162,14 @@ try {
     Require-Listener
     if($state.phase -eq 'first-reboot'){
         $state.reboots=1;$state.firstBoot=$boot
+        if($state.exercise -eq 'packaged'){
+            # Listener ownership was independently observed above before the
+            # synthetic post-reboot answer. This is the documented same-account
+            # launcher fallback; SYSTEM does not exercise interactive RunOnce.
+            $native=Invoke-PackagedGateway
+            Assert ($native.Phase -eq 'complete' -and $native.Result -like 'GATEWAY LOCAL CHECKS PASSED*') 'Packaged gateway fallback did not complete.'
+            Emit @{phase='package-report';syntheticFixtureOnly=$true;notOfficeAcceptance=$true;promptAnswers='Automated engineering fixture, not IT observations';nativeReport=$native}
+        }
         Emit (Evidence 'first-reboot')
         # Exercise the shipped corrected setup helper only after boot startup was
         # observed. Its suggested wider scope must retain the existing /32.
