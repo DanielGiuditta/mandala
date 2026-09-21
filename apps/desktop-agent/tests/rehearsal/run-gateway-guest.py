@@ -69,9 +69,15 @@ def prepare_payload():
     artifacts.mkdir()
     run(["gh", "run", "download", run_id, "--repo", repo, "--name",
          "MandalaRecoveryCandidate-1.2.3", "--dir", artifacts])
-    package = artifacts / "MandalaRecoveryCandidate-1.2.3.zip"
+    # Combined audit evidence may preserve the runner's common parent folders.
+    # Resolve only the unique expected names; do not select an arbitrary ZIP.
+    packages = list(artifacts.rglob("MandalaRecoveryCandidate-1.2.3.zip"))
+    audit_files = list(artifacts.rglob("office-test-audit.txt"))
+    require(len(packages) == 1 and len(audit_files) == 1,
+            "Candidate artifact must contain exactly one package and audit record")
+    package = packages[0]
     package_sha = sha256(package)
-    audit_text = (artifacts / "office-test-audit.txt").read_text(encoding="utf-8-sig")
+    audit_text = audit_files[0].read_text(encoding="utf-8-sig")
     match = re.search(r"bytes=(\d+) sha256=([a-f0-9]{64})", audit_text)
     require(match and int(match[1]) == package.stat().st_size and match[2] == package_sha,
             "Downloaded candidate differs from its audit hash/size")
