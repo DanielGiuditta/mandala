@@ -74,7 +74,7 @@ function Get-EmployeeProductionProbe {
         # Fixed authorized endpoint, no credentials; both success and HTTP rejection
         # demonstrate a bypass. A timeout is an observation, not proof of policy.
         $request=[Net.HttpWebRequest]::Create($result.Endpoint)
-        $request.Timeout=8000;$request.ReadWriteTimeout=8000;$request.AllowAutoRedirect=$false;$request.Method='GET'
+        $request.Timeout=8000;$request.ReadWriteTimeout=8000;$request.AllowAutoRedirect=$false;$request.Method='GET';$request.Proxy=$null
         try {$response=$request.GetResponse();$response.Close();$result.Outcome='Reachable'}
         catch [Net.WebException] {
             $result.Code=[string]$_.Exception.Status

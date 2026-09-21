@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [codex/fix-employee-startup, codex/lan-recovery-1.2.3]
+    paths-ignore:
+      - '.github/workflows/rehearse-lan-windows.yml'
+      - 'apps/desktop-agent/tests/rehearsal/**'
 permissions:
   contents: read
   actions: read
@@ -12,7 +15,7 @@ concurrency:
 jobs:
   startup:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -81,6 +84,8 @@ jobs:
           if(-not(Test-Path (Join-Path $kit 'startup-repair'))) { Copy-Item 'apps/desktop-agent/scripts/startup-repair' $kit -Recurse }
           & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-ui.ps1 -Agent $agent
           if($LASTEXITCODE -ne 0){throw 'Actual approved Agent UI compatibility failed.'}
+          & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-lan.ps1 -Agent $agent -ApprovedManifest "$kit/approved-agent.json"
+          if($LASTEXITCODE -ne 0){throw 'Actual approved Agent LAN receipt/journal audit failed.'}
           # Validate real installation discovery from a 32-bit PowerShell host.
           $audit=Join-Path $env:RUNNER_TEMP 'check-discovery.ps1'
           @'
@@ -160,4 +165,5 @@ jobs:
             startup-repair-audit.txt
             MandalaRecoveryCandidate-1.2.3.zip
             office-test-audit.txt
+            ${{ runner.temp }}/approved-agent-lan-audit.json
           if-no-files-found: error

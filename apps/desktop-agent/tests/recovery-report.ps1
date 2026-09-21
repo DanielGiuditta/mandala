@@ -14,12 +14,10 @@ try {
     $function=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Ask-Yes'},$true)
     Invoke-Expression $function.Extent.Text
     $desktop=New-OfficePrivateDirectory (Join-Path $base 'desktop')
-    $script:repairCount=0
     function Read-Host {Remove-Item -LiteralPath $desktop -Recurse -Force;return 'yes'}
     function Save-QuickReport {$script:snapshot=Save-OfficeSnapshot $state $storage $desktop}
     Ask-Yes 'Fixture: approve gateway maintenance'
-    $script:repairCount++ # stand-in for mutation after the real approval boundary
-    Assert ($script:repairCount -eq 1 -and $state.Actions[-1].Answer -eq 'yes') 'Approval did not return once.'
+    Assert ($state.Actions[-1].Answer -eq 'yes') 'Approval did not return.'
     Assert ((Test-Path $script:snapshot.LocalBundle) -and -not $script:snapshot.DesktopBundle) 'Disappearing Desktop did not retain a complete fallback bundle.'
     $saved=Get-Content -LiteralPath $storage.StateFile -Raw|ConvertFrom-Json
     Assert ($saved.Actions[-1].Answer -eq 'yes') 'Approval was not committed before continuing.'
@@ -49,7 +47,7 @@ try {
         $saved=Get-Content -LiteralPath $storage.StateFile -Raw|ConvertFrom-Json
         Assert ($saved.PrimaryError -eq 'original gateway failure') 'Export replaced the operation failure.'
     }
-    Write-Host 'PASS: real approval boundary, missing/unwritable/redirected Desktop, unique fallback bundles, locked mandatory checkpoint and ZIP failure.'
+    Write-Host 'PASS: approval/report unit boundaries, missing/unwritable/redirected Desktop, unique fallback bundles, locked mandatory checkpoint and ZIP failure. Actual repair orchestration is checked in the Windows pairing integration.'
 } finally {
     Remove-Item -LiteralPath $base -Recurse -Force
 }

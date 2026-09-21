@@ -124,6 +124,10 @@ try {
         try {New-Item -ItemType Junction -Path $redirect -Target (Join-Path $InstallDirectory 'runtime')|Out-Null;Reject {Assert-ProtectedGatewayPath (Join-Path $redirect 'node.exe')} 'Redirected code path was accepted.'} finally {if(Test-Path $redirect){[IO.Directory]::Delete($redirect)}}
         foreach($bad in @('Any','0.0.0.0/0','8.8.8.8','10.0.0.0/1','192.168.0.0/8')){Assert (-not(Test-PrivateGatewayScope $bad)) ('Unsafe firewall scope accepted: '+$bad)}
         $categories=@(Get-NetConnectionProfile|ForEach-Object {[string]$_.NetworkCategory}) -join ','
+        # Use the configured fixture and actual task/firewall/Local Service runtime
+        # to verify the delivered runner's report-failure recovery orchestration.
+        $recoveryAudit=Join-Path $PSScriptRoot '..\..\desktop-agent\tests\gateway-recovery-orchestration.ps1'
+        & $recoveryAudit -InstallDirectory $InstallDirectory -DataDirectory $data -RepairFolder $RepairFolder -FixtureDirectory $fixture
         Write-Host 'Repair audit: apply task/permission/firewall repair without changing pairing bytes'
         $result=Repair-ConfiguredGateway $plan $RepairFolder
         Assert ($result.PreservedFiles -eq 5 -and $result.Owner -eq 'Local Service') 'Repair did not verify pairing preservation and restricted listener owner.'

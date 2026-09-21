@@ -152,7 +152,7 @@ function Show-Checks {foreach($c in $state.Checks){Write-Host ('['+$c.Status+'] 
 function Arm-Reboot {
     $launcher=Join-Path $PSScriptRoot 'Start Mandala.cmd'
     Require (Test-Path $launcher) 'Keep the complete extracted package in its folder.'
-    Ask-Yes 'Save all other work. Restart this PC now? After signing into THIS SAME Windows account the test should reopen. If it does not, open the same Start Test file. Do not open Agent/setup manually.'
+    Ask-Yes 'Save all other work. Restart this PC now? After signing into THIS SAME Windows account the test should reopen. If it does not, open Start Mandala and select this same role. Do not open Agent/setup manually.'
     # One-time launcher only, in this Windows account. Never replace Agent startup.
     $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
     New-Item $key -Force|Out-Null
@@ -183,13 +183,22 @@ function Test-GatewayReachable {
 function Run-AutomatedCase($Kind,$Count,[scriptblock]$Body) {
     $scenario=[pscustomobject]@{Kind=$Kind;Status='INCOMPLETE';Detail='Automatic UI test started';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');FinishedUtc=$null;TimeZoneOffsetMinutes=[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes;FinishedTimeZoneOffsetMinutes=$null;Observations=@();Receipts=@()}
     $state.Scenarios+=$scenario;Save-QuickReport
+    $operationError=$null
     try {
         Note-Action ('Running '+$Kind+' test. Leave this desktop unlocked. Escape stops safely.')
         & $Body $scenario ([DateTimeOffset]$scenario.StartedUtc)
         $scenario.Receipts=@(Test-ScenarioEvidence @(Read-AgentEvents $log ([DateTimeOffset]$scenario.StartedUtc)) $Count $Kind)
         $scenario.Status='LOCAL PASS';$scenario.Detail='Actual Agent UI and save receipts checked; production rows still require verification.'
-    } catch {$scenario.Status='FAIL';$scenario.Detail=$_.Exception.Message;throw}
-    finally {$scenario.FinishedUtc=[DateTimeOffset]::UtcNow.ToString('o');$scenario.FinishedTimeZoneOffsetMinutes=[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes;Save-QuickReport}
+    } catch {$scenario.Status='FAIL';$scenario.Detail=$_.Exception.Message;$operationError=$_}
+    finally {
+        $scenario.FinishedUtc=[DateTimeOffset]::UtcNow.ToString('o');$scenario.FinishedTimeZoneOffsetMinutes=[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now).TotalMinutes
+        try {Save-QuickReport}
+        catch {
+            $state|Add-Member -NotePropertyName CheckpointErrors -NotePropertyValue (@($state.CheckpointErrors|Where-Object {$null -ne $_})+@([pscustomobject]@{Stage=('scenario:'+ $Kind);Code=$_.Exception.GetType().Name;Utc=[DateTimeOffset]::UtcNow.ToString('o')})) -Force
+            if(-not $operationError){$operationError=$_}
+        }
+    }
+    if($operationError){throw $operationError}
 }
 try {
     Write-Host ('MANDALA TIME TRACKING 1.2.3 - '+$Role.ToUpperInvariant())
@@ -217,6 +226,7 @@ try {
         return
     }
     Update-QuickStateVersion
+    Require (@($state.CheckpointErrors|Where-Object {$null -ne $_}).Count -eq 0) 'This run has a recorded checkpoint-storage failure. Return existing evidence for maintainer review; no repair, reboot or time tests were repeated.'
     $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if($state.Phase -eq 'functional') {
         foreach($item in $state.Scenarios){if($item.Status -eq 'INCOMPLETE'){$item.Status='FAIL';$item.Detail='Runner interrupted. No automatic replay; preserve the pending work.'}}
@@ -239,7 +249,7 @@ try {
     $state.Checks=@($state.Checks|Where-Object {$_.Id -ne 'test.quick-runner'})
     if($state.PrimaryError){$state|Add-Member -NotePropertyName PreviousErrors -NotePropertyValue (@($state.PreviousErrors|Where-Object {$null -ne $_})+@($state.PrimaryError)) -Force;$state.PSObject.Properties.Remove('PrimaryError')}
     if($Role -eq 'gateway') {
-        Require $admin 'Open Start gateway Test.cmd and approve the Windows administrator prompt.'
+        Require $admin 'Open Start Mandala.cmd, select gateway, and approve the Windows administrator prompt.'
         $state.History+=[pscustomobject]@{Utc=[DateTimeOffset]::UtcNow.ToString('o');Checks=$state.Checks}
         if($state.Phase -eq 'reboot'){Check-NewBoot|Out-Null;Wait-GatewayStartup}
         $state.Checks=@(Get-GatewayChecks);Record-QuickGatewayOrigin;Show-Checks
