@@ -1,0 +1,56 @@
+name: Probe LAN package launcher on Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/lan-recovery-1.2.3]
+    paths:
+      - '.github/workflows/check-lan-package-launcher.yml'
+      - 'apps/desktop-agent/tests/package-launcher.ps1'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: lan-launcher-probe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  launcher:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build a launcher test fixture from verified candidate bytes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $download=Join-Path $env:RUNNER_TEMP 'known-candidate'
+          gh run download 35546643236 --name MandalaRecoveryCandidate-1.2.3 --dir $download
+          if($LASTEXITCODE -ne 0){throw 'Known candidate download failed.'}
+          $zip=Join-Path $download 'MandalaRecoveryCandidate-1.2.3.zip'
+          if((Get-Item $zip).Length -ne 50572647 -or (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '885bc69850008741489f65ae9645bec0bbc4893cabfdab3dd3893a7e946ec9a7'){throw 'Downloaded candidate differs from its recorded Windows audit.'}
+          $stage=Join-Path $env:RUNNER_TEMP 'Launcher fixture - NOT A RELEASE'
+          Expand-Archive -LiteralPath $zip -DestinationPath $stage
+          $manifest=Get-Content -LiteralPath (Join-Path $stage 'package-manifest.json') -Raw|ConvertFrom-Json
+          $tracked=@{};git ls-files|ForEach-Object {$tracked[$_]=$true}
+          foreach($file in $manifest.files) {
+            $source='apps/desktop-agent/scripts/office-test/'+$file.name
+            if($file.name.StartsWith('startup-repair/')){$source='apps/desktop-agent/scripts/'+$file.name}
+            if($file.name -eq 'gateway-repair/pairing-core.ps1'){$source='apps/lan-services/deploy/windows/pairing-core.ps1'}
+            if($tracked.ContainsKey($source)){Copy-Item -LiteralPath $source -Destination (Join-Path $stage $file.name) -Force}
+          }
+          $inventory=@(Get-ChildItem -LiteralPath $stage -Recurse -File|Where-Object {$_.Name -ne 'package-manifest.json'}|ForEach-Object {@{name=$_.FullName.Substring($stage.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
+          @{version='1.2.3';backend='nzlajptokbcgeaifgnoq';sourceCommit=$env:GITHUB_SHA;releaseStatus='LAUNCHER_PROBE_FIXTURE_NOT_RELEASE';files=$inventory}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $stage 'package-manifest.json')
+          Write-Host 'Verified old candidate installer metadata retained; current tracked shipped scripts overlaid. This regenerated fixture is NOT a released or accepted package.'
+      - name: Run bounded exact CMD and standard-user audit
+        shell: powershell
+        run: |
+          $stage=Join-Path $env:RUNNER_TEMP 'Launcher fixture - NOT A RELEASE'
+          & ./apps/desktop-agent/tests/package-launcher.ps1 -PackageDirectory $stage
+      - name: Preserve only launcher audit summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-probe-summary
+          path: ${{ runner.temp }}/mandala-package-launcher-audit.json
+          if-no-files-found: ignore

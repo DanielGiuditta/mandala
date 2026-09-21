@@ -37,13 +37,19 @@ exit $LASTEXITCODE
         $parameters.Credential=$Credential;$parameters.LoadUserProfile=$true
     }
     $process=Start-Process @parameters
+    # Windows PowerShell may otherwise release the native process handle before
+    # ExitCode is cached. Retain it while waiting, including very short failures.
+    $processHandle=$process.Handle
     if(-not $process.WaitForExit($TimeoutSeconds*1000)) {
         # Terminate only this test-owned subprocess tree on a bounded timeout.
         & taskkill.exe /PID $process.Id /T /F|Out-Null
         throw ('Exact CMD '+$Label+' timed out. '+(Get-Content -LiteralPath $stdout -Raw -ErrorAction SilentlyContinue))
     }
     $process.WaitForExit()
-    return [pscustomobject]@{ExitCode=$process.ExitCode;Output=(Get-Content -LiteralPath $stdout -Raw);Error=(Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue)}
+    $exitCode=$process.ExitCode
+    $result=[pscustomobject]@{ExitCode=$exitCode;Output=(Get-Content -LiteralPath $stdout -Raw);Error=(Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue)}
+    $process.Dispose()
+    return $result
 }
 try {
     Get-ChildItem -LiteralPath $copied -Recurse -Filter '*.ps1'|ForEach-Object {Set-Content -LiteralPath $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"}
@@ -55,7 +61,7 @@ try {
         # package verification, Windows administrator check and runner are real.
         $env:ProgramData=$isolatedProgramData;$env:LOCALAPPDATA=$isolatedLocal
         $run=Invoke-CmdAudit 'gateway-export' 'gateway' 'Export'
-        Assert ($run.ExitCode -eq 0 -and $run.Output -like '*Returning saved evidence only*' -and $run.Output -like '*SEND THIS CURRENT REPORT:*') ('Exact CMD Export failed: '+$run.Output+' '+$run.Error)
+        Assert ($null -ne $run.ExitCode -and $run.ExitCode -eq 0 -and $run.Output -like '*Returning saved evidence only*' -and $run.Output -like '*SEND THIS CURRENT REPORT:*') ('Exact CMD Export failed (exit='+$run.ExitCode+'): '+$run.Output+' '+$run.Error)
         $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
         $stateFile=Join-Path $isolatedProgramData ('Mandala Office Recovery\'+$sid+'\gateway.json')
         $state=Get-Content -LiteralPath $stateFile -Raw|ConvertFrom-Json
@@ -94,7 +100,7 @@ try {
         $credential=New-Object Management.Automation.PSCredential(($env:COMPUTERNAME+'\'+$name),$password)
         $beforeAgent=@(Get-Process -Name 'Mandala.Agent' -ErrorAction SilentlyContinue|Select-Object -ExpandProperty Id) -join ','
         $run=Invoke-CmdAudit 'standard-baseline' 'employee' 'Baseline' $credential
-        Assert ($run.ExitCode -eq 0 -and $run.Output -like '*SEND THIS CURRENT REPORT:*') ('Standard-user baseline failed: '+$run.Output+' '+$run.Error)
+        Assert ($null -ne $run.ExitCode -and $run.ExitCode -eq 0 -and $run.Output -like '*SEND THIS CURRENT REPORT:*') ('Standard-user baseline failed (exit='+$run.ExitCode+'): '+$run.Output+' '+$run.Error)
         $profile=Get-CimInstance Win32_UserProfile -Filter ("SID='"+$userSid+"'")
         Assert $profile 'Standard-account profile was not loaded.'
         $accountRoot=Join-Path $profile.LocalPath ('AppData\Local\Mandala Office Recovery\'+$userSid)

@@ -5,6 +5,7 @@ on:
     branches: [codex/fix-employee-startup, codex/lan-recovery-1.2.3]
     paths-ignore:
       - '.github/workflows/rehearse-lan-windows.yml'
+      - '.github/workflows/check-lan-package-launcher.yml'
       - 'apps/desktop-agent/tests/rehearsal/**'
 permissions:
   contents: read
@@ -170,3 +171,12 @@ jobs:
             ${{ runner.temp }}/approved-agent-lan-audit.json
             ${{ runner.temp }}/mandala-package-launcher-audit.json
           if-no-files-found: error
+      - name: Preserve safe test summaries even if a later audit fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mandala-recovery-audit-evidence
+          path: |
+            ${{ runner.temp }}/approved-agent-lan-audit.json
+            ${{ runner.temp }}/mandala-package-launcher-audit.json
+          if-no-files-found: warn
