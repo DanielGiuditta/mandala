@@ -30,7 +30,8 @@ New-Item -ItemType Directory -Path $fakeInstall|Out-Null
 Write-PairingJson (Join-Path $fakeInstall 'gateway.example.json') @{supabaseAnonKey='mandala-protocol-fixture-only'}
 $control=Join-Path $fixture 'control.json';$evidence=Join-Path $fixture 'upstream-evidence.json'
 $requestPath=Join-Path $fixture 'request.json';$replyPath=Join-Path $fixture 'reply.json'
-$script:fixtureRoots=@();$leafThumb=$null;$fixtureGateway=$null;$fixtureAgent=$null;$lanCreated=$false;$ruleCreated=$false
+$script:fixtureRoots=@();$leafThumb=$null;$fixtureGateway=$null;$fixtureAgent=$null;$lanCreated=$false;$ruleCreated=$false;$httpsRuleCreated=$false
+$primaryError=$null;$script:fixtureCleanupErrors=@()
 $ruleName='Mandala protocol fixture outbound '+[Guid]::NewGuid().ToString('N')
 $script:AgentPath=$Agent
 $sha=[Security.Cryptography.SHA256]::Create()
@@ -59,11 +60,22 @@ function Start-FixtureAgent {
 function Wait-FixtureReceipts([int]$Count) {
     Wait-Ui ('exactly '+$Count+' real Agent protocol-fixture receipts') {@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq $Count} 60|Out-Null
 }
+function Invoke-FixtureCleanup([string]$Stage,[scriptblock]$Action) {
+    try {& $Action}
+    catch {$script:fixtureCleanupErrors+=$Stage+': '+$_.Exception.GetType().Name;Write-Warning ('Fixture cleanup needs attention: '+$Stage)}
+}
 try {
-    # Fail closed even if LAN configuration unexpectedly disappears: the actual
-    # Agent executable may only reach IPv4 loopback while this fixture runs.
-    New-NetFirewallRule -Name $ruleName -DisplayName $ruleName -Direction Outbound -Action Block -Program $Agent -Profile Any -RemoteAddress @('0.0.0.0-126.255.255.255','128.0.0.0-255.255.255.255','::/0')|Out-Null
+    # NetSecurity rejects ranges containing unspecified/broadcast addresses.
+    # Cover IPv4 unicast except 127/8 using valid aligned CIDRs, and current IPv6
+    # global/unique/link-local unicast. Loopback 127.0.0.1:8443 remains available.
+    $blockedNetworks=@('1.0.0.0/8','2.0.0.0/7','4.0.0.0/6','8.0.0.0/5','16.0.0.0/4','32.0.0.0/3','64.0.0.0/3','96.0.0.0/4','112.0.0.0/5','120.0.0.0/6','124.0.0.0/7','126.0.0.0/8','128.0.0.0/2','192.0.0.0/3','2000::/3','fc00::/7','fe80::/10')
+    New-NetFirewallRule -Name $ruleName -DisplayName $ruleName -Direction Outbound -Action Block -Program $Agent -Profile Any -RemoteAddress $blockedNetworks|Out-Null
     $ruleCreated=$true
+    # The approved production URL is HTTPS443. Block it for ALL IPv4/IPv6
+    # destinations as well, including translation prefixes and unusual routes,
+    # even if the fixture LAN configuration unexpectedly disappears.
+    New-NetFirewallRule -Name ($ruleName+'-https') -DisplayName ($ruleName+'-https') -Direction Outbound -Action Block -Program $Agent -Profile Any -Protocol TCP -RemotePort 443 -RemoteAddress Any|Out-Null
+    $httpsRuleCreated=$true
     $gateway=Initialize-PairingGateway '127.0.0.1' $data $fakeInstall
     $request=New-EmployeePairingRequest $requestPath $profile;$leafThumb=$request.thumbprint
     Approve-EmployeePairing $requestPath $replyPath $data|Out-Null
@@ -161,19 +173,22 @@ try {
     Write-PairingJson (Join-Path $env:RUNNER_TEMP 'approved-agent-lan-audit.json') $summary
     Write-Host 'PASS: unchanged approved Agent 1.0.15, real gateway mutual TLS, synthetic sign-in/projects, start/stop, offline pending journal through normal close/reopen, cancelled/confirmed switch, actual five-minute idle pause/no auto-resume, five exact receipts and no duplicates. PROTOCOL FIXTURE ONLY: zero production writes; no reboot/SQL/standard-user acceptance claimed.'
 } catch {
-    if(Test-Path -LiteralPath (Join-Path $fixture 'server-error.txt')){Get-Content -LiteralPath (Join-Path $fixture 'server-error.txt')|Write-Host}
-    Write-Host $_.ScriptStackTrace
-    throw
+    $primaryError=$_
+    try {if(Test-Path -LiteralPath (Join-Path $fixture 'server-error.txt')){Get-Content -LiteralPath (Join-Path $fixture 'server-error.txt')|Write-Host}}catch{Write-Warning 'Fixture server diagnostics unavailable; original test error is preserved.'}
+    Write-Host $primaryError.ScriptStackTrace
 } finally {
-    if($script:fixtureAgent -and -not $script:fixtureAgent.HasExited){$script:fixtureAgent.Kill();$script:fixtureAgent.WaitForExit(10000)|Out-Null}
-    if($fixtureGateway -and -not $fixtureGateway.HasExited){Write-PairingJson $control @{shutdown=$true};if(-not $fixtureGateway.WaitForExit(10000)){$fixtureGateway.Kill();$fixtureGateway.WaitForExit(10000)|Out-Null}}
-    [MandalaTestInput]::Awake($false)
+    Invoke-FixtureCleanup 'Agent process' {if($script:fixtureAgent -and -not $script:fixtureAgent.HasExited){$script:fixtureAgent.Kill();$script:fixtureAgent.WaitForExit(10000)|Out-Null}}
+    Invoke-FixtureCleanup 'gateway process' {if($fixtureGateway -and -not $fixtureGateway.HasExited){Write-PairingJson $control @{shutdown=$true};if(-not $fixtureGateway.WaitForExit(10000)){$fixtureGateway.Kill();$fixtureGateway.WaitForExit(10000)|Out-Null}}}
+    Invoke-FixtureCleanup 'awake flag' {[MandalaTestInput]::Awake($false)}
     # Preconditions proved these exact files did not exist before this isolated
     # run. No real employee files, logs, other journals or certificates are removed.
-    if($lanCreated){Remove-Item -LiteralPath $lanFile -Force -ErrorAction SilentlyContinue}
-    foreach($path in @($sessionFile,$journal,($journal+'.tmp'))){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}}
-    if($leafThumb -and (Test-Path ('Cert:\CurrentUser\My\'+$leafThumb))){Remove-Item ('Cert:\CurrentUser\My\'+$leafThumb) -DeleteKey}
-    foreach($thumb in $script:fixtureRoots){foreach($store in @('CurrentUser','LocalMachine')){if(Test-Path ('Cert:\'+$store+'\Root\'+$thumb)){Remove-Item ('Cert:\'+$store+'\Root\'+$thumb)}}}
-    if($ruleCreated){Remove-NetFirewallRule -Name $ruleName}
-    Remove-Item -LiteralPath $fixture -Recurse -Force
+    Invoke-FixtureCleanup 'LAN configuration' {if($lanCreated){Remove-Item -LiteralPath $lanFile -Force}}
+    foreach($path in @($sessionFile,$journal,($journal+'.tmp'))){Invoke-FixtureCleanup 'fixture session/journal' {if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}}}
+    Invoke-FixtureCleanup 'employee fixture key' {if($leafThumb -and (Test-Path ('Cert:\CurrentUser\My\'+$leafThumb))){Remove-Item ('Cert:\CurrentUser\My\'+$leafThumb) -DeleteKey}}
+    foreach($thumb in $script:fixtureRoots){foreach($store in @('CurrentUser','LocalMachine')){Invoke-FixtureCleanup 'fixture root certificate' {if(Test-Path ('Cert:\'+$store+'\Root\'+$thumb)){Remove-Item ('Cert:\'+$store+'\Root\'+$thumb)}}}}
+    Invoke-FixtureCleanup 'unicast firewall guard' {if($ruleCreated){Remove-NetFirewallRule -Name $ruleName}}
+    Invoke-FixtureCleanup 'production HTTPS firewall guard' {if($httpsRuleCreated){Remove-NetFirewallRule -Name ($ruleName+'-https')}}
+    Invoke-FixtureCleanup 'fixture folder' {Remove-Item -LiteralPath $fixture -Recurse -Force}
 }
+if($primaryError){throw $primaryError}
+if($script:fixtureCleanupErrors.Count){throw ('Protocol fixture checks finished but cleanup failed: '+($script:fixtureCleanupErrors -join ', '))}
