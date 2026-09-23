@@ -37,8 +37,8 @@ No new entities, organizational concepts, roles, permissions, RPCs, database gra
 
 - These tests do not change or correct the office time server. Certificate dates, login protocols and local entry-date selection still require a reasonably correct Windows clock.
 - Network response transit time is conservatively omitted from a newly confirmed session. After a process crash, activity since the last durable activity checkpoint can be omitted; unattended time must not be invented.
-- Process close/reopen and durable journal recovery are distinct from an actual employee Windows reboot. STP54's unchanged startup repair already passed a real office reboot. A new candidate employee installer still needs its own real sign-in/reboot acceptance.
-- No installer is handoff-ready from this branch. The UI candidate has synthetic configuration and is discarded after CI; it is not a replacement for the audited production installer. A release needs a distinct version, production-backend installer audit, published manifest, downloaded-byte/hash verification, and bounded office acceptance before rollout.
+- Process close/reopen and durable journal recovery are distinct from Windows reboot. STP54's unchanged startup repair passed a real office reboot. The exact 1.0.16 employee installer has now passed the isolated standard-user reboot/sign-in rehearsal below. Actual STP32/domain acceptance and pending-time recovery through an OS reboot remain untested by that rehearsal.
+- No installer is approved for employee rollout. The earlier UI candidate used synthetic configuration; the later 1.0.16 installer below has separately audited production configuration. Production publication, live-manifest/download verification and bounded office acceptance remain separate release gates.
 - Preserve the existing office test row and original reports. Do not repeat production tests automatically, clear journals, replace pairing, or modify the domain time server to obtain a green report.
 
 ## Results
@@ -59,3 +59,50 @@ Superseded CI attempts were cancelled while the temporary certificate-test trust
 
 
 The timer API is consistent with Microsoft's documented Windows performance counter behavior, including elapsed time through sleep: https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps . The existing idle cap and gap detection still prevent treating an unattended interval as active work.
+
+## Production-configured installer audit completed
+
+**PASSED:** [Windows installer build/audit 35892308420](https://github.com/DanielGiuditta/mandala/actions/runs/35892308420), source `508e42e3dc9164623ce8da62fff8ef4cde17dc12`.
+
+- Exact filename: `MandalaAgentSetup-1.0.16.exe`.
+- Size: **51,062,706 bytes**.
+- Installer SHA-256: `f517f48ace1638cea05471224938a660bb1def0d1ac17a794a16c2737d30dccb`.
+- Installed executable SHA-256: `7e26d9e536aed746b3f0247c2254295726a2f8fd6206c901de2a29d1a3f38fdf`.
+- Installed version: `1.0.16+508e42e3dc9164623ce8da62fff8ef4cde17dc12`.
+- Production hostname and anonymous key were checked against the configured release secrets and production's authentication settings. No service-role credential is included in the installer.
+- Windows installed the actual finished installer and audited its executable, production configuration and common Startup shortcut. The desktop regression executable passed again.
+- The copy downloaded to the Mac matches the audited hash and size exactly. This is a GitHub artifact comparison, **not** verification of a published live download.
+- The publication step was explicitly skipped. A new `publish_release` input defaults to false, so availability of a signing certificate cannot implicitly publish a test build. No production download, office installation, database or domain-clock setting changed.
+- Only workflow/documentation files differ between the prior successful code test and this installer source; the application implementation is identical.
+
+The installer requires Windows administrator approval and is retained under the support evidence folder with an explicit rollout hold. Do not hand it to IT as a complete office acceptance package: the earlier 1.2.3 kit fingerprints Agent 1.0.15 and must not silently accept this new binary.
+
+## Exact installer: real Windows reboot and standard-user sign-in passed
+
+**PASSED:** [isolated employee rehearsal 35893031447](https://github.com/DanielGiuditta/mandala/actions/runs/35893031447), harness source `5077bed2e7ae8feed372cc511027182c9f53f6e5`, using the exact installer from build `35892308420` above. The host and guest both verified its fingerprint.
+
+The disposable Microsoft Windows Server evaluation guest recorded three distinct boot identities: initial `17:16:40.1702720Z`, first reboot `17:20:41.5000000Z`, and second reboot `17:22:23.5000000Z` on September 23. This is an actual operating-system restart test, not a process restart.
+
+- The installed common Startup shortcut launched Agent 1.0.16 automatically for a newly created **non-administrator Windows user**.
+- That user created a disposable pairing certificate/private key and signed in through a loopback mutual-TLS gateway using synthetic credentials. The real Agent loaded its two fixture projects and wrote its own encrypted sign-in session.
+- After the second real reboot, the test observer **did not launch the Agent**. It attached to the automatically started installed application and verified restored sign-in, two projects, the same Windows user and the same certificate/private key.
+- Windows Firewall and UAC remained enabled. External Agent traffic was blocked before installation; the gateway fixture has no outbound backend implementation.
+- **Zero production entries; zero timer sessions of any kind.** Temporary guest auto-logon was removed after the test, and the disposable VM was terminated. No office PC or real employee credential was used.
+- The final screenshot agrees with the machine-readable result: Agent 1.0.16, the production backend identity, loopback LAN transport, synthetic signed-in account, two projects and no active project.
+
+Limits: this test uses Windows Server evaluation, not STP32's actual Windows/domain policies. It does not exercise interactive installer UAC consent or pending-time recovery through OS reboot. The earlier DPAPI/process-reopen and synthetic start/stop tests remain separate evidence; none is silently promoted to office acceptance.
+
+## Automatic web-preview side effect corrected
+
+The repository's existing Git integration automatically created eight web previews while this isolated branch was pushed, including earlier validation commits. They were not production deployments, but they contradicted the intended test-only boundary. All eight previews from `codex/lan-clock-validation` were removed after checking their exact branch, commit, project and non-production target. The production deployment ID was compared before and after and was unchanged.
+
+Both Vercel configuration files now disable Git deployments specifically for this test branch using [Vercel's documented branch setting](https://vercel.com/docs/project-configuration/git-configuration). Other branches and production settings are preserved. The subsequent guard commit created no deployment. No production installer was published.
+
+## Remaining office release gates
+
+1. Recheck and correct the shared office time source with the scope and ownership established. Do not change the domain/file server blindly or bypass the production-clock check.
+2. Update the complete handoff package to fingerprint 1.0.16 and include the revised diagnostics. The old 1.2.3 package correctly expects 1.0.15 and is not a drop-in validator for this candidate.
+3. Complete bounded STP32 acceptance in its actual employee/domain profile, preserving existing pairing and pending work. Keep any authorized production test separately identified and verify its exact saved row.
+4. Publish the approved version, verify production release storage/manifest and the selected download version, then compare a Mac download of the live installer to the audited hash/size. Until then the installer remains an unpublished, audited candidate.
+
+No deployment-readiness claim is made from the isolated results alone. The safe work completed now closes the production-configuration installer audit and isolated standard-user reboot/sign-in gaps without another IT round trip.
