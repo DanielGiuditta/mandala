@@ -18,12 +18,16 @@ function New-TestLeaf($Root,$Purpose='1.3.6.1.5.5.7.3.2',$Before=(Get-Date).AddH
  New-SelfSignedCertificate -Type Custom -Subject 'CN=Mandala fixture device' -Signer $Root -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyUsage DigitalSignature,KeyEncipherment -NotBefore $Before -NotAfter $After -TextExtension @('2.5.29.19={critical}{text}ca=0',('2.5.29.37={critical}{text}'+$Purpose))
 }
 try {
+ Write-Host 'Certificate fixture: creating temporary issuer and leaf.'
  $root=New-SelfSignedCertificate -Type Custom -Subject ('CN=Mandala pairing issuer '+[Guid]::NewGuid().ToString('N')) -CertStoreLocation 'Cert:\CurrentUser\My' -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyUsage CertSign,CRLSign -NotBefore (Get-Date).AddYears(-1) -NotAfter (Get-Date).AddYears(1) -TextExtension @('2.5.29.19={critical}{text}ca=1')
  $created+=$root.Thumbprint
  $leaf=New-TestLeaf $root;$created+=$leaf.Thumbprint
+ Write-Host 'Certificate fixture: rejecting untrusted issuer.'
  Reject {Assert-EmployeeCertificate $leaf $leaf.Thumbprint} 'Untrusted pairing issuer was accepted.'
- $store=New-Object Security.Cryptography.X509Certificates.X509Store('Root','CurrentUser')
+ Write-Host 'Certificate fixture: adding its temporary public root on the disposable runner.'
+ $store=New-Object Security.Cryptography.X509Certificates.X509Store('Root','LocalMachine')
  try {$store.Open('ReadWrite');$store.Add([Security.Cryptography.X509Certificates.X509Certificate2]::new($root.RawData));$trusted=$root.Thumbprint}finally{$store.Close()}
+ Write-Host 'Certificate fixture: validating positive case and negative cases.'
  Assert-EmployeeCertificate $leaf $leaf.Thumbprint
  Reject {Assert-EmployeeCertificate $leaf ('0'*40)} 'Wrong paired identity was accepted.'
  $public=[Security.Cryptography.X509Certificates.X509Certificate2]::new($leaf.RawData)
@@ -42,6 +46,6 @@ try {
  Reject {Assert-EmployeeCertificate $future $future.Thumbprint} 'Not-yet-valid employee certificate passed.'
  Write-Host 'PASS: valid private pairing certificate accepted; untrusted issuer, wrong identity, missing private key, CA leaf, forged signature, wrong purpose, expired and future certificates rejected.'
 } finally {
- if($trusted){Remove-Item -LiteralPath ('Cert:\CurrentUser\Root\'+$trusted) -ErrorAction Stop}
+ if($trusted){Remove-Item -LiteralPath ('Cert:\LocalMachine\Root\'+$trusted) -ErrorAction Stop}
  foreach($thumb in $created){Remove-Item -LiteralPath ('Cert:\CurrentUser\My\'+$thumb) -ErrorAction Stop}
 }

@@ -19,6 +19,7 @@ jobs:
       - name: Test real client recovery with in-memory HTTP and temporary DPAPI journals
         run: dotnet run --project apps/desktop-agent/tests/Mandala.Agent.RegressionTests -c Release
       - name: Validate certificates and production clock comparisons in Windows PowerShell 5
+        timeout-minutes: 4
         shell: powershell
         run: ./apps/desktop-agent/tests/certificate-clock.ps1
       - name: Validate existing report and startup failure handling
