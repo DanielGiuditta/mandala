@@ -17,7 +17,7 @@ $log=Join-Path $env:LOCALAPPDATA 'Mandala Agent\agent.log'
 $lock=New-Object Threading.Mutex($false,('Local\MandalaOfficeQuickTest-'+$Role))
 if(-not $lock.WaitOne(0)) {Write-Host 'This test is already running. Use the existing window.';exit 1}
 function New-QuickRunState {
-    [pscustomobject]@{SchemaVersion=1;KitVersion='1.2.3';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}
+    [pscustomobject]@{SchemaVersion=1;KitVersion='1.2.4';RunId=[Guid]::NewGuid().ToString();Role=$Role;Computer=$env:COMPUTERNAME;WindowsUser=[Security.Principal.WindowsIdentity]::GetCurrent().Name;Environment=[pscustomobject]@{OS=[Environment]::OSVersion.VersionString;OS64=[Environment]::Is64BitOperatingSystem;Process64=[Environment]::Is64BitProcess;PowerShell=$PSVersionTable.PSVersion.ToString();TimeZone=[TimeZoneInfo]::Local.Id};StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Email='';ProjectA='';ProjectB='';BootBefore='';Candidates=@();Checks=@();History=@();Actions=@();Scenarios=@();Events=@();DatabaseVerification='PENDING - maintainer must verify actual production rows';Result='NOT CLEARED'}
 }
 try {
     if($Mode -ne 'Baseline' -and -not(Test-Path -LiteralPath $stateFile) -and (Test-Path -LiteralPath $legacyStateFile)) {
@@ -41,10 +41,10 @@ try {
 function Update-QuickStateVersion {
     # A report describes the code that actually performed its checks. Never rename
     # a finished/interrupted employee run or silently replay its real time writes.
-    if($state.KitVersion -ne '1.2.3' -and $state.Phase -in @('preflight','reboot')) {
+    if($state.KitVersion -ne '1.2.4' -and $state.Phase -in @('preflight','reboot')) {
         $previous=@($state.PreviousKitVersions|Where-Object {$null -ne $_})+@([pscustomobject]@{Version=$state.KitVersion;UpgradedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase=$state.Phase})
         $state|Add-Member -NotePropertyName PreviousKitVersions -NotePropertyValue $previous -Force
-        $state.KitVersion='1.2.3'
+        $state.KitVersion='1.2.4'
         if($Role -eq 'gateway' -and $state.Phase -eq 'reboot') {
             # An older partially completed gateway check has not proved the new
             # persistent startup contract. Repair/check again, then require a new boot.
@@ -201,7 +201,7 @@ function Run-AutomatedCase($Kind,$Count,[scriptblock]$Body) {
     if($operationError){throw $operationError}
 }
 try {
-    Write-Host ('MANDALA TIME TRACKING 1.2.3 - '+$Role.ToUpperInvariant())
+    Write-Host ('MANDALA TIME TRACKING 1.2.4 - '+$Role.ToUpperInvariant())
     Write-Host 'One result set. No screenshots after each step. Keep the full extracted folder in place.'
     if($Mode -ne 'Baseline') {
         Require ($state.Computer -eq $env:COMPUTERNAME -and $state.WindowsUser -eq [Security.Principal.WindowsIdentity]::GetCurrent().Name) 'This saved run belongs to another PC or Windows account. No test actions will run; preserve the report for Daniel.'
@@ -233,7 +233,7 @@ try {
         foreach($kind in @('stop','offline','switch','idle')){if(-not @($state.Scenarios|Where-Object {$_.Kind -eq $kind}).Count){$state.Scenarios+=[pscustomobject]@{Kind=$kind;Status='BLOCKED';Detail='Runner interrupted; no automatic replay.'}}}
         $state.Phase='stopped';$state.Result='NOT CLEARED'
     }
-    if($Role -eq 'gateway' -and $state.Phase -eq 'complete' -and $state.KitVersion -ne '1.2.3') {
+    if($Role -eq 'gateway' -and $state.Phase -eq 'complete' -and $state.KitVersion -ne '1.2.4') {
         Require $admin 'Open the gateway launcher and approve administrator access to audit the updated startup repair.'
         Ask-Yes ('This gateway report was completed with kit '+$state.KitVersion+'. Preserve that report and run the updated gateway-only checks, repair if needed, and a fresh restart? No employee time tests run on this PC.')
         $archive=Join-Path $stateDir ('gateway-previous-'+[Guid]::NewGuid().ToString('N'))
@@ -305,9 +305,9 @@ try {
         $state.Candidates=@(Get-MandalaAgentCandidates)
         $state.Checks=@(Get-EmployeeChecks $state.Candidates $approved;Get-EmployeeRoutingCheck);Show-Checks
         if(-not (Select-MandalaAgent $state.Candidates)) {
-            Ask-Yes 'No Agent was found in the checked locations. Install the included approved employee Agent 1.0.15? Windows administrator approval is required.'
-            $installer=Join-Path $PSScriptRoot 'MandalaAgentSetup-1.0.15.exe'
-            Require ((Get-Item $installer).Length -eq 51056706 -and (Get-FileHash $installer).Hash.ToLowerInvariant() -eq 'acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed') 'Installer integrity check failed.'
+            Ask-Yes 'No Agent was found in the checked locations. Install the included approved employee Agent 1.0.16? Windows administrator approval is required.'
+            $installer=Join-Path $PSScriptRoot 'MandalaAgentSetup-1.0.16.exe'
+            Require ((Get-Item $installer).Length -eq 51062706 -and (Get-FileHash $installer).Hash.ToLowerInvariant() -eq 'f517f48ace1638cea05471224938a660bb1def0d1ac17a794a16c2737d30dccb') 'Installer integrity check failed.'
             $p=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
             Require ($p.ExitCode -eq 0) 'Installer did not complete.'
         }

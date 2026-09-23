@@ -61,8 +61,8 @@ function Get-EmployeeChecks($Candidates,$Approved) {
     Invoke-OfficeCheck 'employee.version-and-binary' {
         Require $agent 'BLOCKED: agent executable unavailable.'
         $version=(Get-Item -LiteralPath $agent).VersionInfo.ProductVersion
-        Require ($version -match '^1\.0\.15(?:\.|\+|$)') "Expected approved agent 1.0.15; found $version. Do not downgrade a newer agent automatically."
-        Require ((Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash.ToLowerInvariant() -eq $Approved.agentSha256) 'Agent executable differs from the audited 1.0.15 installation.'
+        Require ($version -match '^1\.0\.16(?:\.|\+|$)') "Expected approved agent 1.0.16; found $version. Do not downgrade a newer agent automatically."
+        Require ((Get-FileHash -LiteralPath $agent -Algorithm SHA256).Hash.ToLowerInvariant() -eq $Approved.agentSha256) 'Agent executable differs from the audited 1.0.16 installation.'
         "version=$version; binary matches audited installer"
     }
     Invoke-OfficeCheck 'employee.production-backend' { Assert-MandalaAgent $agent ([Environment]::GetFolderPath('CommonApplicationData')); 'nzlajptokbcgeaifgnoq' }

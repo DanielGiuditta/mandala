@@ -4,7 +4,7 @@ function Assert-OfficePackage {
     $manifestPath=Join-Path $PSScriptRoot 'package-manifest.json'
     if(-not(Test-Path -LiteralPath $manifestPath)){throw 'Package inventory is missing. Keep the complete extracted package together.'}
     $manifest=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
-    if($manifest.version -ne '1.2.3' -or $manifest.backend -ne 'nzlajptokbcgeaifgnoq' -or $manifest.files.Count -lt 10){throw 'Package identity is invalid.'}
+    if($manifest.version -ne '1.2.4' -or $manifest.backend -ne 'nzlajptokbcgeaifgnoq' -or $manifest.files.Count -lt 10){throw 'Package identity is invalid.'}
     $seen=@{}
     foreach($file in $manifest.files) {
         if($file.name -notmatch '^[a-zA-Z0-9 _./-]+$' -or $file.name.Contains('..') -or [IO.Path]::IsPathRooted($file.name) -or $seen.ContainsKey($file.name)){throw 'Invalid package inventory path.'}
@@ -31,15 +31,17 @@ Assert-OfficePackage
 if($Role -and $Role -notin @('gateway','employee')){throw 'Invalid computer role.'}
 if($Mode -and $Mode -notin @('Run','Baseline','Export')){throw 'Invalid operation.'}
 if(-not $Role) {
-    Write-Host 'MANDALA LAN TIME TRACKING 1.2.3'
+    Write-Host 'MANDALA LAN TIME TRACKING 1.2.4'
     Write-Host '1 - Employee computer: read-only baseline (run this first)'
     Write-Host '2 - Dedicated gateway: repair and restart checks'
     Write-Host '3 - Employee computer: time tests AFTER gateway checks pass'
     Write-Host '4 - Return existing reports only'
-    switch(Read-Host 'Choose 1, 2, 3 or 4') {
+    Write-Host '5 - Gateway: read-only checks (no repair or restart)'
+    switch(Read-Host 'Choose 1, 2, 3, 4 or 5') {
         '1' {$Role='employee';$Mode='Baseline'}
         '2' {$Role='gateway';$Mode='Run'}
         '3' {$Role='employee';$Mode='Run'}
+        '5' {$Role='gateway';$Mode='Baseline'}
         '4' {
             switch(Read-Host 'Reports from this computer: 1 employee, 2 gateway') {'1' {$Role='employee'} '2' {$Role='gateway'} default {throw 'No role selected; no test actions performed.'}}
             $Mode='Export'

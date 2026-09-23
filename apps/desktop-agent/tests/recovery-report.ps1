@@ -6,7 +6,7 @@ function Assert($Condition,$Message){if(-not $Condition){throw $Message}}
 $base=New-OfficePrivateDirectory (Join-Path $env:RUNNER_TEMP ('Recovery reports '+[Guid]::NewGuid()))
 $storage=[pscustomobject]@{StateFile=(Join-Path $base 'state.json');Reports=(New-OfficePrivateDirectory (Join-Path $base 'reports'));AdministratorsOnly=$false}
 $state=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'fixtures\gateway-resumed-preflight.json') -Raw|ConvertFrom-Json
-$state.KitVersion='1.2.3'
+$state.KitVersion='1.2.4'
 try {
     # The actual approval function must return despite a disappearing Desktop.
     $t=$null;$e=$null;$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $kit 'quick-test.ps1'),[ref]$t,[ref]$e)

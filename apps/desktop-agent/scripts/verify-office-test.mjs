@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 const production = 'https://nzlajptokbcgeaifgnoq.supabase.co'
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const assert = (condition, message) => { if (!condition) throw new Error(message) }
-const currentKit = '1.2.3'
+const currentKit = '1.2.4'
 const supportedKits = new Set(['1.1.0', '1.2.0', '1.2.1', '1.2.2', currentKit])
 const automaticKit = version => supportedKits.has(version) && version !== '1.1.0'
 const timestamp = (value, label) => {

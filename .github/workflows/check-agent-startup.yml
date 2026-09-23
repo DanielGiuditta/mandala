@@ -1,8 +1,8 @@
-name: Audit employee startup repair
+name: Audit complete office package 1.2.4
 on:
   workflow_dispatch:
   push:
-    branches: [codex/fix-employee-startup, codex/lan-recovery-1.2.3]
+    branches: [codex/lan-clock-validation]
     paths-ignore:
       - '.github/workflows/rehearse-lan-windows.yml'
       - '.github/workflows/check-lan-package-launcher.yml'
@@ -25,6 +25,9 @@ jobs:
       - name: Exercise startup repair on Windows PowerShell 5
         shell: powershell
         run: ./apps/desktop-agent/tests/startup-repair.ps1
+      - name: Validate clock and certificate gates
+        shell: powershell
+        run: ./apps/desktop-agent/tests/certificate-clock.ps1
       - name: Exercise full office checks and fail-closed evidence parsing
         shell: powershell
         run: ./apps/desktop-agent/tests/office-test.ps1
@@ -45,18 +48,18 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $kit='apps/desktop-agent/scripts/office-test'
-          gh run download 34076879611 --name MandalaAgentSetup-1.0.15 --dir $kit
+          gh run download 35892308420 --name MandalaAgentSetup-1.0.16 --dir $kit
           if ($LASTEXITCODE -ne 0) { throw 'Approved installer download failed.' }
-          $installer=(Resolve-Path "$kit/MandalaAgentSetup-1.0.15.exe").Path
+          $installer=(Resolve-Path "$kit/MandalaAgentSetup-1.0.16.exe").Path
           $hash=(Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-          if($hash -ne 'acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed' -or (Get-Item $installer).Length -ne 51056706) { throw 'Approved installer differs from original Windows audit.' }
+          if($hash -ne 'f517f48ace1638cea05471224938a660bb1def0d1ac17a794a16c2737d30dccb' -or (Get-Item $installer).Length -ne 51062706) { throw 'Approved installer differs from original Windows audit.' }
           $installed=Join-Path $env:RUNNER_TEMP 'Mandala Approved Agent Audit'
           $process=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"" -Wait -PassThru
           if($process.ExitCode -ne 0) { throw 'Approved installer failed.' }
           $agent=Join-Path $installed 'Mandala.Agent.exe'
           $config=Get-Content (Join-Path $installed 'agent.config.json') -Raw|ConvertFrom-Json
-          if($config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co' -or (Get-Item $agent).VersionInfo.ProductVersion -notmatch '^1\.0\.15(?:\.|\+|$)') { throw 'Approved version/backend mismatch.' }
-          @{version='1.0.15';filename='MandalaAgentSetup-1.0.15.exe';installerSha256=$hash;installerBytes=51056706;backend='https://nzlajptokbcgeaifgnoq.supabase.co';agentSha256=(Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$kit/approved-agent.json"
+          if($config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co' -or (Get-Item $agent).VersionInfo.ProductVersion -notmatch '^1\.0\.16(?:\.|\+|$)') { throw 'Approved version/backend mismatch.' }
+          @{version='1.0.16';filename='MandalaAgentSetup-1.0.16.exe';installerSha256=$hash;installerBytes=51062706;backend='https://nzlajptokbcgeaifgnoq.supabase.co';agentSha256=(Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$kit/approved-agent.json"
           if(-not(Test-Path (Join-Path $kit 'startup-repair'))) { Copy-Item 'apps/desktop-agent/scripts/startup-repair' $kit -Recurse }
           & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-ui.ps1 -Agent $agent
           if($LASTEXITCODE -ne 0){throw 'Actual approved Agent UI compatibility failed.'}
@@ -142,12 +145,12 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $zip).Length
           "Repair audit passed: version=1.0.1 bytes=$size sha256=$hash" | Tee-Object -FilePath startup-repair-audit.txt
-          $kitZip='MandalaRecoveryCandidate-1.2.3.zip'
+          $kitZip='MandalaRecoveryCandidate-1.2.4.zip'
           $stage=Join-Path $env:RUNNER_TEMP 'Mandala Office Test Handoff'
           New-Item -ItemType Directory $stage -Force|Out-Null
-          foreach($name in @('Start Mandala.cmd','READ-FIRST.txt','package-entry.ps1','report-core.ps1','recovery-evidence.ps1','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.15.exe','startup-repair','gateway-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
+          foreach($name in @('Start Mandala.cmd','READ-FIRST.txt','package-entry.ps1','report-core.ps1','recovery-evidence.ps1','quick-test.ps1','ui-driver.ps1','check-core.ps1','approved-agent.json','MandalaAgentSetup-1.0.16.exe','startup-repair','gateway-repair')) { Copy-Item (Join-Path 'apps/desktop-agent/scripts/office-test' $name) $stage -Recurse }
           $inventory=@(Get-ChildItem -LiteralPath $stage -Recurse -File|ForEach-Object {@{name=$_.FullName.Substring($stage.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
-          @{version='1.2.3';backend='nzlajptokbcgeaifgnoq';sourceCommit=$env:GITHUB_SHA;releaseStatus='REHEARSAL_REQUIRED';files=$inventory}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $stage 'package-manifest.json')
+          @{version='1.2.4';backend='nzlajptokbcgeaifgnoq';sourceCommit=$env:GITHUB_SHA;releaseStatus='REHEARSAL_REQUIRED';files=$inventory}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $stage 'package-manifest.json')
           & powershell.exe -NoProfile -File apps/desktop-agent/tests/package-integrity.ps1 -PackageDirectory $stage
           if($LASTEXITCODE -ne 0){throw 'Staged package integrity tests failed.'}
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $kitZip
@@ -159,14 +162,14 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Exact downloaded CMD and standard-user baseline audit failed.'}
           $kitHash=(Get-FileHash $kitZip -Algorithm SHA256).Hash.ToLowerInvariant()
           $kitSize=(Get-Item $kitZip).Length
-          "Candidate CI checks passed; real reboot and Agent rehearsal still required: version=1.2.3 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
+          "Candidate CI checks passed; real reboot and Agent rehearsal still required: version=1.2.4 bytes=$kitSize sha256=$kitHash" | Tee-Object -FilePath office-test-audit.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: MandalaRecoveryCandidate-1.2.3
+          name: MandalaRecoveryCandidate-1.2.4
           path: |
             MandalaAgentStartupRepair-1.0.1.zip
             startup-repair-audit.txt
-            MandalaRecoveryCandidate-1.2.3.zip
+            MandalaRecoveryCandidate-1.2.4.zip
             office-test-audit.txt
             ${{ runner.temp }}/approved-agent-lan-audit.json
             ${{ runner.temp }}/mandala-package-launcher-audit.json

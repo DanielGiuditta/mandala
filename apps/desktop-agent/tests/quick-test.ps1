@@ -78,7 +78,7 @@ try {
  Assert ($restored.Phase -eq 'stopped' -and $restored.Result -eq 'NOT CLEARED') 'Interrupted run was not blocked.'
  Assert ($restored.Scenarios.Count -eq 4 -and $restored.Scenarios[0].Status -eq 'FAIL') 'Interrupted/remaining tests not recorded.'
  Assert (@(Get-ChildItem -LiteralPath (Join-Path $newFolder 'reports') -Filter '*.zip').Count -gt 0) 'Interrupted report ZIP missing.'
- $restored.KitVersion='1.2.3';$restored.Phase='preflight';$restored.WindowsUser='another-account';$restored.Scenarios=@();$restored.Checks=@()
+ $restored.KitVersion='1.2.4';$restored.Phase='preflight';$restored.WindowsUser='another-account';$restored.Scenarios=@();$restored.Checks=@()
  $restored|ConvertTo-Json -Depth 15|Set-Content (Join-Path $newFolder 'employee.json')
  & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File $file -Role employee
  $wrongAccount=Get-Content (Join-Path $newFolder 'employee.json') -Raw|ConvertFrom-Json
@@ -111,7 +111,7 @@ try {
  Wait-GatewayStartup 1 50
  Assert (-not $state.GatewayStartupWait.Ready -and $state.GatewayStartupWait.ElapsedSeconds -lt 2) 'Unavailable gateway wait was not bounded.'
  $Role='gateway';$state.Phase='reboot';Update-QuickStateVersion
- Assert ($state.KitVersion -eq '1.2.3' -and $state.PreviousKitVersions[0].Version -eq '1.2.1' -and $state.Phase -eq 'preflight' -and -not $state.BootBefore) 'Legacy partial gateway test did not require fresh startup validation.'
+ Assert ($state.KitVersion -eq '1.2.4' -and $state.PreviousKitVersions[0].Version -eq '1.2.1' -and $state.Phase -eq 'preflight' -and -not $state.BootBefore) 'Legacy partial gateway test did not require fresh startup validation.'
  $Role='employee';$state.KitVersion='1.2.0';$state.Phase='complete';Update-QuickStateVersion
  Assert ($state.KitVersion -eq '1.2.0' -and $state.Phase -eq 'complete') 'Finished employee run was relabeled or reopened.'
  Write-Host 'PASS: delayed/failed boot readiness is passive and bounded; old gateway runs require a fresh boot; completed employee reports remain historical.'
@@ -131,7 +131,7 @@ try {
  $stateFile=Join-Path $temporary 'state.json';$reportDir=New-OfficePrivateDirectory (Join-Path $temporary 'report')
  $storage=[pscustomobject]@{StateFile=$stateFile;Reports=$reportDir;AdministratorsOnly=$false}
  $script:publishDesktop=$false
- $state=[pscustomobject]@{KitVersion='1.2.3';Role='gateway';RunId=[Guid]::NewGuid().ToString();Computer='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Result='NOT CLEARED';Events=@([pscustomobject]@{Event='previous preserved receipt'});Checks=@();Scenarios=@()}
+ $state=[pscustomobject]@{KitVersion='1.2.4';Role='gateway';RunId=[Guid]::NewGuid().ToString();Computer='fixture';StartedUtc=[DateTimeOffset]::UtcNow.ToString('o');Phase='preflight';Result='NOT CLEARED';Events=@([pscustomobject]@{Event='previous preserved receipt'});Checks=@();Scenarios=@()}
  try {
   Save-QuickReport
   $saved=Get-Content $stateFile -Raw|ConvertFrom-Json

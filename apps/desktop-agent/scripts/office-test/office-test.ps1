@@ -60,9 +60,9 @@ try {
         Require (@(Get-Process -Name 'Mandala.Agent' -ErrorAction SilentlyContinue).Count -eq 0) 'Save active work and close Mandala Agent before installation.'
         $existing=Get-MandalaAgentPath
         Require (-not $existing) 'An agent was found. Run preflight/startup repair; this option will not reinstall or downgrade it.'
-        $installer=Join-Path $PSScriptRoot 'MandalaAgentSetup-1.0.15.exe'
-        Require ((Get-Item $installer).Length -eq 51056706 -and (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -eq 'acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed') 'Bundled installer integrity check failed.'
-        Write-Host 'Windows administrator approval is required. Install Mandala Agent 1.0.15 on this employee PC. The gateway is a different app.'
+        $installer=Join-Path $PSScriptRoot 'MandalaAgentSetup-1.0.16.exe'
+        Require ((Get-Item $installer).Length -eq 51062706 -and (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -eq 'f517f48ace1638cea05471224938a660bb1def0d1ac17a794a16c2737d30dccb') 'Bundled installer integrity check failed.'
+        Write-Host 'Windows administrator approval is required. Install Mandala Agent 1.0.16 on this employee PC. The gateway is a different app.'
         $result=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
         Require ($result.ExitCode -eq 0) 'Installation did not complete.'
         Write-Host 'Now open Mandala Agent normally in the employee account. Run preflight again in this same test session. Missing LAN pairing must be completed with the existing employee pairing ZIP.'

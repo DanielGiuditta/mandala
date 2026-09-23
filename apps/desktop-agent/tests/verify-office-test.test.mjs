@@ -5,7 +5,7 @@ const now = Date.parse('2026-09-16T13:00:00Z')
 const id = n => '00000000-0000-0000-0000-' + String(n).padStart(12, '0')
 function fixture() {
   const required = ['account-context','installed-agent','version-and-binary','production-backend','startup-shortcut','startup-enabled','lan-settings','certificate','gateway-mutual-tls','gateway-clock','unenrolled-request-denied','diagnostics-readable','signed-in-projects','reboot-observed','direct-production-blocked']
-  const report = { SchemaVersion: 1, KitVersion: '1.2.3', Phase: 'complete', StartedUtc: '2026-09-16T09:00:00Z', GatewayVerifiedUtc: '2026-09-16T09:05:00Z', CompletedUtc: '2026-09-16T12:00:00Z', GatewayOrigin: 'https://192.168.1.58:8443', GatewayCertificateSha256:'a'.repeat(64), Role: 'employee', Email: 'employee@example.test', Computer: 'TEST-PC', ProjectA: 'A', ProjectB: 'B', Checks: required.map(Id => ({ Id: 'employee.' + Id, Status: 'PASS' })), Scenarios: [] }
+  const report = { SchemaVersion: 1, KitVersion: '1.2.4', Phase: 'complete', StartedUtc: '2026-09-16T09:00:00Z', GatewayVerifiedUtc: '2026-09-16T09:05:00Z', CompletedUtc: '2026-09-16T12:00:00Z', GatewayOrigin: 'https://192.168.1.58:8443', GatewayCertificateSha256:'a'.repeat(64), Role: 'employee', Email: 'employee@example.test', Computer: 'TEST-PC', ProjectA: 'A', ProjectB: 'B', Checks: required.map(Id => ({ Id: 'employee.' + Id, Status: 'PASS' })), Scenarios: [] }
   const sessions = []; const entries = []
   let n = 1
   for (const [kind, count] of Object.entries({stop:1,switch:2,idle:1,offline:1})) {
@@ -55,7 +55,7 @@ for(const [name,change] of Object.entries({
 }))test('rejects '+name,async()=>{const f=fixture();change(f);const r=await verifyReport(f.report,f.get);assert.equal(r.status,'NOT CLEARED')})
 
 function gatewayFixture() {
- return { SchemaVersion: 1, Role: 'gateway', KitVersion: '1.2.3', Phase: 'complete', Computer: 'GATEWAY-PC', StartedUtc: '2026-09-16T08:00:00Z', CompletedUtc: '2026-09-16T08:20:00Z', GatewayOrigin: 'https://192.168.1.58:8443/', GatewayCertificateSha256:'a'.repeat(64), Checks: ['task','startup-configuration','configuration','installed-release','production-internet','production-clock','firewall','listener','certificate-and-enrollment','reboot-observed'].map(id => ({Id:'gateway.'+id,Status:'PASS'})).concat({Id:'gateway.isolation',Status:'OBSERVED'}) }
+ return { SchemaVersion: 1, Role: 'gateway', KitVersion: '1.2.4', Phase: 'complete', Computer: 'GATEWAY-PC', StartedUtc: '2026-09-16T08:00:00Z', CompletedUtc: '2026-09-16T08:20:00Z', GatewayOrigin: 'https://192.168.1.58:8443/', GatewayCertificateSha256:'a'.repeat(64), Checks: ['task','startup-configuration','configuration','installed-release','production-internet','production-clock','firewall','listener','certificate-and-enrollment','reboot-observed'].map(id => ({Id:'gateway.'+id,Status:'PASS'})).concat({Id:'gateway.isolation',Status:'OBSERVED'}) }
 }
 test('combined acceptance requires gateway reboot, all checks and IT isolation observation', async()=>{
  const f=fixture(); const gateway=gatewayFixture()
