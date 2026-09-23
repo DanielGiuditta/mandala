@@ -15,7 +15,7 @@ if($temporary.StartsWith('/var/')){$temporary='/private'+$temporary}
 $base=Join-Path $temporary ('Mandala portable recovery '+[Guid]::NewGuid())
 [void][IO.Directory]::CreateDirectory($base)
 $storage=[pscustomobject]@{Root=$base;StateFile=(Join-Path $base 'state.json');Reports=(Join-Path $base 'reports');AdministratorsOnly=$false}
-$state=[pscustomobject]@{KitVersion='1.2.3';Role='gateway';Computer='fixture';RunId=[Guid]::NewGuid().ToString();Checks=@();Scenarios=@();Phase='preflight';Result='NOT CLEARED'}
+$state=[pscustomobject]@{KitVersion='1.2.4';Role='gateway';Computer='fixture';RunId=[Guid]::NewGuid().ToString();Checks=@();Scenarios=@();Phase='preflight';Result='NOT CLEARED'}
 try {
     $one=Save-OfficeSnapshot $state $storage (Join-Path $base 'missing-desktop')
     Assert ((Test-Path $one.LocalBundle) -and $one.Errors.Count -eq 1) 'Missing Desktop did not preserve the local ZIP.'

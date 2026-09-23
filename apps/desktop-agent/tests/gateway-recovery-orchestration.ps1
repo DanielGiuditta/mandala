@@ -107,7 +107,7 @@ try {
     Reset-AuditCounters;$script:removeDestinationAtApproval=$true
     $state=New-AuditState;Update-QuickStateVersion
     . $gatewayBranch
-    Assert ($state.KitVersion -eq '1.2.3' -and $state.PreviousKitVersions[-1].Version -eq '1.2.2') 'Actual resumed preflight was not versioned correctly.'
+    Assert ($state.KitVersion -eq '1.2.4' -and $state.PreviousKitVersions[-1].Version -eq '1.2.2') 'Actual resumed preflight was not versioned correctly.'
     Assert ($state.GatewayRepair.Owner -eq 'Local Service' -and $state.GatewayRepair.PreservedFiles -eq 5) 'Approval did not reach the actual repair.'
     Assert ($script:answers -eq 3 -and $script:rebootRequests -eq 1) 'Successful repair did not reach exactly one suppressed reboot request.'
     Assert ((Test-Path -LiteralPath $script:lastReport.LocalBundle) -and -not $script:lastReport.DesktopBundle) 'Disappearing Desktop blocked the fallback report.'

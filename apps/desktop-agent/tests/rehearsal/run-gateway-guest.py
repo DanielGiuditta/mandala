@@ -68,10 +68,10 @@ def prepare_payload():
     artifacts = WORK / "artifacts"
     artifacts.mkdir()
     run(["gh", "run", "download", run_id, "--repo", repo, "--name",
-         "MandalaRecoveryCandidate-1.2.3", "--dir", artifacts])
+         "MandalaRecoveryCandidate-1.2.4", "--dir", artifacts])
     # Combined audit evidence may preserve the runner's common parent folders.
     # Resolve only the unique expected names; do not select an arbitrary ZIP.
-    packages = list(artifacts.rglob("MandalaRecoveryCandidate-1.2.3.zip"))
+    packages = list(artifacts.rglob("MandalaRecoveryCandidate-1.2.4.zip"))
     audit_files = list(artifacts.rglob("office-test-audit.txt"))
     require(len(packages) == 1 and len(audit_files) == 1,
             "Candidate artifact must contain exactly one package and audit record")
@@ -86,7 +86,7 @@ def prepare_payload():
     kit.mkdir(parents=True)
     safe_extract(package, kit)
     manifest = json.loads((kit / "package-manifest.json").read_text(encoding="utf-8-sig"))
-    require(manifest["version"] == "1.2.3" and
+    require(manifest["version"] == "1.2.4" and
             manifest["backend"] == "nzlajptokbcgeaifgnoq" and
             manifest["sourceCommit"] == audit["head_sha"],
             "Candidate source/version/backend differs from audited run")
