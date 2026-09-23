@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <Compile Include="../../src/Mandala.Agent/TimeTrackerModels.cs" Link="TimeTrackerModels.cs" />
+    <Compile Include="../../src/Mandala.Agent/DesktopSessionClock.cs" Link="DesktopSessionClock.cs" />
     <Compile Include="../../src/Mandala.Agent/DesktopSessionTiming.cs" Link="DesktopSessionTiming.cs" />
     <Compile Include="../../src/Mandala.Agent/DesktopSessionJournal.cs" Link="DesktopSessionJournal.cs" />
     <Compile Include="../../src/Mandala.Agent/AppConfiguration.cs" Link="AppConfiguration.cs" />
@@ -16,5 +17,9 @@
     <Compile Include="../../src/Mandala.Agent/TrackerConfirmationMessages.cs" Link="TrackerConfirmationMessages.cs" />
     <Compile Include="../../src/Mandala.Agent/TrackerMessageState.cs" Link="TrackerMessageState.cs" />
     <Compile Include="../../src/Mandala.Agent/TimeEntrySaveReconciliation.cs" Link="TimeEntrySaveReconciliation.cs" />
+    <Compile Include="../../src/Mandala.Agent/LanTimeTracker.cs" Link="LanTimeTracker.cs" />
+    <Compile Include="../../src/Mandala.Agent/SupabaseTimeTrackerClient.cs" Link="SupabaseTimeTrackerClient.cs" />
+    <Compile Include="../../src/Mandala.Agent/SecureSessionStore.cs" Link="SecureSessionStore.cs" />
+    <Compile Include="../../src/Mandala.Agent/AgentDiagnostics.cs" Link="AgentDiagnostics.cs" />
   </ItemGroup>
 </Project>

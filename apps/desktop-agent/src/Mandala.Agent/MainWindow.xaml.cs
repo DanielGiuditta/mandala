@@ -476,7 +476,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var elapsed = DateTimeOffset.UtcNow - _activeSession.StartedAt;
+        var elapsed = _client!.GetElapsed(_activeSession);
         ActiveProjectText.Text = $"Tracking {_activeSession.ProjectName}";
         ElapsedText.Text = $"{Math.Floor(elapsed.TotalHours):0}h {elapsed.Minutes:00}m active";
         StopButton.IsEnabled = !_isSaving;

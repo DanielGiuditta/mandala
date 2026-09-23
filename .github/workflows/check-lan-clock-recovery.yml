@@ -1,0 +1,53 @@
+name: Audit isolated LAN clock and recovery fixes
+on:
+  push:
+    branches: [codex/lan-clock-validation]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test real client recovery with in-memory HTTP and temporary DPAPI journals
+        run: dotnet run --project apps/desktop-agent/tests/Mandala.Agent.RegressionTests -c Release
+      - name: Validate certificates and production clock comparisons in Windows PowerShell 5
+        shell: powershell
+        run: ./apps/desktop-agent/tests/certificate-clock.ps1
+      - name: Validate existing report and startup failure handling
+        shell: powershell
+        run: |
+          ./apps/desktop-agent/tests/startup-repair.ps1
+          ./apps/desktop-agent/tests/office-test.ps1
+          ./apps/desktop-agent/tests/recovery-report.ps1
+      - name: Test gateway TLS authorization, request restrictions and database retry rules
+        shell: pwsh
+        run: |
+          npm ci --ignore-scripts
+          if($LASTEXITCODE -ne 0){throw 'Dependency install failed'}
+          node --test apps/lan-services/test/*.test.mjs apps/desktop-agent/tests/gateway-startup.test.mjs apps/desktop-agent/tests/verify-office-test.test.mjs
+          if($LASTEXITCODE -ne 0){throw 'Security/recovery regressions failed'}
+      - name: Build unpublished Windows UI candidate with a synthetic key
+        shell: pwsh
+        run: |
+          @{supabaseUrl='https://nzlajptokbcgeaifgnoq.supabase.co';supabaseAnonKey='startup-audit-fixture'} | ConvertTo-Json | Set-Content apps/desktop-agent/src/Mandala.Agent/agent.config.json
+          dotnet publish apps/desktop-agent/src/Mandala.Agent -c Release -r win-x64 --self-contained true -p:Version=1.0.15 -o "$env:RUNNER_TEMP/candidate"
+          if($LASTEXITCODE -ne 0){throw 'Candidate failed to compile'}
+          $agent=Join-Path $env:RUNNER_TEMP 'candidate/Mandala.Agent.exe'
+          @{version='1.0.15';agentSha256=(Get-FileHash $agent).Hash.ToLowerInvariant()}|ConvertTo-Json|Set-Content "$env:RUNNER_TEMP/candidate-fixture.json"
+          & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-lan.ps1 -Agent $agent -ApprovedManifest "$env:RUNNER_TEMP/candidate-fixture.json" -FixtureCandidate
+          if($LASTEXITCODE -ne 0){throw 'Candidate UI/offline/idle fixture failed'}
+      - name: Preserve test evidence only (no installer or release publication)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-lan-clock-recovery-evidence
+          path: ${{ runner.temp }}/approved-agent-lan-audit.json
+          if-no-files-found: warn

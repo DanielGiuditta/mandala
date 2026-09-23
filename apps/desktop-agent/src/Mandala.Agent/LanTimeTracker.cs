@@ -1,12 +1,17 @@
 using System.Net.Http;
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 
 namespace Mandala.Agent;
 
 public sealed partial class SupabaseTimeTrackerClient
 {
+    private readonly DesktopSessionClock _lanClock = new();
+    private readonly Func<string, DesktopSessionJournal> _createJournal = email => new DesktopSessionJournal(email);
     private DesktopSessionJournal? _journal;
     private DesktopJournalState? _journalState;
+    public TimeSpan GetElapsed(ActiveWorkSession session) => DesktopSessionClock.Elapsed(
+        session.StartedAt, UsesLanGateway ? _lanClock.UtcNow : DateTimeOffset.UtcNow);
     public bool UsesLanGateway => _configuration.UsesLanGateway;
     public string LanDiagnosticSummary => _journalState?.Session is { } session
         ? $"gateway={_configuration.GatewayUrl}; sessionId={session.Id}; projectId={session.ProjectId}; entryDate={session.EntryDate}; startedAt={session.StartedAt:O}; lastActivityAt={session.LastActivityAt:O}; stoppedAt={session.StoppedAt:O}; confirmed={session.Confirmed}; pending={HasPendingSave}"
@@ -19,12 +24,13 @@ public sealed partial class SupabaseTimeTrackerClient
     private async Task LoadJournalAsync()
     {
         if (!UsesLanGateway || Email is null) return;
-        _journal = new DesktopSessionJournal(Email);
+        _journal = _createJournal(Email);
         _journalState = await _journal.LoadAsync(Email);
         if (_journalState.Session is { StoppedAt: null } session)
         {
-            // A closed/crashed/restarted app must not count the unattended interval.
-            await PersistJournalAsync(_journalState with { Session = session with { StoppedAt = DesktopSessionTiming.StopAt(session, DateTimeOffset.UtcNow) } });
+            // After a process restart, there is no trustworthy running clock anchor.
+            // Preserve only the last durably observed activity; never count downtime.
+            await PersistJournalAsync(_journalState with { Session = session with { StoppedAt = DesktopSessionTiming.StopAt(session, session.LastActivityAt) } });
         }
     }
 
@@ -92,6 +98,7 @@ public sealed partial class SupabaseTimeTrackerClient
     private async Task ConfirmLanStartAsync(bool firstAttempt = false)
     {
         var session = _journalState!.Session!;
+        var requestStarted = Stopwatch.GetTimestamp();
         try
         {
             var receipt = await RpcAsync<DesktopReceipt>("start_desktop_work_session", new { session_id = session.Id, target_project_id = session.ProjectId, entry_date = session.EntryDate });
@@ -99,9 +106,13 @@ public sealed partial class SupabaseTimeTrackerClient
             // An uncertain start is paused at confirmation, rather than silently
             // counting time while the UI said it was waiting.
             var stopped = session.StoppedAt;
-            if (DateTimeOffset.UtcNow - session.StartedAt > TimeSpan.FromSeconds(20)) stopped ??= receipt.StartedAt;
+            if (!firstAttempt || Stopwatch.GetElapsedTime(requestStarted) > TimeSpan.FromSeconds(20)) stopped ??= receipt.StartedAt;
             if (stopped < receipt.StartedAt) stopped = receipt.StartedAt;
+            // Start counting only once confirmation is received. Network wait is
+            // not work, and recovered/uncertain starts remain paused.
+            if (stopped is not null) stopped = receipt.StartedAt;
             await PersistJournalAsync(_journalState with { Session = session with { Confirmed = true, StartedAt = receipt.StartedAt, LastActivityAt = receipt.StartedAt, StoppedAt = stopped } });
+            _lanClock.Start(receipt.StartedAt);
         }
         catch (HttpRequestException exception) when (firstAttempt && exception.StatusCode == System.Net.HttpStatusCode.BadRequest)
         {
@@ -116,7 +127,7 @@ public sealed partial class SupabaseTimeTrackerClient
     {
         var session = _journalState!.Session ?? throw new InvalidOperationException("No local session is active.");
         if (session.StoppedAt is null)
-            await PersistJournalAsync(_journalState with { Session = session with { StoppedAt = DesktopSessionTiming.StopAt(session, DateTimeOffset.UtcNow) } });
+            await PersistJournalAsync(_journalState with { Session = session with { StoppedAt = DesktopSessionTiming.StopAt(session, _lanClock.UtcNow) } });
         try
         {
             return (await ReconcileLanAsync()) ?? new TimeEntrySaveResult(session.Id, Pending: true);
@@ -146,7 +157,7 @@ public sealed partial class SupabaseTimeTrackerClient
     private async Task TouchLanAsync()
     {
         if (_journalState?.Session is not { Confirmed: true, StoppedAt: null } session) return;
-        var now = DateTimeOffset.UtcNow;
+        var now = _lanClock.UtcNow;
         if (now - session.StartedAt >= TimeSpan.FromHours(24))
         {
             await StopLanAsync();

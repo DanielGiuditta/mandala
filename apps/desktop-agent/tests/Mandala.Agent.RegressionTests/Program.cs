@@ -14,6 +14,8 @@ RejectsUnsafeGatewayConfiguration();
 CapsDisconnectedTimeAtIdleAndDailyLimits();
 await RecoversProtectedTimeJournalOnWindows();
 
+await LanRecoveryChecks.RunAsync();
+
 Console.WriteLine("PASS: Mandala Agent regression checks");
 
 static async Task AcceptsSuccessfulEmptyHeartbeatResponse()

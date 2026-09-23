@@ -102,10 +102,7 @@ function Get-EmployeeChecks($Candidates,$Approved) {
         $script:checkedCertificate=$null
         Require $lan 'BLOCKED: no readable LAN settings.'
         $script:checkedCertificate=Get-Item -LiteralPath ('Cert:\CurrentUser\My\'+$lan.deviceCertificateThumbprint) -ErrorAction Stop
-        Require $script:checkedCertificate.HasPrivateKey 'Employee private key missing in this Windows account.'
-        Require ($script:checkedCertificate.NotBefore -le (Get-Date) -and $script:checkedCertificate.NotAfter -gt (Get-Date)) 'Employee certificate is not currently valid.'
-        Require ($script:checkedCertificate.Verify()) 'Employee certificate trust chain failed.'
-        'Current-profile certificate/private key valid; expires '+$script:checkedCertificate.NotAfter.ToString('o')
+        Assert-EmployeeCertificate $script:checkedCertificate $lan.deviceCertificateThumbprint
     }
     $certificate=$script:checkedCertificate
     Invoke-OfficeCheck 'employee.gateway-mutual-tls' {
@@ -123,7 +120,7 @@ function Get-EmployeeChecks($Candidates,$Approved) {
         Require $health 'BLOCKED: no gateway response.'
         $server=[DateTimeOffset]::Parse($health.Headers.Date)
         $difference=[Math]::Abs(([DateTimeOffset]::UtcNow-$server).TotalSeconds)
-        Require ($difference -le 30) "Gateway/client clocks differ by $([int]$difference) seconds. IT must correct clock synchronization."
+        Require ($difference -le 5) "Gateway/client clocks differ by $([int]$difference) seconds. IT must correct clock synchronization."
         "Gateway/client difference=$([int]$difference) seconds"
     }
     Invoke-OfficeCheck 'employee.unenrolled-request-denied' {
@@ -178,10 +175,21 @@ function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala G
         Require $startup.Passed $startup.Detail
         'Verified durable launcher, setup integration, boot delay and persistent retry settings.'
     }
+    $script:checkedProductionClock=$null
     Invoke-OfficeCheck 'gateway.production-internet' {
         Require $config 'BLOCKED: gateway configuration unavailable.'
-        try {Invoke-WebRequest -Uri 'https://nzlajptokbcgeaifgnoq.supabase.co/auth/v1/settings' -Headers @{apikey=$config.supabaseAnonKey} -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0|Out-Null}catch{throw 'Production auth endpoint rejected the gateway key or is unreachable.'}
+        try {
+            $before=[DateTimeOffset]::UtcNow;$watch=[Diagnostics.Stopwatch]::StartNew()
+            $response=Invoke-WebRequest -Uri 'https://nzlajptokbcgeaifgnoq.supabase.co/auth/v1/settings' -Headers @{apikey=$config.supabaseAnonKey} -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0
+            $after=[DateTimeOffset]::UtcNow;$watch.Stop()
+            $script:checkedProductionClock=@{Date=$response.Headers.Date;Before=$before;After=$after;Elapsed=$watch.Elapsed.TotalSeconds}
+        }catch{throw 'Production auth endpoint rejected the gateway key or is unreachable.'}
         'Production reachable and gateway public key accepted.'
+    }
+    Invoke-OfficeCheck 'gateway.production-clock' {
+        Require $script:checkedProductionClock 'BLOCKED: no authenticated production HTTPS response.'
+        $sample=$script:checkedProductionClock
+        Assert-ProductionClock $sample.Date $sample.Before $sample.After $sample.Elapsed
     }
     Invoke-OfficeCheck 'gateway.firewall' {
         Require ($config -and $script:checkedTask) 'BLOCKED: gateway configuration/task unavailable.'
@@ -229,4 +237,44 @@ function Assert-GatewayFirewallShape($Rule,$Address,$InterfaceAlias,$Node,$Categ
         $profile=if($category -eq 'DomainAuthenticated'){'Domain'}else{$category}
         Require ($profile -in @('Domain','Private','Public') -and ('Any' -in $allowed -or $profile -in $allowed)) ('Gateway rule does not cover active profile '+$profile+'.')
     }
+}
+
+# Diagnostic only: this does not change TLS validation, Windows trust, enrollment,
+# application transport or any machine setting. Private pairing issuers have no
+# revocation service; gateway enrollment remains independently checked above.
+function Assert-EmployeeCertificate($Certificate,[string]$ExpectedThumbprint) {
+    Require ($Certificate.Thumbprint -eq $ExpectedThumbprint) 'Employee certificate identity differs from pairing settings.'
+    Require $Certificate.HasPrivateKey 'Employee private key missing in this Windows account.'
+    $basic=@($Certificate.Extensions|Where-Object {$_.Oid.Value -eq '2.5.29.19'})
+    $usage=@($Certificate.Extensions|Where-Object {$_.Oid.Value -eq '2.5.29.15'})
+    $eku=@($Certificate.Extensions|Where-Object {$_.Oid.Value -eq '2.5.29.37'})
+    Require ($basic.Count -eq 1 -and -not $basic[0].CertificateAuthority) 'Employee certificate must be an explicit non-CA leaf.'
+    Require ($usage.Count -eq 1 -and ($usage[0].KeyUsages -band [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature)) 'Employee certificate lacks digital-signature key usage.'
+    Require ($eku.Count -eq 1 -and @($eku[0].EnhancedKeyUsages|Where-Object {$_.Value -eq '1.3.6.1.5.5.7.3.2'}).Count -eq 1) 'Employee certificate lacks explicit client-authentication purpose.'
+    $chain=New-Object Security.Cryptography.X509Certificates.X509Chain
+    try {
+        $chain.ChainPolicy.VerificationFlags=[Security.Cryptography.X509Certificates.X509VerificationFlags]::NoFlag
+        $chain.ChainPolicy.RevocationMode=[Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $chain.ChainPolicy.ApplicationPolicy.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.2'))
+        Require ($chain.Build($Certificate)) 'Employee certificate signature, validity, purpose or installed-root trust check failed.'
+        # The no-revocation diagnostic applies only to the existing one-use
+        # pairing format. Other issuers still require the ordinary Verify check.
+        $root=$chain.ChainElements[$chain.ChainElements.Count-1].Certificate
+        $pairing=($chain.ChainElements.Count -eq 2 -and $root.Subject -match '^CN=Mandala pairing issuer [a-fA-F0-9]{32}$')
+        if(-not $pairing){Require ($Certificate.Verify()) 'Employee certificate revocation/trust validation failed for a non-pairing issuer.'}
+        'Paired identity, private key, client-auth purpose, signature, dates and installed-root trust valid; gateway enrollment checked separately. Expires '+$Certificate.NotAfter.ToString('o')
+    } finally {$chain.Dispose()}
+}
+
+function Assert-ProductionClock($Date,[DateTimeOffset]$Before,[DateTimeOffset]$After,[double]$Elapsed) {
+    Require ($Elapsed -ge 0 -and $Elapsed -le 4) 'Production clock sample too slow to establish accuracy; no clock setting changed.'
+    Require ([Math]::Abs(($After-$Before).TotalSeconds-$Elapsed) -le 1) 'Windows clock changed during the production clock sample.'
+    $server=[DateTimeOffset]::MinValue
+    Require ([DateTimeOffset]::TryParse([string]$Date,[ref]$server)) 'Production HTTPS response has no valid Date header.'
+    # HTTP dates have one-second resolution. The server processed the request
+    # somewhere between send and receive, so compare intervals, not a point.
+    $minimum=($server-$After).TotalSeconds
+    $maximum=($server.AddSeconds(1)-$Before).TotalSeconds
+    Require ($minimum -le 5 -and $maximum -ge -5) 'Office clock differs from production by more than five seconds. IT must inspect the configured office time source; do not repeat employee writes.'
+    'Production clock offset interval='+[Math]::Round($minimum,2)+' to '+[Math]::Round($maximum,2)+' seconds; request='+[Math]::Round($Elapsed,2)+' seconds.'
 }
