@@ -12,6 +12,7 @@ Reject {Assert-ProductionClock '' $now $now 0} 'Missing production date passed.'
 Reject {Assert-ProductionClock 'not a date' $now $now 0} 'Malformed production date passed.'
 Reject {Assert-ProductionClock 'Wed, 23 Sep 2026 12:00:00 GMT' $now $now.AddSeconds(10) 10} 'Slow ambiguous sample passed.'
 Reject {Assert-ProductionClock 'Wed, 23 Sep 2026 12:00:00 GMT' $now $now.AddSeconds(32) 0.5} 'Clock step during sampling passed.'
+Reject {Assert-ProductionClock 'Wed, 23 Sep 2026 12:00:00 GMT' $now.AddSeconds(-4.5) $now.AddSeconds(-4) 0.5} 'Clock uncertainty straddling the allowed boundary passed.'
 Write-Host 'PASS: production-relative clock checks detect shared office skew, invalid dates, clock steps and ambiguous latency.'
 $created=@();$trusted=$null
 function New-TestLeaf($Root,$Purpose='1.3.6.1.5.5.7.3.2',$Before=(Get-Date).AddHours(-1),$After=(Get-Date).AddDays(1)) {

@@ -275,6 +275,6 @@ function Assert-ProductionClock($Date,[DateTimeOffset]$Before,[DateTimeOffset]$A
     # somewhere between send and receive, so compare intervals, not a point.
     $minimum=($server-$After).TotalSeconds
     $maximum=($server.AddSeconds(1)-$Before).TotalSeconds
-    Require ($minimum -le 5 -and $maximum -ge -5) 'Office clock differs from production by more than five seconds. IT must inspect the configured office time source; do not repeat employee writes.'
+    Require ($minimum -ge -5 -and $maximum -le 5) 'Office clock cannot be confirmed within five seconds of production. IT must inspect the configured office time source; do not repeat employee writes.'
     'Production clock offset interval='+[Math]::Round($minimum,2)+' to '+[Math]::Round($maximum,2)+' seconds; request='+[Math]::Round($Elapsed,2)+' seconds.'
 }
