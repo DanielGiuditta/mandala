@@ -7,6 +7,11 @@ on:
         description: Release version
         required: true
         default: 1.0.0
+      publish_release:
+        description: Publish after audit (leave false for an isolated candidate build)
+        required: true
+        default: false
+        type: boolean
       publish_unsigned:
         description: Publish an unsigned pre-launch installer to the private Mandala download link
         required: true
@@ -116,8 +121,25 @@ jobs:
           & .\apps\desktop-agent\scripts\audit-startup.ps1 -InstallDirectory $installDirectory
 
           $hash = (Get-FileHash $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $audit = [ordered]@{
+            version = $env:MANDALA_AGENT_VERSION
+            installedVersion = $installedVersion
+            backend = $expectedProjectRef
+            filename = (Split-Path $installerPath -Leaf)
+            bytes = (Get-Item $installerPath).Length
+            sha256 = $hash
+            agentSha256 = (Get-FileHash $installedExe -Algorithm SHA256).Hash.ToLowerInvariant()
+            sourceCommit = $env:GITHUB_SHA
+            runId = $env:GITHUB_RUN_ID
+            installedConfigurationVerified = $true
+            startupShortcutVerified = $true
+            publicationRequested = ("${{ inputs.publish_release }}" -eq "true")
+            rebootTested = $false
+          }
+          $audit | ConvertTo-Json | Set-Content .\apps\desktop-agent\release\installer-audit.json
           Write-Host "Installer audit passed: version=$installedVersion backend=$installedProjectRef sha256=$hash"
       - name: Publish the audited installer
+        if: inputs.publish_release
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.MANDALA_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -142,5 +164,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: MandalaAgentSetup-${{ inputs.version }}
-          path: apps/desktop-agent/release/MandalaAgentSetup-${{ inputs.version }}.exe
+          path: |
+            apps/desktop-agent/release/MandalaAgentSetup-${{ inputs.version }}.exe
+            apps/desktop-agent/release/installer-audit.json
           if-no-files-found: error
