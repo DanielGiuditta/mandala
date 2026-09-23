@@ -27,7 +27,7 @@ def prepare_payload():
              "--name", "MandalaAgentSetup-1.0.16", "--dir", payload])
     audit = json.loads((payload / "installer-audit.json").read_text(encoding="utf-8-sig"))
     installer = payload / "MandalaAgentSetup-1.0.16.exe"
-    lab.require(audit["version"] == "1.0.16" and audit["backend"] == "nzlajptokbcgeaifgnoq"
+    lab.require(audit["filename"] == installer.name and audit["version"] == "1.0.16" and audit["backend"] == "nzlajptokbcgeaifgnoq"
                 and audit["sourceCommit"] == audit_run["head_sha"]
                 and audit["installedConfigurationVerified"] and audit["startupShortcutVerified"]
                 and not audit["publicationRequested"]
