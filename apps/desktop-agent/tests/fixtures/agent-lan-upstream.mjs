@@ -1,7 +1,7 @@
 // Protocol fixture for the unchanged approved Windows Agent. No database or
 // outbound network implementation is present: createGateway always receives
 // this in-memory upstream, and a stray global fetch fails immediately.
-import { readFileSync, writeFileSync, renameSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createGateway } from '../../../lan-services/gateway.mjs'
 
@@ -16,8 +16,15 @@ const projects = [
   { id: '11111111-1111-4111-8111-111111111111', name: 'CI protocol project A' },
   { id: '22222222-2222-4222-8222-222222222222', name: 'CI protocol project B' },
 ]
-const sessions = new Map()
-const requests = []
+// Only the disposable OS-reboot harness opts into restoring its synthetic server.
+// Ordinary UI tests start with fresh state. This file never stores auth tokens.
+const restore = process.argv[5] === '--restore-state' && existsSync(evidencePath)
+  ? JSON.parse(readFileSync(evidencePath, 'utf8').replace(/^\uFEFF/, '')) : null
+if (restore && (restore.fixture !== 'PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE' || restore.productionRequests !== 0)) {
+  throw new Error('Only isolated synthetic evidence may be restored')
+}
+const sessions = new Map((restore?.sessions ?? []).map(s => [s.id, s]))
+const requests = restore?.requests ?? []
 let listening = false
 let transitioning = false
 let blockedExternalRequests = 0

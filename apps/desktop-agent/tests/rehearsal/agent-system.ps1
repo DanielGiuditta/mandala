@@ -26,7 +26,7 @@ function Wait-File($path,[int]$seconds=300){
 }
 function Start-Fixture {
     $server=Join-Path $root 'apps\desktop-agent\tests\fixtures\agent-lan-upstream.mjs'
-    $arguments='"'+$server+'" "'+(Join-Path $data 'gateway.json')+'" "'+(Join-Path $exchange 'control.json')+'" "'+(Join-Path $exchange 'upstream.json')+'"'
+    $arguments='"'+$server+'" "'+(Join-Path $data 'gateway.json')+'" "'+(Join-Path $exchange 'control.json')+'" "'+(Join-Path $exchange 'upstream.json')+'" --restore-state'
     Start-Process (Join-Path $root 'node.exe') -ArgumentList $arguments -RedirectStandardOutput (Join-Path $root 'fixture-stdout.txt') -RedirectStandardError (Join-Path $root 'fixture-stderr.txt')|Out-Null
 }
 try {
@@ -88,7 +88,7 @@ try {
         Write-PairingJson (Join-Path $env:ProgramData 'Mandala Agent\lan.config.json') @{gatewayUrl='https://127.0.0.1:8443';deviceCertificateThumbprint=$request.thumbprint}
         Start-Fixture
         Write-PairingJson (Join-Path $exchange 'pairing-ready.json') @{ready=$true}
-        Wait-File (Join-Path $exchange 'signed-in.json')
+        Wait-File (Join-Path $exchange 'pending-before-reboot.json')
         $user=Read-PairingJson (Join-Path $exchange 'signed-in.json')
         Assert ($user.standardUser -and $user.automaticStartup -and $user.projectsLoaded) 'First standard-user check failed.'
         $state|Add-Member -NotePropertyName firstBoot -NotePropertyValue (Boot)
@@ -99,16 +99,23 @@ try {
     }
     Assert ($state.stage -eq 'restore-login' -and (Boot) -ne $state.firstBoot) 'Actual second reboot missing.'
     Start-Fixture
+    Wait-File (Join-Path $exchange 'pending-after-reboot.json')
+    Write-PairingJson (Join-Path $exchange 'control.json') @{online=$true}
     Wait-File (Join-Path $exchange 'restored.json')
+    Start-Sleep -Seconds 10
     $user=Read-PairingJson (Join-Path $exchange 'restored.json')
     $upstream=Read-PairingJson (Join-Path $exchange 'upstream.json')
-    Assert ($upstream.productionRequests -eq 0 -and $upstream.blockedExternalRequests -eq 0 -and @($upstream.sessions).Count -eq 0) 'Unexpected fixture requests/time sessions.'
+    Assert ($upstream.productionRequests -eq 0 -and $upstream.blockedExternalRequests -eq 0 -and @($upstream.sessions).Count -eq 1) 'Unexpected fixture requests/time sessions.'
+    $pending=Read-PairingJson (Join-Path $exchange 'pending-before-reboot.json')
+    $receipt=$upstream.sessions[0]
+    $duration=([DateTimeOffset]$receipt.stopped_at - [DateTimeOffset]$receipt.started_at).TotalSeconds
+    Assert ($receipt.id -eq $pending.sessionId -and $receipt.time_entry_id -and $receipt.finishRequests -eq 1 -and $duration -ge 4 -and $duration -lt 20) 'Reboot recovery changed session, duplicated save or counted downtime.'
     $uac=(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').EnableLUA -eq 1
     $firewall=@(Get-NetFirewallProfile|Where-Object {-not $_.Enabled}).Count -eq 0
     Assert ($uac -and $firewall) 'Guest security controls were disabled.'
     Set-ItemProperty $winlogon AutoAdminLogon '0'
     Remove-ItemProperty $winlogon DefaultPassword -ErrorAction SilentlyContinue
-    $result=@{phase='complete';result='PASS';bootUtc=(Boot);standardUser=$user.standardUser;automaticStartup=$user.automaticStartup;restoredSignIn=$user.restoredSignIn;projectsLoaded=$user.projectsLoaded;sameWindowsUser=($user.userSid -eq $state.userSid);sameCertificate=$user.sameCertificate;uacEnabled=$uac;firewallEnabled=$firewall;productionEntries=0;testSessions=0;version='1.0.16';limitations='Disposable Windows Server evaluation with synthetic employee; not the office Windows/domain profile, UAC consent UI or pending-time reboot acceptance.'}
+    $result=@{phase='complete';result='PASS';bootUtc=(Boot);standardUser=$user.standardUser;automaticStartup=$user.automaticStartup;restoredSignIn=$user.restoredSignIn;projectsLoaded=$user.projectsLoaded;sameWindowsUser=($user.userSid -eq $state.userSid);sameCertificate=$user.sameCertificate;uacEnabled=$uac;firewallEnabled=$firewall;productionEntries=0;testSessions=1;pendingSurvivedReboot=$user.pendingSurvivedReboot;pendingNewStartBlocked=$user.pendingNewStartBlocked;reconnectedSaveConfirmed=$user.reconnectedSaveConfirmed;savedDurationSeconds=$duration;exactReceipts=1;duplicateReceipts=0;version='1.0.16';limitations='Disposable Windows Server evaluation with synthetic employee; not the office Windows/domain profile, UAC consent UI or real office network outage acceptance.'}
     Emit $result
 } catch {
     Set-ItemProperty $winlogon AutoAdminLogon '0' -ErrorAction SilentlyContinue

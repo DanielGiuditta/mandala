@@ -70,11 +70,12 @@ def validate_events():
     lab.require(len({e["bootUtc"] for e in phases.values()}) == 3, "Two real reboots required")
     result = phases["complete"]
     for field in ("standardUser", "automaticStartup", "restoredSignIn", "projectsLoaded",
-                  "sameWindowsUser", "sameCertificate", "uacEnabled", "firewallEnabled"):
+                  "sameWindowsUser", "sameCertificate", "uacEnabled", "firewallEnabled",
+                  "pendingSurvivedReboot", "pendingNewStartBlocked", "reconnectedSaveConfirmed"):
         lab.require(result.get(field) is True, "Missing pass: " + field)
-    lab.require(result.get("productionEntries") == 0 and result.get("testSessions") == 0,
+    lab.require(result.get("productionEntries") == 0 and result.get("testSessions") == 1 and result.get("exactReceipts") == 1 and result.get("duplicateReceipts") == 0,
                 "Unexpected time-tracking writes")
-    print("PASS: exact audited installer, standard-user automatic startup and restored fixture sign-in across real Windows reboot.", flush=True)
+    print("PASS: exact audited installer, standard-user startup, sign-in and pending save recovery across real Windows reboot.", flush=True)
     print("No production sign-in/time writes. This is a Server evaluation guest, not office Windows/domain acceptance.", flush=True)
 
 
