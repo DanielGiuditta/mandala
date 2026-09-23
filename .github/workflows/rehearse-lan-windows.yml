@@ -6,7 +6,7 @@ on:
       mode:
         description: Host capability only, or actual disposable gateway guest reboot
         type: choice
-        options: [capability, gateway-reboot]
+        options: [capability, gateway-reboot, employee-reboot]
         default: capability
       candidate_run_id:
         description: Successful employee-startup audit run containing the exact candidate ZIP
@@ -80,5 +80,31 @@ jobs:
         if: always()
         with:
           name: Mandala-gateway-real-reboot-evidence
+          path: ${{ runner.temp }}/mandala-gateway-rehearsal/evidence/
+          if-no-files-found: warn
+
+  employee-reboot:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'employee-reboot'
+    needs: capability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare disposable virtualization tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf libguestfs-tools python3-pil acl
+      - name: Rehearse exact audited installer with a standard Windows user
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          GH_REPO: ${{ github.repository }}
+          LIBGUESTFS_BACKEND: direct
+        run: python3 apps/desktop-agent/tests/rehearsal/run-agent-guest.py
+      - name: Preserve bounded employee rehearsal evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Mandala-employee-real-reboot-evidence
           path: ${{ runner.temp }}/mandala-gateway-rehearsal/evidence/
           if-no-files-found: warn

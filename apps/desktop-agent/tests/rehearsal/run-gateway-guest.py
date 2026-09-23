@@ -235,6 +235,23 @@ def screenshot(socket_path, name):
         pass
 
 
+def validate_events():
+    initial_phase = "package-requested" if os.environ.get("GATEWAY_EXERCISE", "packaged") == "packaged" else "prepared"
+    required = {phase: next((event for event in EVENTS if event["phase"] == phase), None)
+                for phase in (initial_phase, "first-reboot", "setup-reentry", "complete")}
+    require(all(required.values()), "Missing a required guest rehearsal phase")
+    boots = [required[phase]["bootUtc"] for phase in (initial_phase, "first-reboot", "complete")]
+    require(len(set(boots)) == 3, "Rehearsal did not observe two distinct guest reboots")
+    require(required["complete"]["gatewayRebootCount"] == 2, "Unexpected reboot count")
+    if initial_phase == "package-requested":
+        native = next((event for event in EVENTS if event["phase"] == "package-report"), None)
+        require(native and native.get("syntheticFixtureOnly") is True and
+                native["nativeReport"]["Phase"] == "complete" and
+                native["nativeReport"]["Result"].startswith("GATEWAY LOCAL CHECKS PASSED"),
+                "Exact packaged gateway flow did not complete its native report")
+    print("PASS: actual Windows gateway survived two guest reboots and setup re-entry.", flush=True)
+    print("NOT TESTED: employee sign-in, production time writes, UAC, interactive RunOnce or office acceptance.", flush=True)
+
 def boot_and_observe(disk, uefi):
     firmware = Path("/usr/share/OVMF/OVMF_CODE_4M.fd")
     variables = WORK / "OVMF_VARS.fd"
@@ -276,21 +293,7 @@ def boot_and_observe(disk, uefi):
         screenshot(monitor, "final-screen")
         require(EVENTS[-1]["phase"] == "complete" and EVENTS[-1].get("result") == "PASS",
                 "Guest reported a rehearsal failure; inspect fixed-field evidence")
-        initial_phase = "package-requested" if os.environ.get("GATEWAY_EXERCISE", "packaged") == "packaged" else "prepared"
-        required = {phase: next((event for event in EVENTS if event["phase"] == phase), None)
-                    for phase in (initial_phase, "first-reboot", "setup-reentry", "complete")}
-        require(all(required.values()), "Missing a required guest rehearsal phase")
-        boots = [required[phase]["bootUtc"] for phase in (initial_phase, "first-reboot", "complete")]
-        require(len(set(boots)) == 3, "Rehearsal did not observe two distinct guest reboots")
-        require(required["complete"]["gatewayRebootCount"] == 2, "Unexpected reboot count")
-        if initial_phase == "package-requested":
-            native = next((event for event in EVENTS if event["phase"] == "package-report"), None)
-            require(native and native.get("syntheticFixtureOnly") is True and
-                    native["nativeReport"]["Phase"] == "complete" and
-                    native["nativeReport"]["Result"].startswith("GATEWAY LOCAL CHECKS PASSED"),
-                    "Exact packaged gateway flow did not complete its native report")
-        print("PASS: actual Windows gateway survived two guest reboots and setup re-entry.", flush=True)
-        print("NOT TESTED: employee sign-in, production time writes, UAC, interactive RunOnce or office acceptance.", flush=True)
+        validate_events()
     finally:
         screenshot(monitor, "last-screen")
         if process.poll() is None:
