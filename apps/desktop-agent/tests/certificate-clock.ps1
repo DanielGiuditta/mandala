@@ -29,13 +29,18 @@ try {
  $public=[Security.Cryptography.X509Certificates.X509Certificate2]::new($leaf.RawData)
  try {Reject {Assert-EmployeeCertificate $public $public.Thumbprint} 'Missing employee private key passed.'}finally{$public.Dispose()}
  Reject {Assert-EmployeeCertificate $root $root.Thumbprint} 'CA certificate accepted as employee leaf.'
+ $badBytes=[byte[]]$leaf.RawData.Clone();$badBytes[$badBytes.Length-1]=$badBytes[$badBytes.Length-1] -bxor 1
+ $badPublic=[Security.Cryptography.X509Certificates.X509Certificate2]::new($badBytes)
+ $key=[Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($leaf)
+ $bad=[Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey($badPublic,$key)
+ try {Reject {Assert-EmployeeCertificate $bad $bad.Thumbprint} 'Forged signature accepted with matching key and identity.'}finally{$bad.Dispose();$badPublic.Dispose();$key.Dispose()}
  $server=New-TestLeaf $root '1.3.6.1.5.5.7.3.1';$created+=$server.Thumbprint
  Reject {Assert-EmployeeCertificate $server $server.Thumbprint} 'Server-only certificate accepted for client authentication.'
  $expired=New-TestLeaf $root '1.3.6.1.5.5.7.3.2' (Get-Date).AddDays(-2) (Get-Date).AddDays(-1);$created+=$expired.Thumbprint
  Reject {Assert-EmployeeCertificate $expired $expired.Thumbprint} 'Expired employee certificate passed.'
  $future=New-TestLeaf $root '1.3.6.1.5.5.7.3.2' (Get-Date).AddDays(1) (Get-Date).AddDays(2);$created+=$future.Thumbprint
  Reject {Assert-EmployeeCertificate $future $future.Thumbprint} 'Not-yet-valid employee certificate passed.'
- Write-Host 'PASS: valid private pairing certificate accepted; untrusted issuer, wrong identity, missing private key, CA leaf, wrong purpose, expired and future certificates rejected.'
+ Write-Host 'PASS: valid private pairing certificate accepted; untrusted issuer, wrong identity, missing private key, CA leaf, forged signature, wrong purpose, expired and future certificates rejected.'
 } finally {
  if($trusted){Remove-Item -LiteralPath ('Cert:\CurrentUser\Root\'+$trusted) -ErrorAction Stop}
  foreach($thumb in $created){Remove-Item -LiteralPath ('Cert:\CurrentUser\My\'+$thumb) -ErrorAction Stop}

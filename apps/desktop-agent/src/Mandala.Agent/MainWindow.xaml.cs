@@ -20,7 +20,8 @@ public partial class MainWindow : Window
     private uint _lastInputTick;
     private DateTimeOffset _lastHeartbeatAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastPendingSaveRetryAt = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastPollAt = DateTimeOffset.UtcNow;
+    private readonly DesktopSessionClock _pollClock = new();
+    private DateTimeOffset _lastPollAt;
     private DateTimeOffset _lastWakeSaveAttemptAt = DateTimeOffset.MinValue;
     private bool _wakeIdleStopPending;
     private bool _isSaving;
@@ -28,6 +29,8 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _pollClock.Start(DateTimeOffset.UtcNow);
+        _lastPollAt = _pollClock.UtcNow;
         InitializeComponent();
         try { _configuration = AppConfiguration.Load(); }
         catch (Exception exception)
@@ -212,7 +215,7 @@ public partial class MainWindow : Window
 
     private async Task PollCoreAsync()
     {
-        var polledAt = DateTimeOffset.UtcNow;
+        var polledAt = _pollClock.UtcNow;
         var previousPollAt = _lastPollAt;
         _lastPollAt = polledAt;
 
@@ -222,9 +225,9 @@ public partial class MainWindow : Window
         }
 
         if (_client.HasPendingSave &&
-            DateTimeOffset.UtcNow - _lastPendingSaveRetryAt >= TimeSpan.FromSeconds(10))
+            _pollClock.UtcNow - _lastPendingSaveRetryAt >= TimeSpan.FromSeconds(10))
         {
-            _lastPendingSaveRetryAt = DateTimeOffset.UtcNow;
+            _lastPendingSaveRetryAt = _pollClock.UtcNow;
             try
             {
                 SetSaving(true);
@@ -292,10 +295,10 @@ public partial class MainWindow : Window
         }
 
         var currentInputTick = NativeIdleMonitor.GetLastInputTick();
-        if (currentInputTick != _lastInputTick && DateTimeOffset.UtcNow - _lastHeartbeatAt >= ActivityHeartbeatInterval)
+        if (currentInputTick != _lastInputTick && _pollClock.UtcNow - _lastHeartbeatAt >= ActivityHeartbeatInterval)
         {
             _lastInputTick = currentInputTick;
-            _lastHeartbeatAt = DateTimeOffset.UtcNow;
+            _lastHeartbeatAt = _pollClock.UtcNow;
 
             try
             {
@@ -396,7 +399,7 @@ public partial class MainWindow : Window
             AgentDiagnostics.Record("tracker-loaded", $"email={_client.Email}; projects={snapshot.Projects.Count}; activeProject={snapshot.ActiveSession?.ProjectId ?? "none"}; warning={snapshot.Warning ?? "none"}");
 
             _lastInputTick = NativeIdleMonitor.GetLastInputTick();
-            _lastHeartbeatAt = DateTimeOffset.UtcNow;
+            _lastHeartbeatAt = _pollClock.UtcNow;
             if (_activeSession is null)
             {
                 _wakeIdleStopPending = false;
@@ -452,7 +455,7 @@ public partial class MainWindow : Window
             ? $"Signed in as {email} · Agent v{version}"
             : $"Agent v{version}";
         _pollTimer.Start();
-        _lastPollAt = DateTimeOffset.UtcNow;
+        _lastPollAt = _pollClock.UtcNow;
     }
 
     private void UpdateTrackerStatus()
