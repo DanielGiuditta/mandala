@@ -55,7 +55,7 @@ for(const [name,change] of Object.entries({
 }))test('rejects '+name,async()=>{const f=fixture();change(f);const r=await verifyReport(f.report,f.get);assert.equal(r.status,'NOT CLEARED')})
 
 function gatewayFixture() {
- return { SchemaVersion: 1, Role: 'gateway', KitVersion: '1.2.3', Phase: 'complete', Computer: 'GATEWAY-PC', StartedUtc: '2026-09-16T08:00:00Z', CompletedUtc: '2026-09-16T08:20:00Z', GatewayOrigin: 'https://192.168.1.58:8443/', GatewayCertificateSha256:'a'.repeat(64), Checks: ['task','startup-configuration','configuration','installed-release','production-internet','firewall','listener','certificate-and-enrollment','reboot-observed'].map(id => ({Id:'gateway.'+id,Status:'PASS'})).concat({Id:'gateway.isolation',Status:'OBSERVED'}) }
+ return { SchemaVersion: 1, Role: 'gateway', KitVersion: '1.2.3', Phase: 'complete', Computer: 'GATEWAY-PC', StartedUtc: '2026-09-16T08:00:00Z', CompletedUtc: '2026-09-16T08:20:00Z', GatewayOrigin: 'https://192.168.1.58:8443/', GatewayCertificateSha256:'a'.repeat(64), Checks: ['task','startup-configuration','configuration','installed-release','production-internet','production-clock','firewall','listener','certificate-and-enrollment','reboot-observed'].map(id => ({Id:'gateway.'+id,Status:'PASS'})).concat({Id:'gateway.isolation',Status:'OBSERVED'}) }
 }
 test('combined acceptance requires gateway reboot, all checks and IT isolation observation', async()=>{
  const f=fixture(); const gateway=gatewayFixture()
@@ -85,6 +85,8 @@ for (const [name, change] of Object.entries({
   'old kit mislabeled as complete': (e,g) => {e.KitVersion='1.2.1';g.KitVersion='1.2.1'},
   'unknown gateway version': (e,g) => {g.KitVersion='9.0.0'},
   'missing gateway schema': (e,g) => {delete g.SchemaVersion},
+  'missing production clock check': (e,g) => {g.Checks=g.Checks.filter(c=>c.Id!=='gateway.production-clock')},
+  'failed production clock check': (e,g) => {g.Checks.find(c=>c.Id==='gateway.production-clock').Status='FAIL'},
   'missing resilient startup check': (e,g) => {g.Checks=g.Checks.filter(c=>c.Id!=='gateway.startup-configuration')},
   'gateway validated after employee testing': (e,g) => {g.CompletedUtc='2026-09-16T12:30:00Z'},
   'stale gateway evidence': (e,g) => {g.StartedUtc='2020-01-01T00:00:00Z';g.CompletedUtc='2020-01-01T01:00:00Z'},

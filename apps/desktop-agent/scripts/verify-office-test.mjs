@@ -133,7 +133,7 @@ export async function verifyReport(report, get) {
 
 export function verifyGatewayReport(report) {
   const required = ['task', 'configuration', 'installed-release', 'production-internet', 'firewall', 'listener', 'certificate-and-enrollment', 'reboot-observed']
-  if (report?.KitVersion === currentKit) required.push('startup-configuration')
+  if (report?.KitVersion === currentKit) required.push('startup-configuration', 'production-clock')
   const checks = required.map(id => ({ id: 'gateway.' + id, status: report?.Checks?.some(c => c.Id === 'gateway.' + id && c.Status === 'PASS') ? 'PASS' : 'FAIL' }))
   checks.push({ id: 'gateway.it-isolation-signoff', status: report?.Checks?.some(c => c.Id === 'gateway.isolation' && c.Status === 'OBSERVED') ? 'PASS' : 'FAIL' })
   checks.push({ id: 'gateway.complete-run', status: report?.SchemaVersion === 1 && report?.Role === 'gateway' && automaticKit(report?.KitVersion) && report?.Phase === 'complete' && report?.Checks?.every(c => ['PASS', 'OBSERVED'].includes(c.Status)) ? 'PASS' : 'FAIL' })
