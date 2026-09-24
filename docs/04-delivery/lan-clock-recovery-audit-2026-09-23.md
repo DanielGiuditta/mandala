@@ -1,8 +1,8 @@
-# LAN clock and recovery candidate — September 23, 2026
+# LAN clock and recovery audit — September 23–24, 2026
 
-## Scope and deployment boundary
+## Initial validation scope and deployment boundary
 
-This candidate follows the remote STP54/STP32 diagnosis. It is isolated on `codex/lan-clock-validation`, based on the clean recovery branch at `0cc7a33`. The main workspace's unrelated work and the audited 1.2.3 handoff ZIP are unchanged. No production deployment, installer publication, office software update, clock change, trust-store change, firewall change, schema change or additional employee time entry is part of this validation.
+The initial candidate followed the remote STP54/STP32 diagnosis. It is isolated on `codex/lan-clock-validation`, based on the clean recovery branch at `0cc7a33`. The main workspace's unrelated work and the audited 1.2.3 handoff ZIP are unchanged. That initial validation included no production deployment, installer publication, office software update, clock change, trust-store change, firewall change, schema change or additional employee time entry. The later publication and package audit are recorded below; no office rollout has been accepted.
 
 The real office results remain: STP54 started automatically after a real reboot; one STP32 start/stop for Ruksana on HiLITE Atlantis reached production (entry `3b059868-1e6a-4abc-9a04-455e981f1b4a`). That test exposed approximately 32 seconds of office-to-production clock skew. The employee follows its configured office time source closely. The diagnostic certificate failure was revocation-status unavailable, not failure of the enrolled TLS connection.
 
@@ -37,8 +37,8 @@ No new entities, organizational concepts, roles, permissions, RPCs, database gra
 
 - These tests do not change or correct the office time server. Certificate dates, login protocols and local entry-date selection still require a reasonably correct Windows clock.
 - Network response transit time is conservatively omitted from a newly confirmed session. After a process crash, activity since the last durable activity checkpoint can be omitted; unattended time must not be invented.
-- Process close/reopen and durable journal recovery are distinct from Windows reboot. STP54's unchanged startup repair passed a real office reboot. The exact 1.0.16 employee installer has now passed the isolated standard-user reboot/sign-in rehearsal below. Actual STP32/domain acceptance and pending-time recovery through an OS reboot remain untested by that rehearsal.
-- No installer is approved for employee rollout. The earlier UI candidate used synthetic configuration; the later 1.0.16 installer below has separately audited production configuration. Production publication, live-manifest/download verification and bounded office acceptance remain separate release gates.
+- Process close/reopen and durable journal recovery are distinct from Windows reboot. STP54's unchanged startup repair passed a real office reboot. The exact 1.0.16 employee installer has now passed the isolated standard-user reboot/sign-in rehearsal below. That first rehearsal did not test pending work. A later isolated pending-save OS reboot passed (see below); actual STP32/domain acceptance remains outstanding.
+- No installer is approved for employee rollout. The earlier UI candidate used synthetic configuration; the later 1.0.16 installer below has separately audited production configuration. Production publication and live-manifest/download verification subsequently passed (see below). Bounded office acceptance remains a separate gate.
 - Preserve the existing office test row and original reports. Do not repeat production tests automatically, clear journals, replace pairing, or modify the domain time server to obtain a green report.
 
 ## Results
@@ -98,11 +98,40 @@ The repository's existing Git integration automatically created eight web previe
 
 Both Vercel configuration files now disable Git deployments specifically for this test branch using [Vercel's documented branch setting](https://vercel.com/docs/project-configuration/git-configuration). Other branches and production settings are preserved. The subsequent guard commit created no deployment. No production installer was published.
 
-## Remaining office release gates
+## Follow-up: published release and complete package audit
 
-1. Recheck and correct the shared office time source with the scope and ownership established. Do not change the domain/file server blindly or bypass the production-clock check.
-2. Update the complete handoff package to fingerprint 1.0.16 and include the revised diagnostics. The old 1.2.3 package correctly expects 1.0.15 and is not a drop-in validator for this candidate.
-3. Complete bounded STP32 acceptance in its actual employee/domain profile, preserving existing pairing and pending work. Keep any authorized production test separately identified and verify its exact saved row.
-4. Publish the approved version, verify production release storage/manifest and the selected download version, then compare a Mac download of the live installer to the audited hash/size. Until then the installer remains an unpublished, audited candidate.
+The exact audited **Agent 1.0.16** was published on September 23 at **23:44:39 UTC**, using the existing publisher and private production storage bucket. No web-code deployment or database migration was required. The prior versioned object was retained and the previous manifest was backed up.
 
-No deployment-readiness claim is made from the isolated results alone. The safe work completed now closes the production-configuration installer audit and isolated standard-user reboot/sign-in gaps without another IT round trip.
+The production `latest/release.json`, versioned installer object, Mac download and authenticated download-page selection all agree on 1.0.16, production backend `nzlajptokbcgeaifgnoq`, **51,062,706 bytes**, and SHA-256 `f517f48ace1638cea05471224938a660bb1def0d1ac17a794a16c2737d30dccb`. The bucket remains private. The first ordinary manifest read was briefly stale in the CDN; fresh and ordinary reads subsequently agreed. This is publication verification, not office-trial acceptance.
+
+**PASSED:** [complete Windows package audit 35934969307](https://github.com/DanielGiuditta/mandala/actions/runs/35934969307), source `0afc03990ccd0ac865cd5e0af325a1b32276ea75`.
+
+- Complete kit **1.2.4** includes the exact audited 1.0.16 installer and revised certificate/production-clock diagnostics, plus a read-only gateway baseline entry point.
+- Exact installed Agent tests passed: mutual TLS, sign-in, projects, start/stop, project-switch selection/cancel/confirm, offline journal recovery across process restart, five-minute idle pause (307.1 seconds), five distinct receipts, zero duplicates and zero production entries.
+- Existing gateway installation, Local Service startup repair, stopped-service recovery, bind-failure recovery and checkpoint/failure behavior passed on Windows.
+- Exact package launcher, extracted path with spaces, package integrity checks, internet-marked scripts, invalid inputs, corrupted state and separate standard-user baseline passed. UAC cancellation is injected coverage; the secure-desktop consent UI is not claimed as tested.
+- The Mac verified all **18 manifest entries**, checked the embedded installer byte-for-byte against the audited live release, and preserved the exact tested ZIP under the convenient name `Mandala-Remote-Acceptance-1.2.4.zip`.
+- ZIP size **50,580,395 bytes**; SHA-256 `c7c3fb26247f8bc89513f706c8dc61a6e0c87d909ef05a3341d72191df6bd52d`.
+- [Source regression 35933979358](https://github.com/DanielGiuditta/mandala/actions/runs/35933979358) also passed. The earlier package run `35933979332` failed because a test fixture still expected kit 1.2.3; remaining fixture expectations were corrected without relaxing any product or release check.
+
+The kit remains marked `REHEARSAL_REQUIRED`: it is a maintainer acceptance package, not authorization for general employee rollout. The original 1.2.3 archive remains unchanged.
+
+## Additional actual OS reboot: pending encrypted save passed
+
+**PASSED:** [pending-save Windows reboot rehearsal 35934425562](https://github.com/DanielGiuditta/mandala/actions/runs/35934425562), harness `3934c93`, exact published installer.
+
+The actual installed Agent under a normal Windows user created one synthetic session, stopped while its loopback gateway was unavailable, and retained its encrypted pending journal through a full Windows reboot. Automatic startup restored the same user, sign-in and certificate. New work was blocked while the save was pending. After reconnection it produced **one exact receipt, zero duplicates**, preserving **6.1099726 seconds** rather than counting reboot downtime. Windows Firewall and UAC remained enabled; **zero production entries** were created. Temporary guest auto-logon was removed and the disposable VM was terminated.
+
+This closes the isolated pending-save OS-reboot gap. The guest is Windows Server evaluation with a synthetic account, not STP32's Windows/domain environment, and it does not exercise the office cable, switches or domain policy.
+
+## Remote office boundary and remaining gates
+
+A fresh read-only production check found zero active sessions and zero unfinished desktop receipts for the selected employee. That does not prove the local journal is empty. UltraViewer and NetSupport reconnect, but the nested display/input and Windows unlock could not be verified reliably. Repeated credential attempts were stopped. No office installer, clock, service, firewall, trust-store, pairing, restart or employee time-entry action was performed in this follow-up.
+
+1. Restore reliable authorized remote desktop access and inspect STP32's actual local active/pending state before an update. Preserve the existing user, pairing, journal, sign-in and original test evidence.
+2. Inspect the effective configuration of the shared domain time server `dotsixteen` (`192.168.1.10`) with an authorized server-admin session. It advertised `LOCL` and STP54 was approximately 33 seconds slow relative to production. The gateway SYSTEM session was denied detailed remote configuration access. Establish the approved source and rollback before correcting the shared server; do not bypass the production-clock gate or change domain members away from their hierarchy blindly.
+3. Verify the office network isolation actually in force. The proposed bounded STP54-to-file-server TCP 445 connectivity check has no confirmed result; do not claim isolation passed from IT's earlier confirmation alone. Do not alter domain/file-server rules without understanding dependencies.
+4. Install the exact audited 1.0.16 under approved Windows administrator access, then complete bounded STP32 acceptance in the actual normal-user/domain profile: automatic startup and retained sign-in, start/stop, confirmed project switch, idle pause, pending recovery and exact production receipt/duration checks. Separate authorized test rows from real employee work.
+5. Preserve remote access during testing. Do not ask for or simulate physical cable removal during an unattended remote-only session. The kit still has a physical-disconnect step; that step is not an automatic remote test, and application-only interruption is not claimed as a validated replacement.
+
+These remaining gates do not inherently require someone physically in the office. They do require working remote access and appropriate domain-server administration. No employee-trial readiness claim is made from publication or isolated tests alone.

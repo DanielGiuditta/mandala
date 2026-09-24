@@ -79,9 +79,9 @@ Entity-heavy areas should prefer a persistent master-detail route structure over
 - Do not rebuild the entire entity workspace on every list/detail hop if a shared layout can preserve it.
 - Direct loads of detail URLs must still work without relying on client-only state.
 
-### LAN timer clock handling (unpublished candidate, September 23)
+### LAN timer clock handling (Agent 1.0.16, September 23)
 
-After a successful online start receipt, the candidate anchors its running clock to the receipt's server `started_at` and advances it using monotonic elapsed process time. It starts counting when confirmation arrives; the response transit interval is conservatively omitted. Stops, activity checkpoints and elapsed display share that clock, so a Windows clock offset or correction cannot change the measured duration. No workstation or domain clock is changed.
+After a successful online start receipt, Agent 1.0.16 anchors its running clock to the receipt's server `started_at` and advances it using monotonic elapsed process time. It starts counting when confirmation arrives; the response transit interval is conservatively omitted. Stops, activity checkpoints and elapsed display share that clock, so a Windows clock offset or correction cannot change the measured duration. No workstation or domain clock is changed.
 
 A process restart cannot recover a live monotonic anchor. An active journal is therefore paused at its last durably observed activity, excluding unobserved downtime. This can omit activity since the last successful checkpoint; it must not invent unattended work. Already stopped journals retain their exact timestamp. An unconfirmed/retried start is reconciled with its original UUID and paused at the server start, without counting the waiting period. Existing SQL authorization, idempotent receipts and the 24-hour/five-minute limits remain authoritative. No schema or journal format change is needed.
 
