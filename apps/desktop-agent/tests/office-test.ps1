@@ -3,6 +3,16 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '..\scripts\office-test\check-core.ps1')
 function Assert($Condition,$Message){if(-not $Condition){throw $Message}}
 function Reject($Action,$Message){$failed=$false;try{& $Action|Out-Null}catch{$failed=$true};Assert $failed $Message}
+# STP80 exposed a Windows PowerShell 5.1 false PASS for an empty JSON array.
+# Exercise the same parser/count used by the gateway acceptance check.
+$deviceA=(('AB:'*31)+'AB');$deviceB=(('CD:'*31)+'CD')
+foreach($json in @('[]','[null]','[[]]','null','{}','"not-an-array"','["not-a-fingerprint"]','[1]','[true]','[','[], "devices": []')) {
+    Reject {Get-GatewayEnrollmentCount $json} ('Invalid enrollment passed: '+$json)
+}
+Assert ((Get-GatewayEnrollmentCount ('["'+$deviceA+'"]')) -eq 1) 'One enrolled device was not counted.'
+Assert ((Get-GatewayEnrollmentCount ('["'+$deviceA+'","'+$deviceB+'"]')) -eq 2) 'Two enrolled devices were not counted.'
+Assert ((Get-GatewayEnrollmentCount ('["'+$deviceA+'","'+$deviceA+'"]')) -eq 1) 'Duplicate fingerprints counted as separate devices.'
+Write-Host 'PASS: empty/malformed enrollment fails; valid unique fingerprints counted correctly.'
 foreach($file in @(Get-ChildItem (Join-Path $PSScriptRoot '..\scripts\office-test') -Filter '*.ps1')) {
     $tokens=$null;$errors=$null
     [Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)|Out-Null

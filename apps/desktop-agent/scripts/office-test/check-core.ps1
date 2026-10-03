@@ -6,6 +6,19 @@ function Get-GatewayCertificateSha256($Certificate) {
     try {return [BitConverter]::ToString($hash.ComputeHash($Certificate.GetRawCertData())).Replace('-','').ToLowerInvariant()} finally {$hash.Dispose()}
 }
 function Require($Condition,$Message) { if(-not $Condition) { throw $Message } }
+function Get-GatewayEnrollmentCount([string]$Json) {
+    # Validate the complete document first. A property preserves JSON arrays in
+    # both Windows PowerShell 5.1 and PowerShell 7; wrapping the command in @()
+    # instead counts an empty array as one pipeline object on Windows PowerShell.
+    ConvertFrom-Json -InputObject $Json -ErrorAction Stop | Out-Null
+    $document=ConvertFrom-Json -InputObject ('{"devices":'+$Json+'}') -ErrorAction Stop
+    $devices=$document.devices
+    Require ($devices -is [Array] -and $devices.Count -gt 0) 'No employee devices are enrolled, or the enrollment list is invalid.'
+    foreach($device in $devices) {
+        Require ($device -is [string] -and $device -cmatch '^([0-9A-F]{2}:){31}[0-9A-F]{2}$') 'The enrollment list contains an invalid device fingerprint.'
+    }
+    return @($devices | Select-Object -Unique).Count
+}
 function Get-IstTime { [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow,'India Standard Time').ToString('yyyy-MM-dd hh:mm:ss tt')+' IST' }
 function New-CheckResult($Id,$Status,$Detail) { [pscustomobject]@{Id=$Id;Status=$Status;Detail=$Detail;Utc=[DateTimeOffset]::UtcNow.ToString('o');Ist=(Get-IstTime)} }
 function Invoke-OfficeCheck($Id,[scriptblock]$Action) {
@@ -214,10 +227,9 @@ function Get-GatewayChecks($DataDirectory=(Join-Path $env:ProgramData 'Mandala G
         $server=[Security.Cryptography.X509Certificates.X509Certificate2]::new($config.serverPfx,$config.serverPfxPassword)
         try {
             Require ($server.HasPrivateKey -and $server.NotBefore -le (Get-Date) -and $server.NotAfter -gt (Get-Date)) 'Gateway certificate/key is missing or outside its validity period.'
-            $enrolled=@(Get-Content -LiteralPath $config.enrolledDevices -Raw|ConvertFrom-Json)
-            Require ($enrolled.Count -gt 0) 'No employee devices are enrolled.'
+            $enrolledCount=Get-GatewayEnrollmentCount (Get-Content -LiteralPath $config.enrolledDevices -Raw)
             $script:checkedGatewayCertificateSha256=Get-GatewayCertificateSha256 $server
-            'Server certificate valid until '+$server.NotAfter.ToString('o')+'; enrolled device count='+$enrolled.Count
+            'Server certificate valid until '+$server.NotAfter.ToString('o')+'; enrolled device count='+$enrolledCount
         } finally {$server.Dispose()}
     }
 }
