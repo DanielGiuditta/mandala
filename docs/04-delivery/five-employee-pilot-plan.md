@@ -2,7 +2,9 @@
 
 Updated October 4, 2026. This is the current pilot plan requested by Daniel. It replaces the old August installation matrix and the handoff's requirement to finish every rollout scenario before trying five employees. Historical evidence remains in the detailed handoff.
 
-**Current decision: ready to prepare the session; employee pilot has not yet passed its live check.** Remote STP80 was unavailable when retried October 4, including with the supplied photo's credentials. No office setting or time record was changed in this preparation.
+**Current decision: the IT kit is prepared and Windows-validated; the employee pilot still needs its live office check.** Remote STP80 was unavailable when retried October 4, including with the supplied photo's credentials. No office setting or time record was changed in this preparation.
+
+The [complete IT kit](../../../../local-resources/pilot-2026-10-04/Mandala-IT-Session-2026-10-04.zip) contains the Windows-audited pairing ZIP, verified existing Agent installer for computers that need it, short instructions and a single return checklist. Pairing audit: [37220612447](https://github.com/DanielGiuditta/mandala/actions/runs/37220612447). The maintained source is on `codex/lan-clock-validation`; do not substitute older helpers from the dirty main checkout.
 
 ## What success means
 
