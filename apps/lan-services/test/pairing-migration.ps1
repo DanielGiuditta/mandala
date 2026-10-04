@@ -15,9 +15,12 @@ try {
     }
     $inputPath=Join-Path $fixture 'input.txt';'x'|Set-Content $inputPath
     $launch=Start-Process $env:ComSpec -ArgumentList ('/d /c ""'+(Join-Path $package 'Start pairing.cmd')+'" --check-only"') -RedirectStandardInput $inputPath -RedirectStandardOutput (Join-Path $fixture 'out.txt') -RedirectStandardError (Join-Path $fixture 'err.txt') -PassThru
+    # Retain the process handle before this short launcher exits. Windows
+    # PowerShell otherwise sometimes reports a null ExitCode after WaitForExit.
+    $launchHandle=$launch.Handle
     if(-not $launch.WaitForExit(30000)){& taskkill.exe /PID $launch.Id /T /F|Out-Null;throw 'Pairing launcher timed out.'}
     $launch.WaitForExit();Get-Content (Join-Path $fixture 'out.txt'),(Join-Path $fixture 'err.txt')
-    Assert ($launch.ExitCode -eq 0) 'Downloaded pairing package launcher failed.'
+    Assert ($launch.ExitCode -eq 0) ('Downloaded pairing package launcher failed; exit code: '+$launch.ExitCode)
     Assert (-not(Get-Item (Join-Path $package 'employee-agent-core.ps1') -Stream Zone.Identifier -ErrorAction SilentlyContinue)) 'Verified dependency remained blocked.'
     $helper=Join-Path $package 'employee-agent-core.ps1';$helperBytes=[IO.File]::ReadAllBytes($helper)
     Add-Content $helper '# changed'
