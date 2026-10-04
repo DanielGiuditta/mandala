@@ -17,7 +17,14 @@ $directoryAcl.SetSecurityDescriptorSddlForm('D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)
 Set-Acl -Path $configurationDirectory -AclObject $directoryAcl
 $configuration = @{ gatewayUrl = $GatewayUrl.TrimEnd('/'); deviceCertificateThumbprint = $DeviceCertificateThumbprint.ToUpperInvariant() }
 $configurationPath = Join-Path $configurationDirectory 'lan.config.json'
-$configuration | ConvertTo-Json | Set-Content $configurationPath -Encoding UTF8
+$temporary=Join-Path $configurationDirectory ('lan.config-'+[Guid]::NewGuid().ToString('N')+'.tmp')
+try {
+  $configuration | ConvertTo-Json | Set-Content -LiteralPath $temporary -Encoding UTF8
+  if (Test-Path -LiteralPath $configurationPath) {
+    $backup=Join-Path $configurationDirectory ('lan.config-before-pairing-'+[Guid]::NewGuid().ToString('N')+'.json')
+    [IO.File]::Replace($temporary,$configurationPath,$backup)
+  } else { [IO.File]::Move($temporary,$configurationPath) }
+} finally { if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary -Force} }
 $fileAcl = New-Object System.Security.AccessControl.FileSecurity
 $fileAcl.SetSecurityDescriptorSddlForm('D:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)')
 Set-Acl -Path $configurationPath -AclObject $fileAcl

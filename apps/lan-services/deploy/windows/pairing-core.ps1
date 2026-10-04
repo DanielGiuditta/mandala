@@ -31,6 +31,31 @@ function Add-PairingRoot([byte[]]$Bytes) {
 function Get-PairingCode([byte[]]$Root) {
     return [MandalaPairingCertificates]::Fingerprint($Root).Replace(':','').Substring(0,32)
 }
+function Renew-EmployeePairingRequest($PendingPath, $Request) {
+    $id=[Guid]::Empty
+    if ($Request.kind -ne 'MandalaEmployeeRequest' -or $Request.protocol -ne 1 -or $Request.backend -ne $script:Production -or
+        -not [Guid]::TryParse($Request.requestId,[ref]$id) -or $Request.userSid -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) {
+        throw 'The saved request does not belong to this employee profile. Preserve it and contact IT.'
+    }
+    $created=[DateTime]::Parse($Request.createdAt).ToUniversalTime()
+    if ($created -gt [DateTime]::UtcNow.AddMinutes(5)) { throw 'The saved request is in the future. Check the Windows clock before pairing.' }
+    $root=[Convert]::FromBase64String($Request.root); $leaf=[Convert]::FromBase64String($Request.certificate)
+    if (-not [MandalaPairingCertificates]::Validate($leaf,$root,$false)) { throw 'The saved employee certificate is expired or invalid. Preserve the profile and contact IT.' }
+    $public=[Security.Cryptography.X509Certificates.X509Certificate2]::new($leaf)
+    try { if ($public.Thumbprint -ne $Request.thumbprint) { throw 'The saved request certificate identity does not match.' } } finally { $public.Dispose() }
+    $cert=Get-Item -LiteralPath ('Cert:\CurrentUser\My\'+$Request.thumbprint) -ErrorAction Stop
+    if (-not $cert.HasPrivateKey) { throw 'The saved employee private key is missing. Preserve this Windows profile and contact IT.' }
+    if ($created -ge [DateTime]::UtcNow.AddDays(-7)) { return $Request }
+    # Keep the enrolled key and all tracker data. Only the public request expires.
+    # File.Replace commits a fresh request and its exact predecessor backup together.
+    $renewed=$Request | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $renewed.requestId=[Guid]::NewGuid().ToString(); $renewed.createdAt=[DateTime]::UtcNow.ToString('o')
+    $temporary=$PendingPath+'.'+[Guid]::NewGuid().ToString('N')+'.tmp'
+    $backup=Join-Path (Split-Path $PendingPath -Parent) ('request-before-renewal-'+$id.ToString()+'-'+[Guid]::NewGuid().ToString('N')+'.json')
+    try { Write-PairingJson $temporary $renewed; [IO.File]::Replace($temporary,$PendingPath,$backup) }
+    finally { if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary -Force} }
+    return $renewed
+}
 function Initialize-PairingGateway($Address, $DataDirectory, $InstallDirectory) {
     $ip = $null
     if (-not [Net.IPAddress]::TryParse($Address, [ref]$ip) -or $ip.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) { throw 'Choose the gateway computer LAN IPv4 address.' }
@@ -108,8 +133,9 @@ function New-EmployeePairingRequest($OutputPath, $ProfileDirectory) {
     $pending = Join-Path $ProfileDirectory 'pending-pairing.json'
     if (Test-Path $pending) {
         $old = Read-PairingJson $pending
-        if (Test-Path ('Cert:\CurrentUser\My\' + $old.thumbprint)) { Copy-Item -LiteralPath $pending -Destination $OutputPath -Force; return $old }
-        throw 'An earlier request exists but its private key is missing. Preserve this Windows profile and contact IT.'
+        $request=Renew-EmployeePairingRequest $pending $old
+        if ([IO.Path]::GetFullPath($pending) -ne [IO.Path]::GetFullPath($OutputPath)) { Copy-Item -LiteralPath $pending -Destination $OutputPath -Force }
+        return $request
     }
     $password = Get-RandomPassword
     $material = [MandalaPairingCertificates]::Create('Mandala employee ' + [Guid]::NewGuid().ToString('N'), '', $false, $password)

@@ -1,0 +1,45 @@
+name: Audit employee gateway migration
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/lan-clock-validation]
+    paths:
+      - 'apps/lan-services/deploy/windows/**'
+      - 'apps/lan-services/scripts/build-pairing-package.ps1'
+      - 'apps/lan-services/test/pairing-migration.ps1'
+      - 'apps/desktop-agent/scripts/configure-lan.ps1'
+      - '.github/workflows/check-pairing-migration.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pairing:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build installer-free pairing package
+        shell: powershell
+        run: ./apps/lan-services/scripts/build-pairing-package.ps1 -OutputDirectory "$env:RUNNER_TEMP/pairing-release"
+      - name: Obtain and install the existing audited employee release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $download=Join-Path $env:RUNNER_TEMP 'approved-agent'
+          gh run download 35892308420 --name MandalaAgentSetup-1.0.16 --dir $download
+          if($LASTEXITCODE -ne 0){throw 'Approved Agent download failed.'}
+          $installer=Join-Path $download 'MandalaAgentSetup-1.0.16.exe'
+          if((Get-Item $installer).Length -ne 51062706 -or (Get-FileHash $installer).Hash.ToLowerInvariant() -ne 'f517f48ace1638cea05471224938a660bb1def0d1ac17a794a16c2737d30dccb'){throw 'Approved Agent artifact mismatch.'}
+          $installed=Join-Path $env:RUNNER_TEMP 'Approved Agent'
+          $p=Start-Process $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"" -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'Approved Agent fixture installation failed.'}
+      - name: Validate actual package in Windows PowerShell 5
+        shell: powershell
+        run: ./apps/lan-services/test/pairing-migration.ps1 -PackageZip "$env:RUNNER_TEMP/pairing-release/Mandala-Pairing-1.0.0.zip" -ApprovedAgent "$env:RUNNER_TEMP/Approved Agent/Mandala.Agent.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mandala-Pairing-1.0.0
+          path: ${{ runner.temp }}/pairing-release/*
+          if-no-files-found: error

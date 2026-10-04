@@ -1,10 +1,9 @@
-param([ValidateSet('Choose','Gateway','Employee')][string]$Mode='Choose')
+param([ValidateSet('Choose','Gateway','Employee','Pairing','GatewayPairing')][string]$Mode='Choose')
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 . (Join-Path $PSScriptRoot 'pairing-core.ps1')
-$script:AgentName = 'MandalaAgentSetup-1.0.15.exe'
-$script:AgentHash = 'acf56fe97faa161e710330e1e14652be4d31f8475c8738234ff86d10c2a660ed'
+. (Join-Path $PSScriptRoot 'employee-agent-core.ps1')
 $script:GatewayData = Join-Path $env:ProgramData 'Mandala Gateway'
 $script:EmployeeData = Join-Path $env:LOCALAPPDATA 'Mandala Agent\pairing'
 function Show-Info($Text) { [Windows.Forms.MessageBox]::Show($Text,'Mandala setup','OK','Information') | Out-Null }
@@ -30,22 +29,50 @@ function New-Label($Form,$Text,$Top,$Height=55) {
 }
 function Ensure-EmployeeAgent {
     if (Get-Process -Name 'Mandala.Agent' -ErrorAction SilentlyContinue) { throw 'Stop any current timer, then close Mandala Agent before pairing this Windows profile.' }
-    $exe=Join-Path $env:ProgramFiles 'Mandala Agent\Mandala.Agent.exe'
-    if (-not (Test-Path $exe) -or (Get-Item $exe).VersionInfo.ProductVersion -notmatch '^1\.0\.15(?:\.|\+|$)') {
+    $exe=Get-MandalaAgentPath -MachineOnly
+    if ((Get-EmployeeAgentRequirement $exe $env:ProgramData) -eq 'Install') {
         $installer=Join-Path $PSScriptRoot $script:AgentName
-        if (-not (Test-Path $installer) -or (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $script:AgentHash) { throw 'Ask IT to export the employee setup ZIP again with the verified 1.0.15 installer included.' }
+        if (-not (Test-Path $installer) -or (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $script:AgentHash) { throw 'This PC needs the audited MandalaAgentSetup-1.0.16.exe. Existing installation and data were left unchanged. Ask IT for that installer before pairing.' }
         Show-Info 'Windows will ask for administrator approval to install the employee agent. Use this employee Windows profile for the pairing steps afterwards.'
         $result=Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Verb RunAs -Wait -PassThru
         if ($result.ExitCode -ne 0) { throw 'The employee installation did not finish.' }
+        $exe=Get-MandalaAgentPath -MachineOnly
     }
-    $config=Read-PairingJson (Join-Path $env:ProgramData 'Mandala Agent\agent.config.json')
-    if ($config.supabaseUrl.TrimEnd('/') -ne 'https://nzlajptokbcgeaifgnoq.supabase.co') { throw 'The installed employee agent targets the wrong backend.' }
+    if ((Get-EmployeeAgentRequirement $exe $env:ProgramData) -ne 'Ready') { throw 'The audited employee Agent could not be verified after installation.' }
+}
+function Approve-RequestByDialog {
+    $requestFile=Pick-Open 'Open the employee request JSON'; if(-not $requestFile) { return }
+    $request=Read-PairingJson $requestFile
+    if([Windows.Forms.MessageBox]::Show(('Approve this employee PC: '+$request.computer+'? Confirm this is the request you brought from the employee PC.'),'Approve employee PC','YesNo','Question') -ne 'Yes') { return }
+    $output=Pick-Save 'Mandala connection.json'; if(-not $output) { return }
+    $reply=Approve-EmployeePairing $requestFile $output $script:GatewayData
+    Restart-PairingGateway
+    $code=Get-PairingCode ([Convert]::FromBase64String($reply.root))
+    Show-Info ('Approved. Take the connection JSON back to that employee PC and choose Complete connection. Enter this pairing code there: '+$code+'. Approving a device briefly restarts the gateway; existing agent saves remain queued during that restart.')
 }
 $form=New-Object Windows.Forms.Form
 $form.Text='Mandala - office setup (one-time configuration)'; $form.ClientSize=New-Object Drawing.Size(660,620)
 $form.StartPosition='CenterScreen'; $form.FormBorderStyle='FixedDialog'; $form.MaximizeBox=$false
 $form.Font=New-Object Drawing.Font('Segoe UI',10)
-if ($Mode -eq 'Choose') {
+if ($Mode -eq 'Pairing') {
+    New-Label $form 'Connect an existing employee Agent to an existing office gateway. Keep the employee signed into their normal Windows profile. Only gateway approval and connection settings need administrator approval.' 25 100 | Out-Null
+    New-Button $form 'Employee computer: create request / complete connection' 145 {
+        $args='-NoProfile -STA -ExecutionPolicy RemoteSigned -File "'+(Join-Path $PSScriptRoot 'setup-wizard.ps1')+'" -Mode Employee'
+        Start-Process powershell.exe -ArgumentList $args | Out-Null; $form.Close()
+    }
+    New-Button $form 'Gateway computer: approve employee request' 205 {
+        $args='-NoProfile -STA -ExecutionPolicy RemoteSigned -File "'+(Join-Path $PSScriptRoot 'setup-wizard.ps1')+'" -Mode GatewayPairing'
+        Start-Process powershell.exe -ArgumentList $args -Verb RunAs | Out-Null; $form.Close()
+    }
+} elseif ($Mode -eq 'GatewayPairing') {
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Open gateway approval with administrator approval.' }
+    New-Label $form 'Approve an employee on this existing gateway. Save employee work before approval: refreshing gateway trust briefly restarts its connection program. Existing gateway settings and enrolled devices are retained.' 25 100 | Out-Null
+    New-Button $form 'Approve an employee PC request' 150 { Approve-RequestByDialog }
+    New-Button $form 'Show gateway address and pairing code' 210 {
+        $state=Read-PairingJson (Join-Path $script:GatewayData 'pairing-state.json')
+        Show-Info ('Gateway: https://'+$state.address+':8443'+[Environment]::NewLine+'Pairing code: '+(Get-PairingCode ([Convert]::FromBase64String($state.root))))
+    }
+} elseif ($Mode -eq 'Choose') {
     New-Label $form 'This is one-time office setup. For daily time tracking, open Mandala Agent. Do not add office setup to Windows Startup.' 25 70 | Out-Null
     New-Button $form 'Open employee agent / repair automatic startup' 115 {
         Start-Process (Join-Path $PSScriptRoot 'startup-repair\Repair Mandala Startup.cmd') | Out-Null
@@ -84,15 +111,15 @@ if ($Mode -eq 'Choose') {
     }
     New-Button $form '2. Export employee setup ZIP' 280 {
         if(-not (Test-Path (Join-Path $script:GatewayData 'pairing-state.json'))) { throw 'Complete step 1 first.' }
-        Show-Info 'Select the previously downloaded MandalaAgentSetup-1.0.15.exe. If you do not have it, use the download-page button below first.'
+        Show-Info 'Select the previously downloaded MandalaAgentSetup-1.0.16.exe. If you do not have it, use the download-page button below first.'
         $agent=Pick-Open ('Select '+$script:AgentName) 'Windows installer (*.exe)|*.exe'
         if(-not $agent) { return }
-        if((Split-Path $agent -Leaf) -ne $script:AgentName -or (Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant() -ne $script:AgentHash) { throw 'That is not the audited 1.0.15 employee installer. Download the correct file from the installer page.' }
+        if((Split-Path $agent -Leaf) -ne $script:AgentName -or (Get-FileHash $agent -Algorithm SHA256).Hash.ToLowerInvariant() -ne $script:AgentHash) { throw 'That is not the audited 1.0.16 employee installer. Download the correct file from the installer page.' }
         $destination=Pick-Save 'Mandala Employee Setup.zip' 'ZIP file (*.zip)|*.zip'; if(-not $destination) { return }
         $temp=Join-Path ([IO.Path]::GetTempPath()) ('MandalaEmployee-'+[Guid]::NewGuid())
         New-Item -ItemType Directory $temp | Out-Null
         try {
-            foreach($file in @('setup-wizard.ps1','pairing-core.ps1','PairingCertificates.cs','configure-lan.ps1','Employee pairing.cmd')) { Copy-Item (Join-Path $PSScriptRoot $file) $temp }
+            foreach($file in @('setup-wizard.ps1','pairing-core.ps1','employee-agent-core.ps1','PairingCertificates.cs','configure-lan.ps1','Employee pairing.cmd')) { Copy-Item (Join-Path $PSScriptRoot $file) $temp }
             Copy-Item (Join-Path $PSScriptRoot 'startup-repair') $temp -Recurse
             Copy-Item $agent (Join-Path $temp $script:AgentName)
             Compress-Archive -Path (Join-Path $temp '*') -DestinationPath $destination -Force
@@ -100,14 +127,7 @@ if ($Mode -eq 'Choose') {
         Show-Info 'Copy this ZIP to the LAN-only PC using an IT-approved transfer. Extract it and open Employee pairing.cmd while signed in as the employee. Bring its request JSON back here.'
     }
     New-Button $form '3. Approve an employee PC request' 335 {
-        $requestFile=Pick-Open 'Open the employee request JSON'; if(-not $requestFile) { return }
-        $request=Read-PairingJson $requestFile
-        if([Windows.Forms.MessageBox]::Show(('Approve this employee PC: '+$request.computer+'? Confirm this is the request you brought from the employee PC.'),'Approve employee PC','YesNo','Question') -ne 'Yes') { return }
-        $output=Pick-Save 'Mandala connection.json'; if(-not $output) { return }
-        $reply=Approve-EmployeePairing $requestFile $output $script:GatewayData
-        Restart-PairingGateway
-        $code=Get-PairingCode ([Convert]::FromBase64String($reply.root))
-        Show-Info ('Approved. Take the connection JSON back to that employee PC and choose Complete connection. Enter this pairing code there: '+$code+'. Approving a device briefly restarts the gateway; existing agent saves remain queued during that restart.')
+        Approve-RequestByDialog
     }
     New-Button $form 'Show gateway pairing code' 390 {
         $state=Read-PairingJson (Join-Path $script:GatewayData 'pairing-state.json')
@@ -117,7 +137,7 @@ if ($Mode -eq 'Choose') {
     New-Label $form 'Only public certificates move between computers. Certificates expire after one year; arrange renewal before then. Existing manual gateway configuration is preserved rather than overwritten.' 505 95 | Out-Null
 } else {
     New-Label $form ('Employee PC: '+$env:COMPUTERNAME+'. Run this while signed in to the employee Windows account, not a separate administrator account. Administrator approval is requested only for installation and connection settings.') 20 85 | Out-Null
-    New-Button $form '1. Install agent and create PC request' 120 {
+    New-Button $form '1. Check agent and create PC request' 120 {
         Ensure-EmployeeAgent
         $output=Pick-Save ('Mandala request - '+$env:COMPUTERNAME+'.json'); if(-not $output) { return }
         Show-Info 'Windows may ask you to trust the Mandala pairing issuer certificate created for this profile. Approve that certificate prompt to continue.'
