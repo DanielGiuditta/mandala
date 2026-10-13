@@ -80,7 +80,7 @@ Actual time worked for a project on a given date.
 ### `source`
 Where the time entry originated, such as native Windows checker sync or a manual correction/import path.
 
-LAN desktop sessions use the existing `windows-tracker` value, displayed as Windows checker; existing online/sidebar sessions retain `manual`.
+Desktop sessions use the existing `windows-tracker` value, displayed as Windows checker. From Agent 1.0.17 this includes direct and LAN connections. Earlier direct-agent and existing sidebar sessions retain `manual`; that historical label alone cannot establish that hours were typed in by a person.
 
 ### `assignmentId`
 Optional link to the related assignment when available.
@@ -98,7 +98,7 @@ The person currently working. It is unique so one person cannot have more than o
 The latest recorded keyboard, mouse, scroll, or touch activity for the active session. The tracker pauses after five minutes without activity.
 
 ### `desktopSessionId`
-Optional durable session receipt ID. When present, the original LAN agent owns finalization; stale-session processing and another device cannot silently close or replace it.
+Optional durable session receipt ID. When present, the original Windows agent owns finalization, through a direct or LAN connection; stale-session processing and another device cannot silently close or replace it.
 
 ## ResourceDocument
 

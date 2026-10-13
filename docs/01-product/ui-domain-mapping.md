@@ -26,6 +26,8 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 
 ## Action mappings
 
+- Windows "Paused" / "Tracking resumed" → temporary client intent to start a new `ActiveWorkSession` on the same explicitly selected project after activity returns. "Stop" cancels that intent, including while paused. No additional reporting entity is introduced; each completed interval remains a `TimeEntry`.
+
 - "Add Team Member" → create `Person` and optionally linked `UserAccount` / `RoleAssignment` based on the selected permission
 - "Assign Admin" → create `RoleAssignment`
 - "Create Project" → create `Project`

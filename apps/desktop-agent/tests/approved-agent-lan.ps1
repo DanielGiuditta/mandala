@@ -1,4 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$Agent,[Parameter(Mandatory=$true)][string]$ApprovedManifest,[switch]$FixtureCandidate)
+param(
+    [Parameter(Mandatory=$true)][string]$Agent,
+    [Parameter(Mandatory=$true)][string]$ApprovedManifest,
+    [switch]$FixtureCandidate,
+    [switch]$AutoResumeExpected
+)
 $ErrorActionPreference='Stop'
 # This test is restricted to a disposable GitHub-hosted Windows runner. It uses
 # synthetic credentials and receipts, never production accounts or time entries.
@@ -11,7 +16,10 @@ Add-Type -AssemblyName System.Windows.Forms
 Require (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) 'Disposable-runner firewall/trust fixture requires administrator privileges.'
 $Agent=(Resolve-Path -LiteralPath $Agent).Path
 $approved=Get-Content -LiteralPath $ApprovedManifest -Raw|ConvertFrom-Json
-Require ($approved.version -eq '1.0.16' -and (Get-Item -LiteralPath $Agent).VersionInfo.ProductVersion -match '^1\.0\.16(?:\.|\+|$)' -and (Get-FileHash -LiteralPath $Agent).Hash.ToLowerInvariant() -eq $approved.agentSha256) 'Actual installed binary must match the approved 1.0.16 audit.'
+Require ($approved.version -is [string] -and $approved.version -match '^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$') 'Approved manifest must name an exact major.minor.patch Agent version.'
+Require ($approved.agentSha256 -is [string] -and $approved.agentSha256 -match '^[a-f0-9]{64}$') 'Approved manifest must contain the audited Agent SHA-256.'
+$expectedVersionPattern='^'+[regex]::Escape($approved.version)+'(?:\.|\+|$)'
+Require ((Get-Item -LiteralPath $Agent).VersionInfo.ProductVersion -match $expectedVersionPattern -and (Get-FileHash -LiteralPath $Agent).Hash.ToLowerInvariant() -eq $approved.agentSha256) ('Actual installed binary must match the approved '+$approved.version+' audit.')
 $agentConfig=Get-Content -LiteralPath (Join-Path (Split-Path $Agent) 'agent.config.json') -Raw|ConvertFrom-Json
 Require ($agentConfig.supabaseUrl.TrimEnd('/') -eq 'https://nzlajptokbcgeaifgnoq.supabase.co') 'The approved binary configuration must retain the production backend.'
 $local=Join-Path $env:LOCALAPPDATA 'Mandala Agent'
@@ -59,6 +67,16 @@ function Start-FixtureAgent {
 }
 function Wait-FixtureReceipts([int]$Count) {
     Wait-Ui ('exactly '+$Count+' real Agent protocol-fixture receipts') {@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq $Count} 60|Out-Null
+}
+function Wait-FixtureIdlePause {
+    # No mocked clocks or shortened timer: use the actual five-minute Windows
+    # idle monitor and stop generating input for the entire bounded wait.
+    [MandalaTestInput]::Pulse();$idleStarted=[DateTimeOffset]::UtcNow
+    Write-Host 'Agent protocol fixture: waiting for its real five-minute idle pause. No test mouse/keyboard input will be generated.'
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -like 'Timer paused after 5 minutes*Time saved successfully*'} 380 'actual five-minute idle pause and save confirmation'
+    $idleSeconds=([DateTimeOffset]::UtcNow-$idleStarted).TotalSeconds
+    Require ($idleSeconds -ge 295 -and $idleSeconds -le 380) 'Idle result did not follow the actual bounded five-minute Windows inactivity interval.'
+    return $idleSeconds
 }
 function Invoke-FixtureCleanup([string]$Stage,[scriptblock]$Action) {
     try {& $Action}
@@ -147,31 +165,87 @@ try {
     Require (@($switched.sessions).Count -eq 4 -and @($switched.sessions|Where-Object {-not $_.stopped_at -and $_.project_id -eq '22222222-2222-4222-8222-222222222222'}).Count -eq 1) 'Confirmed switch did not save A before starting B.'
     Start-Sleep -Seconds 3
     Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project';Wait-FixtureReceipts 4
-    # No mocked clocks or shortened timer: use the actual five-minute Windows
-    # idle monitor and stop generating input for the entire bounded wait.
     [MandalaTestInput]::Pulse()
     Start-AgentProject 'CI protocol project A'
-    [MandalaTestInput]::Pulse();$idleStarted=[DateTimeOffset]::UtcNow
-    Write-Host 'Approved Agent protocol fixture: waiting for its real five-minute idle pause. No test mouse/keyboard input will be generated.'
-    Wait-AgentText 'TrackerMessageText' {param($text) $text -like 'Timer paused after 5 minutes*Time saved successfully*'} 380 'actual five-minute idle pause and save confirmation'
-    $idleSeconds=([DateTimeOffset]::UtcNow-$idleStarted).TotalSeconds
-    Require ($idleSeconds -ge 295 -and $idleSeconds -le 380) 'Idle result did not follow the actual bounded five-minute Windows inactivity interval.'
-    Wait-AgentState 'No active project';Wait-FixtureReceipts 5
-    [MandalaTestInput]::Pulse();Start-Sleep -Seconds 5
-    Wait-AgentState 'No active project'
-    Require (@((Read-FixtureEvidence).sessions).Count -eq 5) 'Returning Windows input restarted the timer automatically.'
+    $idleSeconds=Wait-FixtureIdlePause
+    Wait-FixtureReceipts 5
+    $expectedReceipts=5
+    $autoResumeEvidence=$null
+    if($AutoResumeExpected) {
+        Wait-AgentState 'Paused CI protocol project A'
+        Require ((Get-AgentControl 'StopButton').Current.IsEnabled) 'Idle-paused tracking must offer Stop to cancel automatic resumption.'
+        $paused=Read-FixtureEvidence
+        $idleSession=@($paused.sessions)[-1]
+        Require (@($paused.sessions).Count -eq 5 -and $idleSession.project_id -eq '11111111-1111-4111-8111-111111111111' -and $idleSession.stopped_at) 'Idle pause did not finalize the fifth session for project A.'
+        $idleStoppedAt=[DateTimeOffset]::Parse($idleSession.stopped_at)
+        # UI Automation changes selection without sending Windows input. The
+        # remembered work project must remain A even while the dropdown shows B.
+        $idleInput=[MandalaTestInput]::LastInput()
+        Select-AgentProject 'CI protocol project B'
+        Start-Sleep -Seconds 8
+        Require ([MandalaTestInput]::LastInput() -eq $idleInput) 'The idle selection check unexpectedly generated Windows input.'
+        Wait-AgentState 'Paused CI protocol project A'
+        Require (@((Read-FixtureEvidence).sessions).Count -eq 5) 'Dropdown selection or an idle refresh started a session without returning Windows input.'
+        $resumeInputAt=[DateTimeOffset]::UtcNow
+        [MandalaTestInput]::Pulse()
+        Wait-AgentState 'Tracking CI protocol project A' 45
+        Wait-AgentText 'TrackerMessageText' {param($text) $text -like 'Resumed CI protocol project A after Windows activity. Idle time was not added.*'} 20 'visible automatic resumption notice'
+        $resumed=Read-FixtureEvidence
+        $resumedSession=@($resumed.sessions|Where-Object {-not $_.stopped_at})
+        Require (@($resumed.sessions).Count -eq 6 -and $resumedSession.Count -eq 1 -and $resumedSession[0].project_id -eq '11111111-1111-4111-8111-111111111111' -and $resumedSession[0].id -ne $idleSession.id) 'Returning activity must start one new session on remembered project A, not the selected project B.'
+        $resumedStartedAt=[DateTimeOffset]::Parse($resumedSession[0].started_at)
+        Require ($resumedStartedAt -ge $resumeInputAt.AddMilliseconds(-100) -and $resumedStartedAt -le [DateTimeOffset]::UtcNow.AddSeconds(1)) 'Resumed session start was backdated before returning Windows input.'
+        Require (($resumedStartedAt-$idleStoppedAt).TotalSeconds -ge 5) 'The measured idle gap was incorrectly included in the resumed session.'
+        Start-Sleep -Seconds 3
+        Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project';Wait-FixtureReceipts 6
+        [MandalaTestInput]::Pulse();Start-Sleep -Seconds 8
+        Wait-AgentState 'No active project'
+        Require (@((Read-FixtureEvidence).sessions).Count -eq 6) 'Explicit Stop was undone by returning Windows input.'
+        # Prove the second Stop case independently: cancel while paused, before
+        # any fresh input can start another session. This uses another real
+        # five-minute interval rather than setting app internals or test clocks.
+        Start-AgentProject 'CI protocol project A'
+        $cancelIdleSeconds=Wait-FixtureIdlePause
+        Wait-AgentState 'Paused CI protocol project A';Wait-FixtureReceipts 7
+        $cancelInput=[MandalaTestInput]::LastInput()
+        Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project'
+        Require ([MandalaTestInput]::LastInput() -eq $cancelInput) 'The paused Stop check unexpectedly generated Windows input before cancellation.'
+        [MandalaTestInput]::Pulse();Start-Sleep -Seconds 8
+        Wait-AgentState 'No active project'
+        Require (@((Read-FixtureEvidence).sessions).Count -eq 7) 'Stop while idle-paused failed to cancel automatic resumption.'
+        $expectedReceipts=7
+        $autoResumeEvidence=[ordered]@{
+            returningWindowsInputResumedSameProject=$true
+            dropdownSelectionDidNotChangeResumeProject=$true
+            newDistinctSession=$true
+            resumedSessionId=$resumedSession[0].id
+            pausedSessionId=$idleSession.id
+            pausedSessionStoppedAt=$idleStoppedAt.ToString('O')
+            returningInputAt=$resumeInputAt.ToString('O')
+            resumedSessionStartedAt=$resumedStartedAt.ToString('O')
+            excludedIdleGapSeconds=[Math]::Round(($resumedStartedAt-$idleStoppedAt).TotalSeconds,3)
+            explicitStopPreventedResume=$true
+            stopWhilePausedPreventedResume=$true
+            secondIdlePauseSeconds=[Math]::Round($cancelIdleSeconds,1)
+        }
+    } else {
+        Wait-AgentState 'No active project'
+        [MandalaTestInput]::Pulse();Start-Sleep -Seconds 5
+        Wait-AgentState 'No active project'
+        Require (@((Read-FixtureEvidence).sessions).Count -eq 5) 'Returning Windows input restarted the legacy timer automatically.'
+    }
     # Allow a second automatic retry window; a resolved journal must not resend.
     Start-Sleep -Seconds 12
     $receipts=@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'})
     $observed=Read-FixtureEvidence
-    Require ($receipts.Count -eq 5 -and @($receipts.SessionId|Select-Object -Unique).Count -eq 5 -and @($receipts.EntryId|Select-Object -Unique).Count -eq 5) 'Expected five distinct exact receipts with no duplicate after reconnect/switch/idle.'
-    Require ($observed.productionRequests -eq 0 -and $observed.blockedExternalRequests -eq 0 -and @($observed.sessions).Count -eq 5) 'Fixture saw unexpected requests or sessions.'
+    Require ($receipts.Count -eq $expectedReceipts -and @($receipts.SessionId|Select-Object -Unique).Count -eq $expectedReceipts -and @($receipts.EntryId|Select-Object -Unique).Count -eq $expectedReceipts) 'Expected distinct exact receipts with no duplicate after reconnect/switch/idle.'
+    Require ($observed.productionRequests -eq 0 -and $observed.blockedExternalRequests -eq 0 -and @($observed.sessions).Count -eq $expectedReceipts) 'Fixture saw unexpected requests or sessions.'
     foreach($session in $observed.sessions){Require ($session.stopped_at -and $session.time_entry_id -and $session.finishRequests -eq 1 -and @($receipts|Where-Object {$_.SessionId -eq $session.id -and $_.EntryId -eq $session.time_entry_id}).Count -eq 1) 'Actual Agent receipt did not match exactly one synthetic saved session.'}
     Require ((Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Pending state did not clear after confirmed recovery.'
     Close-TestAgent
-    $summary=[ordered]@{scope='PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE';binaryProvenance=$(if($FixtureCandidate){'Unpublished source candidate with synthetic configuration; not an audited release'}else{'Approved release'});releaseAudited=(-not $FixtureCandidate);agentVersion='1.0.16';agentSha256=$approved.agentSha256;backend='nzlajptokbcgeaifgnoq';gateway='https://127.0.0.1:8443';realGatewayMutualTls=$true;realAgentSignIn=$true;realStartStop=$true;realOfflineJournalCloseReopen=$true;selectionDidNotSwitch=$true;cancelDidNotSwitch=$true;confirmedSwitchSavedPreviousFirst=$true;exactSavedReceipts=5;duplicateReceipts=0;productionRequests=0;productionEntries=0;upstream='Injected in-memory protocol fixture; no database/network implementation';rebootTested=$false;idleTested=$true;idlePauseSeconds=[Math]::Round($idleSeconds,1);inputDidNotAutoResume=$true;windowsUserMode='Hosted CI account; not standard-user/UAC acceptance'}
+    $summary=[ordered]@{scope='PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE';binaryProvenance=$(if($FixtureCandidate){'Unpublished source candidate with synthetic configuration; not an audited release'}else{'Audited installed release candidate'});releaseAudited=(-not $FixtureCandidate);agentVersion=$approved.version;agentSha256=$approved.agentSha256;backend='nzlajptokbcgeaifgnoq';gateway='https://127.0.0.1:8443';realGatewayMutualTls=$true;realAgentSignIn=$true;realStartStop=$true;realOfflineJournalCloseReopen=$true;selectionDidNotSwitch=$true;cancelDidNotSwitch=$true;confirmedSwitchSavedPreviousFirst=$true;exactSavedReceipts=$expectedReceipts;duplicateReceipts=0;productionRequests=0;productionEntries=0;upstream='Injected in-memory protocol fixture; no database/network implementation';rebootTested=$false;idleTested=$true;idlePauseSeconds=[Math]::Round($idleSeconds,1);inputDidNotAutoResume=(-not $AutoResumeExpected);autoResumeExpected=[bool]$AutoResumeExpected;autoResume=$autoResumeEvidence;windowsUserMode='Hosted CI account; not standard-user/UAC acceptance'}
     Write-PairingJson (Join-Path $env:RUNNER_TEMP 'approved-agent-lan-audit.json') $summary
-    Write-Host 'PASS: tested Agent binary (see binaryProvenance in report), real gateway mutual TLS, synthetic sign-in/projects, start/stop, offline pending journal through normal close/reopen, cancelled/confirmed switch, actual five-minute idle pause/no auto-resume, five exact receipts and no duplicates. PROTOCOL FIXTURE ONLY: zero production writes; no reboot/SQL/standard-user acceptance claimed.'
+    Write-Host ('PASS: tested Agent '+$approved.version+', real gateway mutual TLS, synthetic sign-in/projects, start/stop, offline pending journal through normal close/reopen, cancelled/confirmed switch and actual five-minute idle behavior. Auto-resume expected: '+[bool]$AutoResumeExpected+'; exact receipts: '+$expectedReceipts+'; zero duplicates. PROTOCOL FIXTURE ONLY: zero production writes; no reboot/SQL/standard-user acceptance claimed.')
 } catch {
     $primaryError=$_
     try {if(Test-Path -LiteralPath (Join-Path $fixture 'server-error.txt')){Get-Content -LiteralPath (Join-Path $fixture 'server-error.txt')|Write-Host}}catch{Write-Warning 'Fixture server diagnostics unavailable; original test error is preserved.'}

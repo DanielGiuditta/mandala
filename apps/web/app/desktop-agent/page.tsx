@@ -72,7 +72,7 @@ export default async function DesktopAgentPage() {
                   ["1. Start and stop", "Work for one minute, stop, and confirm the saved entry appears for the right employee and project."],
                   ["2. Switch projects", "Work for one minute on each of two projects. Confirm both entries are saved."],
                   ["3. Disconnect and reconnect", "On the LAN PC, start while connected, disconnect and stop. Reopen Mandala, reconnect, and confirm the time saves once."],
-                  ["4. Leave it idle", "Leave the keyboard and mouse untouched for six minutes. Confirm the timer pauses and saves."],
+                  ["4. Pause and resume", "With Agent 1.0.17 or later, leave the keyboard and mouse untouched for six minutes. Confirm the timer pauses and saves, then resumes the same project when you return. Stop must keep tracking off."],
                 ].map(([title, description]) => (
                   <article className="pd-list-item" key={title}>
                     <div className="pd-list-item-main pd-list-item-main-column">
@@ -121,7 +121,7 @@ export default async function DesktopAgentPage() {
                 <article className="pd-list-item">
                   <div className="pd-list-item-main pd-list-item-main-column">
                     <h4>The timer has paused</h4>
-                    <p className="pd-meta-text">The companion pauses after five minutes without activity. The employee must select Start Work to resume.</p>
+                    <p className="pd-meta-text">Agent 1.0.17 and later resumes the last started project when keyboard or mouse activity returns after an idle pause. The idle gap is not counted. Stop keeps tracking off until Start Work is selected again. Earlier versions require Start Work after every pause; existing PCs need the new installer to receive this change.</p>
                   </div>
                 </article>
                 <article className="pd-list-item">

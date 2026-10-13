@@ -68,6 +68,8 @@ In V1, people capture time primarily through a native Windows checker.
 
 At machine login or session start, the person selects the current project from a dropdown.
 
+From Windows Agent 1.0.17, selecting a project and starting work enables automatic resume for that project during the current application session. After five minutes without Windows keyboard or mouse activity, the agent saves the completed interval and waits. Returning input starts a new interval on the same project only after the previous save is confirmed and current authorization permits it. The idle gap is not backfilled. Explicit Stop, including while paused, disables automatic resume until the employee starts work again. Application startup or sign-in alone does not start a timer. Merely selecting another project or opening a file never changes the tracked project. The agent displays whether it is waiting to resume or has resumed.
+
 The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
 
 That tracker may let the person pick any project they are allowed to track against and start or stop work. Only one active work session may exist for a person at a time across browsers and devices. Starting work on a different project requires confirmation; on confirmation, the existing session is stopped, its elapsed time is saved as one manual `TimeEntry`, and the new session begins.

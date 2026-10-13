@@ -3,7 +3,7 @@ mandala — quick employee test
 use one employee and two projects. allow about 20 minutes once IT has the LAN connection ready.
 
 before you start
-use MandalaAgentSetup-1.0.15.exe (the app may show 1.0.15.0). installation needs windows admin approval and may show an unsigned publisher warning.
+installation requires windows administrator approval. use exactly MandalaAgentSetup-1.0.17.exe (the app may show 1.0.17.0); this pre-launch installer may show an unsigned publisher warning. preserve the existing employee profile, sign-in and LAN configuration when upgrading.
 first do test 1 on a pc with internet. then do all four tests on the LAN-only pc after local IT confirms its connection is ready.
 if sign-in times out, save the diagnostics and give them to local IT. on the LAN pc, the login screen should show “LAN https://…” next to the backend. if it is missing, IT must configure the gateway first. do not keep resetting the password.
 
@@ -17,8 +17,9 @@ start project A and work for one minute. switch to project B and confirm. work f
 save and close any CAD drawings/shared files first. start a project while connected and work for one minute. disconnect only this pc from the network, keep typing locally for one minute, then stop.
 it should say the time is waiting to upload. close and reopen mandala using the same Windows profile, then reconnect. allow two minutes for a saved reference. check that the time appears once, with no duplicate. do not clear app data or start another session while a save is pending.
 
-4. leave it idle
-start work, then leave the mouse and keyboard untouched for six minutes. the timer should pause and save. it should stay paused until you click Start Work again.
+4. pause and resume
+start work, then leave the mouse and keyboard untouched for six minutes. the timer should pause and save. return to ordinary keyboard/mouse activity: the same project should resume automatically as a new interval, without counting the idle gap. work for one minute, then stop and confirm the new saved reference.
+continue typing after Stop: tracking must remain off until Start Work is selected. also confirm Stop while idle-paused cancels automatic resume. simply choosing a different project or opening a file must not change the tracked project.
 
 if anything fails
 save a screenshot and click “Save / copy diagnostics for IT”. give the saved text file to local IT. if they cannot fix it, mark that test blocked and move on only if there is no unsaved/pending session. do not delete data or disable security settings.

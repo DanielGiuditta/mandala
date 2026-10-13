@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/lan-release-1.0.15": false,
-      "codex/lan-clock-validation": false
+      "codex/lan-clock-validation": false,
+      "codex/agent-auto-resume": false
     }
   }
 }

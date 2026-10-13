@@ -24,11 +24,15 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Run desktop agent regression checks
         run: dotnet run --project .\apps\desktop-agent\tests\Mandala.Agent.RegressionTests\Mandala.Agent.RegressionTests.csproj -c Release
       - name: Install Inno Setup
@@ -138,6 +142,14 @@ jobs:
           }
           $audit | ConvertTo-Json | Set-Content .\apps\desktop-agent\release\installer-audit.json
           Write-Host "Installer audit passed: version=$installedVersion backend=$installedProjectRef sha256=$hash"
+      - name: Audit installed idle resume and explicit Stop
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $agent = Join-Path $env:RUNNER_TEMP 'Mandala Agent Audit/Mandala.Agent.exe'
+          & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-lan.ps1 -Agent $agent -ApprovedManifest apps/desktop-agent/release/installer-audit.json -AutoResumeExpected
+          if ($LASTEXITCODE -ne 0) { throw 'Installed idle-resume/Stop audit failed; publication blocked.' }
       - name: Publish the audited installer
         if: inputs.publish_release
         env:
@@ -167,4 +179,12 @@ jobs:
           path: |
             apps/desktop-agent/release/MandalaAgentSetup-${{ inputs.version }}.exe
             apps/desktop-agent/release/installer-audit.json
+            ${{ runner.temp }}/approved-agent-lan-audit.json
           if-no-files-found: error
+      - name: Preserve Windows behavior evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: idle-resume-audit-${{ inputs.version }}
+          path: ${{ runner.temp }}/approved-agent-lan-audit.json
+          if-no-files-found: warn

@@ -9,10 +9,12 @@ namespace Mandala.Agent
 {
     public sealed partial class SupabaseTimeTrackerClient
     {
-        internal SupabaseTimeTrackerClient(HttpMessageHandler handler, TimeProvider time, string directory)
+        internal SupabaseTimeTrackerClient(HttpMessageHandler handler, TimeProvider time, string directory,
+            bool useLanGateway = true)
         {
-            _configuration = new AppConfiguration($"https://{AppConfiguration.ProductionProjectRef}.supabase.co", "fixture")
-                { GatewayUrl = "https://fixture.invalid", DeviceCertificateThumbprint = "fixture" };
+            _configuration = new AppConfiguration($"https://{AppConfiguration.ProductionProjectRef}.supabase.co", "fixture");
+            if (useLanGateway)
+                _configuration = _configuration with { GatewayUrl = "https://fixture.invalid", DeviceCertificateThumbprint = "fixture" };
             _httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://fixture.invalid/") };
             _lanClock = new DesktopSessionClock(time);
             _createJournal = email => new DesktopSessionJournal(email, directory);

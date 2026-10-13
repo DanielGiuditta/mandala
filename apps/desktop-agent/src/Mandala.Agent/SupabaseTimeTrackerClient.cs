@@ -36,9 +36,8 @@ public sealed partial class SupabaseTimeTrackerClient
     }
 
     public string? Email => _session?.Email;
-    public bool HasPendingSave => UsesLanGateway
-        ? _journalState?.Session is { } session && (!session.Confirmed || session.StoppedAt is not null)
-        : _pendingSaveCheck is not null;
+    public bool HasPendingSave => _pendingSaveCheck is not null ||
+        _journalState?.Session is { } session && (!session.Confirmed || session.StoppedAt is not null);
 
     public async Task SignInAsync(string email, string password)
     {
@@ -60,7 +59,7 @@ public sealed partial class SupabaseTimeTrackerClient
         {
             return await RefreshSessionAsync();
         }
-        catch (Exception exception) when (UsesLanGateway && _journalState?.Session is not null && IsConnectionFailure(exception))
+        catch (Exception exception) when (_journalState?.Session is not null && IsConnectionFailure(exception))
         {
             return true; // Recover this Windows user's pending work; cloud writes still require valid auth.
         }
@@ -76,8 +75,9 @@ public sealed partial class SupabaseTimeTrackerClient
 
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
-        if (UsesLanGateway) return await GetLanSnapshotAsync();
+        if (UsesLanGateway || _journalState?.Session is not null) return await GetLanSnapshotAsync();
         var projects = await ListProjectsAsync();
+        await PersistJournalAsync(_journalState! with { Projects = projects.Select(p => new TimeTrackerProject(p.Id, p.Name)).ToList() });
         var warnings = new List<string>();
 
         if (projects.Count > 0 && projects.All(project => string.IsNullOrWhiteSpace(project.Name)))
@@ -89,7 +89,8 @@ public sealed partial class SupabaseTimeTrackerClient
 
         try
         {
-            await RpcAsync<JsonElement>("pause_stale_self_work_session", new { entry_date = localDate });
+            if (!_hasOwnedDesktopSession)
+                await RpcAsync<JsonElement>("pause_stale_self_work_session", new { entry_date = localDate });
         }
         catch (HttpRequestException exception)
         {
@@ -103,7 +104,7 @@ public sealed partial class SupabaseTimeTrackerClient
         try
         {
             sessions = await GetAsync<List<ActiveSessionResponse>>(
-                "rest/v1/active_work_sessions?select=project_id,started_at");
+                "rest/v1/active_work_sessions?select=project_id,started_at,desktop_session_id");
         }
         catch (HttpRequestException exception)
         {
@@ -114,6 +115,15 @@ public sealed partial class SupabaseTimeTrackerClient
         }
 
         var active = sessions.FirstOrDefault();
+        if (active is not null && (active.DesktopSessionId is not null || _hasOwnedDesktopSession))
+        {
+            warnings.Add("A timer is running on another device. Stop it on that device before starting work here.");
+            active = null;
+        }
+        else if (active is not null)
+        {
+            warnings.Add("This timer was started by an earlier tracker. Stop it before starting a new Windows session.");
+        }
         var activeProject = active is null
             ? null
             : projects.FirstOrDefault(project => project.Id == active.ProjectId);
@@ -157,79 +167,21 @@ public sealed partial class SupabaseTimeTrackerClient
         }
     }
 
-    public async Task<TimeEntrySaveResult?> StartAsync(string projectId, string localDate, bool confirmSwitch) =>
-        UsesLanGateway ? await StartLanAsync(projectId, localDate, confirmSwitch) : await StartAndRecordAsync(projectId, localDate, confirmSwitch);
-
-    private async Task<TimeEntrySaveResult?> StartAndRecordAsync(string projectId, string localDate, bool confirmSwitch)
+    public async Task<TimeEntrySaveResult?> StartAsync(string projectId, string localDate, bool confirmSwitch)
     {
-        AgentDiagnostics.Record("start-request", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}; email={Email}");
-        if (confirmSwitch)
-        {
-            var pendingResult = await TryResolvePendingSaveAsync(localDate, projectId);
-            if (pendingResult is not null)
-            {
-                return pendingResult;
-            }
-        }
-
-        var entriesBeforeSwitch = confirmSwitch
-            ? await GetTimeEntryIdsAsync(localDate)
-            : null;
-        Exception? operationFailure = null;
-
-        if (entriesBeforeSwitch is not null)
-        {
-            _pendingSaveCheck = new PendingSaveCheck(localDate, entriesBeforeSwitch, projectId, "switch");
-        }
-
-        try
-        {
-            await RpcAsync<JsonElement>("start_self_work_session", new
-            {
-                target_project_id = projectId,
-                entry_date = localDate,
-                confirm_switch = confirmSwitch,
-            });
-            AgentDiagnostics.Record("start-success", $"projectId={projectId}; date={localDate}; confirmSwitch={confirmSwitch}");
-        }
-        catch (Exception exception)
-        {
-            AgentDiagnostics.Record("start-failure", AgentDiagnostics.Compact(exception.ToString()));
-            operationFailure = exception;
-        }
-
-        if (entriesBeforeSwitch is null)
-        {
-            if (operationFailure is not null)
-            {
-                throw operationFailure;
-            }
-
-            return null;
-        }
-
-        var switchResult = await ReconcileSaveAsync(
-            _pendingSaveCheck!,
-            SaveReconciliationAttempts);
-        if (switchResult is not null)
-        {
-            return switchResult;
-        }
-
-        if (operationFailure is not null)
-        {
-            throw operationFailure;
-        }
-
-        AgentDiagnostics.Record("switch-not-saved", $"date={localDate}; entriesBefore={entriesBeforeSwitch.Count}; newProjectId={projectId}");
-        throw new AgentDiagnosticException(
-            "AGENT-SWITCH-NOT-SAVED-001",
-            "The project switched, but Mandala did not confirm the previous project’s time was saved. Please report this code to IT.");
+        // Every new Windows session uses an owned, idempotent receipt, including
+        // direct connections. The legacy RPC could adopt another device's timer
+        // on the same project and cannot safely reconcile a lost start response.
+        if (_pendingSaveCheck is not null)
+            throw new InvalidOperationException("Wait for the pending time to be confirmed before starting another timer.");
+        return await StartLanAsync(projectId, localDate, confirmSwitch);
     }
 
     public async Task<TimeEntrySaveResult> StopAsync(string localDate)
     {
-        if (UsesLanGateway) return await StopLanAsync();
+        if (_journalState?.Session is not null) return await StopLanAsync();
+        if (_hasOwnedDesktopSession)
+            throw new InvalidOperationException("No timer owned by this Windows agent is active.");
         AgentDiagnostics.Record("stop-request", $"date={localDate}; email={Email}");
         var pendingResult = await TryResolvePendingSaveAsync(localDate, expectedActiveProjectId: null);
         if (pendingResult is not null)
@@ -294,7 +246,7 @@ public sealed partial class SupabaseTimeTrackerClient
 
     public async Task<TimeEntrySaveResult?> ReconcilePendingSaveAsync()
     {
-        if (UsesLanGateway) return await ReconcileLanAsync();
+        if (_journalState?.Session is not null) return await ReconcileLanAsync();
         var pending = _pendingSaveCheck;
         if (pending is null)
         {
@@ -356,8 +308,9 @@ public sealed partial class SupabaseTimeTrackerClient
 
     public async Task TouchAsync()
     {
-        if (UsesLanGateway) await TouchLanAsync();
-        else await SendWithoutResponseAsync(HttpMethod.Post, "rest/v1/rpc/touch_self_work_session", new { });
+        if (_journalState?.Session is not null) await TouchLanAsync();
+        else if (!_hasOwnedDesktopSession)
+            await SendWithoutResponseAsync(HttpMethod.Post, "rest/v1/rpc/touch_self_work_session", new { });
     }
 
     private async Task<T> RpcAsync<T>(string functionName, object body) =>
@@ -520,6 +473,9 @@ public sealed partial class SupabaseTimeTrackerClient
 
         [JsonPropertyName("started_at")]
         public DateTimeOffset StartedAt { get; init; }
+
+        [JsonPropertyName("desktop_session_id")]
+        public string? DesktopSessionId { get; init; }
     }
 
     private sealed record PendingSaveCheck(

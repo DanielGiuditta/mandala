@@ -15,6 +15,8 @@ CapsDisconnectedTimeAtIdleAndDailyLimits();
 await RecoversProtectedTimeJournalOnWindows();
 
 await LanRecoveryChecks.RunAsync();
+IdleAutoResumeChecks.Run();
+await DurableDirectChecks.RunAsync();
 
 Console.WriteLine("PASS: Mandala Agent regression checks");
 

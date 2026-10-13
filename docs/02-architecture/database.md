@@ -55,6 +55,8 @@ Project-lead permissions should be derived from `projects.lead_person_id`, not m
 
 ## Recommended process
 
+Agent 1.0.17 reuses the desktop receipt functions below for new direct and LAN sessions. An idle-resumed interval receives a new client UUID and server start timestamp after the previous interval is finalized; it does not backfill idle time or change the schema. The functions atomically reject a competing active session, including one started on another device.
+
 Migration `20260907090000_add_lan_desktop_sessions.sql` adds durable `desktop_work_sessions` receipts and optional `active_work_sessions.desktop_session_id`. Authenticated self-only start/touch/finish functions serialize on a person lock, require an active internal account/person, enforce project access, and return the same final receipt on retries. Receipt tables have RLS enabled and no direct employee grants. Legacy online functions are wrapped with the same lock and cannot modify a desktop-owned session; their renamed implementations are not executable by authenticated/anonymous roles. A desktop session is capped at 24 hours and uses its start-date local date for the finalized entry. No blanket import endpoint or administrator key is introduced.
 
 `authorize_resource_preview(uuid)` checks current active internal identity and the existing resource permission scope on every preview request. Original file bytes and preview bytes are absent from Supabase; preview publication metadata lives only on the isolated office service. Existing resource metadata fields and relationships are unchanged.

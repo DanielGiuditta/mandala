@@ -12,7 +12,8 @@ For workstations without internet, the optional enrolled-certificate LAN mode us
 - Starting another project asks for confirmation, records the finished project time, and begins the selected project.
 - Opening a project in the web app never switches the active project.
 - The agent checks Windows-wide keyboard and mouse activity every second with `GetLastInputInfo`. It pauses the timer after five minutes without activity, including while the agent is minimized or another Windows application is focused.
-- The timer does not resume until the employee selects a project and clicks **Start Work**.
+- In Agent 1.0.17 and later, returning keyboard or mouse activity automatically starts a fresh interval on the last explicitly started project. The idle gap is not counted. **Stop** disables automatic resume, even while paused, until the employee selects **Start Work** again. Startup/sign-in alone never starts tracking.
+- Resume waits for the previous save to be confirmed and requires current project access and a reachable backend. New direct and LAN sessions both use durable desktop receipts and the `windows-tracker` source; older direct sessions may retain `manual`.
 
 ## Diagnostics
 

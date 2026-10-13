@@ -10,22 +10,26 @@ public sealed partial class SupabaseTimeTrackerClient
     private readonly Func<string, DesktopSessionJournal> _createJournal = email => new DesktopSessionJournal(email);
     private DesktopSessionJournal? _journal;
     private DesktopJournalState? _journalState;
+    private bool _hasOwnedDesktopSession;
     public TimeSpan GetElapsed(ActiveWorkSession session) => DesktopSessionClock.Elapsed(
-        session.StartedAt, UsesLanGateway ? _lanClock.UtcNow : DateTimeOffset.UtcNow);
+        session.StartedAt, CurrentDesktopSession is not null ? _lanClock.UtcNow : DateTimeOffset.UtcNow);
+    public ActiveWorkSession? CurrentDesktopSession => _journalState?.Session is { Confirmed: true, StoppedAt: null } session
+        ? new ActiveWorkSession(session.ProjectId, session.ProjectName, session.StartedAt) : null;
     public bool UsesLanGateway => _configuration.UsesLanGateway;
     public string LanDiagnosticSummary => _journalState?.Session is { } session
         ? $"gateway={_configuration.GatewayUrl}; sessionId={session.Id}; projectId={session.ProjectId}; entryDate={session.EntryDate}; startedAt={session.StartedAt:O}; lastActivityAt={session.LastActivityAt:O}; stoppedAt={session.StoppedAt:O}; confirmed={session.Confirmed}; pending={HasPendingSave}"
         : $"gateway={_configuration.GatewayUrl}; no pending local session";
     public string? PendingTimeMessage => _journalState?.Session is { } session
-        ? !session.Confirmed ? "Start request stored on this computer. Waiting for the LAN gateway to confirm."
-        : session.StoppedAt is not null ? "Time saved on this computer; waiting for the LAN gateway to confirm upload."
+        ? !session.Confirmed ? "Start request stored on this computer. Waiting for Mandala to confirm."
+        : session.StoppedAt is not null ? "Time saved on this computer; waiting for Mandala to confirm upload."
         : null : null;
 
     private async Task LoadJournalAsync()
     {
-        if (!UsesLanGateway || Email is null) return;
+        if (Email is null) return;
         _journal = _createJournal(Email);
         _journalState = await _journal.LoadAsync(Email);
+        _hasOwnedDesktopSession = _journalState.Session is not null;
         if (_journalState.Session is { StoppedAt: null } session)
         {
             // After a process restart, there is no trustworthy running clock anchor.
@@ -51,7 +55,7 @@ public sealed partial class SupabaseTimeTrackerClient
         }
         catch (Exception exception) when (IsConnectionFailure(exception))
         {
-            warning ??= "LAN gateway unavailable. Existing work stays on this computer; starting work requires a connection.";
+            warning ??= "Mandala is unavailable. Existing work stays on this computer; starting work requires a connection.";
         }
         var current = _journalState!.Session;
         return new TrackerSnapshot(_journalState.Projects,
@@ -82,14 +86,21 @@ public sealed partial class SupabaseTimeTrackerClient
 
     private async Task BeginLanAsync(string projectId, string localDate)
     {
+        // Recheck live project access for each new session. Cached project lists
+        // are for display only and cannot authorize an automatic restart.
+        var projects = await RpcAsync<List<ProjectResponse>>("list_time_tracker_projects_for_current_user", new { });
+        await PersistJournalAsync(_journalState! with { Projects = projects.Select(p => new TimeTrackerProject(p.Id, p.Name)).ToList() });
         var project = _journalState!.Projects.SingleOrDefault(p => p.Id == projectId)
-            ?? throw new InvalidOperationException("Select an available project.");
+            ?? throw new AgentDiagnosticException("AGENT-PROJECT-UNAVAILABLE", "This project is no longer available. Select an available project and Start Work.");
         // Check reachability before recording an intention to start. A lost response
         // after this point is reconciled with the same UUID, never another start.
-        using var health = await _httpClient.GetAsync("health");
-        var identity = await ReadResponseAsync<GatewayIdentity>(health);
-        if (identity.Backend != $"https://{AppConfiguration.ProductionProjectRef}.supabase.co" || identity.Protocol != 1)
-            throw new InvalidOperationException("AGENT-CONFIG-BACKEND-001: The LAN gateway does not identify the production backend.");
+        if (UsesLanGateway)
+        {
+            using var health = await _httpClient.GetAsync("health");
+            var identity = await ReadResponseAsync<GatewayIdentity>(health);
+            if (identity.Backend != $"https://{AppConfiguration.ProductionProjectRef}.supabase.co" || identity.Protocol != 1)
+                throw new InvalidOperationException("AGENT-CONFIG-BACKEND-001: The LAN gateway does not identify the production backend.");
+        }
         var now = DateTimeOffset.UtcNow;
         await PersistJournalAsync(_journalState with { Session = new DesktopSession(Guid.NewGuid().ToString(), projectId, project.Name, localDate, now, now) });
         await ConfirmLanStartAsync(firstAttempt: true);
@@ -112,6 +123,7 @@ public sealed partial class SupabaseTimeTrackerClient
             // not work, and recovered/uncertain starts remain paused.
             if (stopped is not null) stopped = receipt.StartedAt;
             await PersistJournalAsync(_journalState with { Session = session with { Confirmed = true, StartedAt = receipt.StartedAt, LastActivityAt = receipt.StartedAt, StoppedAt = stopped } });
+            _hasOwnedDesktopSession = true;
             _lanClock.Start(receipt.StartedAt);
         }
         catch (HttpRequestException exception) when (firstAttempt && exception.StatusCode == System.Net.HttpStatusCode.BadRequest)

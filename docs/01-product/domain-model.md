@@ -205,11 +205,12 @@ The web app may also expose a lightweight self-only sidebar tracker for any sign
 ### Notes
 
 - `source` distinguishes Windows checker sync from any manual correction or import path
-- finalized LAN-agent sessions use the existing `source='windows-tracker'` label; one session produces at most one entry, dated using the workstation's local date at start. Existing hundredth-hour rounding applies; a session rounding to zero is acknowledged without inventing a time entry.
+- finalized desktop sessions use the existing `source='windows-tracker'` label; from Agent 1.0.17 this includes direct and LAN connections. Earlier direct-agent entries may have `source='manual'`. One session produces at most one entry, dated using the workstation's local date at start. Existing hundredth-hour rounding applies; a session rounding to zero is acknowledged without inventing a time entry.
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
 - the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
 - a `TimeEntry` is finalized work history, not the active timer state
+- Windows idle auto-resume creates a new session on the last explicitly started project when input returns; it never extends the previous entry across an idle gap. Resume intent is temporary client state, cleared by explicit Stop or application restart, not a new domain field or entity. The web tracker retains explicit restart behavior.
 - the sidebar tracker may target only projects the current viewer is allowed to track against
 - the standalone time-tracker workspace is limited to partners, admins, and project leads; employees use the sidebar tracker instead
 - once a person has tracked time on a project, project and people staffed views should include that person for the project even when `assignmentId` is null
@@ -225,14 +226,14 @@ Represents the one live work session allowed for a person. This is supporting ru
 - `projectId`
 - `startedAt`
 - `lastActivityAt`
-- `desktopSessionId` (optional reference to the durable LAN desktop session receipt)
+- `desktopSessionId` (optional reference to the durable Windows desktop session receipt, through a direct or LAN connection)
 
 ### Notes
 
 - starting a new project after confirmation closes the previous session and writes its elapsed time as a manual `TimeEntry`
 - after more than five minutes without activity, the session pauses and its elapsed time is written only through the last active minute window
 - active sessions govern project working mode; viewing other projects remains available but is read-only
-- LAN desktop sessions retain exclusive ownership during an outage. Web/legacy trackers cannot stop, switch, touch, or expire a desktop-owned session. The original Windows agent closes it using its durable session identifier. Local recovery caps unattended time at the last recorded activity plus five minutes and caps a session at 24 hours.
+- Windows desktop sessions retain exclusive ownership during an outage, through both direct and LAN connections. Web/legacy trackers cannot stop, switch, touch, or expire a desktop-owned session. The original Windows agent closes it using its durable session identifier. Local recovery caps unattended time at the last recorded activity plus five minutes and caps a session at 24 hours.
 
 ## DesktopWorkSession receipt
 
