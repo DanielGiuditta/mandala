@@ -131,12 +131,12 @@ try {
     Start-AgentProject 'CI protocol project B';Start-Sleep -Seconds 3
     Set-FixtureOnline $false
     Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project' 90
-    Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for the LAN gateway|Pending time remains'} 60 'durable pending receipt state'
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for (the LAN gateway|Mandala)|Pending time remains'} 60 'durable pending receipt state'
     Require (Test-Path -LiteralPath $journal) 'Actual Agent did not write its fixture journal.'
     Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq 1) 'Offline stop falsely reported a second server receipt.'
     Close-TestAgent
     Start-FixtureAgent
-    Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for the LAN gateway|Pending time remains'} 90 'offline pending work survives normal close/reopen'
+    Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for (the LAN gateway|Mandala)|Pending time remains'} 90 'offline pending work survives normal close/reopen'
     Require (-not (Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Actual Agent allowed another start while the offline save was pending.'
     Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq 1) 'Offline restore fabricated a server receipt.'
     Set-FixtureOnline $true
