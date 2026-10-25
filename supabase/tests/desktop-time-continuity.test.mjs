@@ -256,6 +256,31 @@ test("sessions finished before this change are not reopened by a late retry", as
   assert.equal((await session(id)).stopped_at.getTime(), before.stopped_at.getTime());
 });
 
+test("Agent 1.0.18 records its version and PC name; older agents leave them empty", async () => {
+  const reported = newSessionId();
+  await asWorker(
+    "select start_desktop_work_session($1, $2, (now() at time zone 'UTC')::date, 0, $3, $4)",
+    [reported, PROJECT, " 1.0.18.0 ", "STP43"],
+  );
+  let row = await session(reported);
+  assert.equal(row.agent_version, "1.0.18.0");
+  assert.equal(row.device_name, "STP43");
+
+  // A retry never changes what was recorded first.
+  await asWorker(
+    "select start_desktop_work_session($1, $2, (now() at time zone 'UTC')::date, 0, $3, $4)",
+    [reported, PROJECT, "9.9.9", "OTHER-PC"],
+  );
+  row = await session(reported);
+  assert.equal(row.device_name, "STP43");
+
+  const legacy = newSessionId();
+  await start(legacy);
+  row = await session(legacy);
+  assert.equal(row.agent_version, null);
+  assert.equal(row.device_name, null);
+});
+
 test("implausible offline start times are refused", async () => {
   await assert.rejects(start(newSessionId(), { secondsAgo: -5 }), /accepted range/);
   await assert.rejects(start(newSessionId(), { secondsAgo: 8 * 86400 }), /accepted range/);

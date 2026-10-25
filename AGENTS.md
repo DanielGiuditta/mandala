@@ -56,6 +56,16 @@ Read these files before making changes:
 - A diagnostic log showing a healthy project list is not proof of correct data logging. The agent must complete a start/stop test, confirm a new `time_entries` row, and provide the diagnostic report when a save is missing.
 - The August 2026 incident was caused by a backend mismatch: the agent reported `izddgdizwlwnhjwnojaw.supabase.co` while the web app and database being checked used `nzlajptokbcgeaifgnoq.supabase.co`. The old agent could load projects and show no error while writing/checking against the wrong backend, so this must be treated as a release-blocking configuration error.
 
+## Hard constraint: Windows changes are expensive
+
+- **Situation:** the owner works from New York with no Windows machine. The employees and their Windows PCs are in India, with about 10 minutes a day of working-time overlap.
+- **Remote route:** every change to software running on those PCs (Windows agent, LAN gateway on STP80) goes through remote desktop, UTM → UltraViewer → STP80 → NetSupport. IT arranges access asynchronously, with roughly a 24-hour delay.
+- **Prefer server, database or website fixes;** they ship from New York without touching a PC.
+- **Batch every agent change into one release, installed in one visit.** Prove it in CI on real Windows first (`build-desktop-agent.yml` with publishing off), because a rollback costs another visit.
+- **Never plan on-site test loops,** attended sessions, idle/disconnect tests or per-PC test suites. Verify afterwards from New York with read-only production queries over normal work.
+- **Ask India for a diagnostics export** only for a concrete, named problem.
+- **Keep the agent's diagnostic log formats stable;** CI and office-test scripts parse them (`apps/desktop-agent/scripts/office-test/check-core.ps1`).
+
 ## Windows agent debugging checklist
 
 1. Confirm the installed version and signed-in email in the agent UI.

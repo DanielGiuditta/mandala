@@ -45,6 +45,7 @@ internal sealed class FixtureUpstream : HttpMessageHandler
     public readonly Dictionary<string, Receipt> Sessions = new();
     public bool Offline, LoseStart, LoseFinish, DenyFinish, WrongReceipt;
     public int FinishRequests;
+    public string? LastAgentVersion, LastDeviceName;
     public sealed record Receipt(string id, string project_id, DateTimeOffset started_at,
         DateTimeOffset? stopped_at = null, string? time_entry_id = null, string? superseded_by = null,
         DateTimeOffset? stop_limit_at = null, bool client_finished = false, DateTimeOffset? server_now = null);
@@ -88,6 +89,8 @@ internal sealed class FixtureUpstream : HttpMessageHandler
             var id = body.RootElement.GetProperty("session_id").GetString()!;
             if (op == "start_desktop_work_session")
             {
+                LastAgentVersion = body.RootElement.TryGetProperty("agent_version", out var version) ? version.GetString() : null;
+                LastDeviceName = body.RootElement.TryGetProperty("device_name", out var device) ? device.GetString() : null;
                 if (!Sessions.ContainsKey(id))
                 {
                     var secondsAgo = body.RootElement.TryGetProperty("started_seconds_ago", out var ago) ? ago.GetDouble() : 0;
@@ -292,6 +295,8 @@ internal static class LanRecoveryChecks
             await restarted.RestoreAsync(new StoredSession("fixture", "fixture", "fixture@example.test"));
             await restarted.ReconcilePendingSaveAsync();
             Check(Seconds(backend.Sessions.Values.Single()) == 210, "Windows shutdown saves the exact stop, not the last heartbeat");
+            Check(!string.IsNullOrWhiteSpace(backend.LastAgentVersion) && backend.LastDeviceName == Environment.MachineName,
+                "each start reports the agent version and this PC's name");
         });
 
         await WithFixture(async (client, backend, source, directory) => {

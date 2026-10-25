@@ -1,0 +1,6 @@
+-- Read-only baseline export before applying (psql meta-commands; writes only
+-- local CSV files). Run from the folder that should hold the backup:
+--   PGOPTIONS='-c default_transaction_read_only=on' psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 -f backup.psql
+\copy (select * from public.desktop_work_sessions order by started_at) to 'desktop_work_sessions.csv' with (format csv, header)
+\copy (select * from public.active_work_sessions order by started_at) to 'active_work_sessions.csv' with (format csv, header)
+\copy (select * from public.time_entries order by date, id) to 'time_entries.csv' with (format csv, header)

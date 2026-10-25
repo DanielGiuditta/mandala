@@ -74,6 +74,11 @@ public partial class MainWindow : Window
             _autoResume.Cancel();
             _manualStopRequested = true;
             _lastManualStopAttemptAt = DateTimeOffset.MinValue;
+            // Let a heartbeat or save that was already running finish first.
+            for (var attempt = 0; attempt < 50 && _isSaving; attempt++)
+            {
+                await Task.Delay(100);
+            }
             await ProcessManualStopAsync();
             if (_activeSession is null)
             {

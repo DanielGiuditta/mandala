@@ -80,6 +80,19 @@ function Wait-FixtureIdlePause {
     Require ($idleSeconds -ge 295 -and $idleSeconds -le 380) 'Idle result did not follow the actual bounded five-minute Windows inactivity interval.'
     return $idleSeconds
 }
+function Confirm-AgentDialog([string]$Title,[bool]$Yes) {
+    $dialog=Wait-Ui ('Agent dialog '+$Title) {
+        [Windows.Automation.AutomationElement]::RootElement.FindFirst([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.AndCondition]::new(
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty,[int]$script:AgentProcessId),
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$Title)))
+    } 15
+    # Standard Windows MessageBox IDs: IDYES=6, IDNO=7 (locale-independent).
+    $button=$dialog.FindFirst([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty,$(if($Yes){'6'}else{'7'})))
+    Require $button ('Expected Yes/No control unavailable in '+$Title)
+    $task=[MandalaTestInput]::Invoke($button)
+    Wait-Ui ('dialog response '+$Title) {$task.IsCompleted} 15|Out-Null
+    $task.GetAwaiter().GetResult()
+}
 function Invoke-FixtureCleanup([string]$Stage,[scriptblock]$Action) {
     try {& $Action}
     catch {$script:fixtureCleanupErrors+=$Stage+': '+$_.Exception.GetType().Name;Write-Warning ('Fixture cleanup needs attention: '+$Stage)}
@@ -240,6 +253,54 @@ try {
         Wait-AgentState 'No active project'
         Require (@((Read-FixtureEvidence).sessions).Count -eq 5) 'Returning Windows input restarted the legacy timer automatically.'
     }
+    $closePromptEvidence=$null;$offlineStartEvidence=$null
+    if($QueuedOfflineWork) {
+        # Agent 1.0.18: closing the window while tracking asks first. No keeps
+        # tracking with the window minimised; Yes saves the session and closes.
+        [MandalaTestInput]::Pulse()
+        Start-AgentProject 'CI protocol project A';Start-Sleep -Seconds 3
+        $closing=Get-Process -Id $script:AgentProcessId
+        Require ($closing.CloseMainWindow()) 'Agent did not receive the window close request.'
+        Confirm-AgentDialog 'Stop tracking?' $false
+        Start-Sleep -Seconds 2
+        Require (-not $closing.HasExited) 'Choosing No closed the Agent.'
+        $window=[Windows.Automation.WindowPattern](Get-AgentRoot).GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern)
+        Require ($window.Current.WindowVisualState -eq [Windows.Automation.WindowVisualState]::Minimized) 'Choosing No did not minimise the Agent.'
+        $window.SetWindowVisualState([Windows.Automation.WindowVisualState]::Normal)
+        Wait-AgentState 'Tracking CI protocol project A'
+        Require (@((Read-FixtureEvidence).sessions|Where-Object {-not $_.stopped_at}).Count -eq 1) 'Choosing No stopped the running session.'
+        Require ($closing.CloseMainWindow()) 'Agent did not receive the second window close request.'
+        Confirm-AgentDialog 'Stop tracking?' $true
+        Require ($closing.WaitForExit(30000)) 'Choosing Yes did not stop tracking and close the Agent.'
+        $expectedReceipts++
+        Wait-FixtureReceipts $expectedReceipts
+        Require (@((Read-FixtureEvidence).sessions|Where-Object {-not $_.stopped_at}).Count -eq 0) 'Closing with Yes left a session running.'
+        Start-FixtureAgent
+        Wait-AgentState 'No active project' 60
+        $closePromptEvidence=[ordered]@{noKeptTrackingMinimised=$true;yesSavedAndClosed=$true}
+
+        # Agent 1.0.18: Start works while the gateway is unreachable. The start
+        # uploads after reconnecting with the time Start was pressed, and reports
+        # the agent version and this PC's name.
+        Set-FixtureOnline $false
+        [MandalaTestInput]::Pulse()
+        $pressedAt=[DateTimeOffset]::UtcNow
+        Start-AgentProject 'CI protocol project B'
+        Wait-AgentText 'ElapsedText' {param($text) $text -like '*recorded on this computer*'} 30 'offline session shown as recorded on this computer'
+        foreach($pulse in 1..4){Start-Sleep -Seconds 10;[MandalaTestInput]::Pulse()}
+        Set-FixtureOnline $true
+        $onlineAt=[DateTimeOffset]::UtcNow
+        $uploaded=@(Wait-Ui 'offline start uploaded after reconnecting' {@((Read-FixtureEvidence).sessions|Where-Object {-not $_.stopped_at -and $_.project_id -eq '22222222-2222-4222-8222-222222222222'})} 60)
+        Require ($uploaded.Count -eq 1) 'Expected exactly one uploaded offline session.'
+        $offlineStartedAt=[DateTimeOffset]::Parse($uploaded[0].started_at)
+        Require ($offlineStartedAt -le $onlineAt.AddSeconds(-30) -and $offlineStartedAt -ge $pressedAt.AddSeconds(-5)) 'The offline start was not saved at the time Start was pressed.'
+        Require ([string]$uploaded[0].agent_version -like ($approved.version+'*') -and $uploaded[0].device_name -eq $env:COMPUTERNAME) 'The start did not report the agent version and this PC name.'
+        Start-Sleep -Seconds 3
+        Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project'
+        $expectedReceipts++
+        Wait-FixtureReceipts $expectedReceipts
+        $offlineStartEvidence=[ordered]@{startedWhileGatewayDown=$true;pressedAt=$pressedAt.ToString('O');savedStartedAt=$offlineStartedAt.ToString('O');reconnectedAt=$onlineAt.ToString('O');agentVersion=[string]$uploaded[0].agent_version;deviceName=[string]$uploaded[0].device_name}
+    }
     # Allow a second automatic retry window; a resolved journal must not resend.
     Start-Sleep -Seconds 12
     $receipts=@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'})
@@ -249,7 +310,7 @@ try {
     foreach($session in $observed.sessions){Require ($session.stopped_at -and $session.time_entry_id -and $session.finishRequests -eq 1 -and @($receipts|Where-Object {$_.SessionId -eq $session.id -and $_.EntryId -eq $session.time_entry_id}).Count -eq 1) 'Actual Agent receipt did not match exactly one synthetic saved session.'}
     Require ((Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Pending state did not clear after confirmed recovery.'
     Close-TestAgent
-    $summary=[ordered]@{scope='PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE';binaryProvenance=$(if($FixtureCandidate){'Unpublished source candidate with synthetic configuration; not an audited release'}else{'Audited installed release candidate'});releaseAudited=(-not $FixtureCandidate);agentVersion=$approved.version;agentSha256=$approved.agentSha256;backend='nzlajptokbcgeaifgnoq';gateway='https://127.0.0.1:8443';realGatewayMutualTls=$true;realAgentSignIn=$true;realStartStop=$true;realOfflineJournalCloseReopen=$true;selectionDidNotSwitch=$true;cancelDidNotSwitch=$true;confirmedSwitchSavedPreviousFirst=$true;exactSavedReceipts=$expectedReceipts;duplicateReceipts=0;productionRequests=0;productionEntries=0;upstream='Injected in-memory protocol fixture; no database/network implementation';rebootTested=$false;idleTested=$true;idlePauseSeconds=[Math]::Round($idleSeconds,1);inputDidNotAutoResume=(-not $AutoResumeExpected);autoResumeExpected=[bool]$AutoResumeExpected;autoResume=$autoResumeEvidence;windowsUserMode='Hosted CI account; not standard-user/UAC acceptance'}
+    $summary=[ordered]@{scope='PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE';binaryProvenance=$(if($FixtureCandidate){'Unpublished source candidate with synthetic configuration; not an audited release'}else{'Audited installed release candidate'});releaseAudited=(-not $FixtureCandidate);agentVersion=$approved.version;agentSha256=$approved.agentSha256;backend='nzlajptokbcgeaifgnoq';gateway='https://127.0.0.1:8443';realGatewayMutualTls=$true;realAgentSignIn=$true;realStartStop=$true;realOfflineJournalCloseReopen=$true;selectionDidNotSwitch=$true;cancelDidNotSwitch=$true;confirmedSwitchSavedPreviousFirst=$true;exactSavedReceipts=$expectedReceipts;duplicateReceipts=0;productionRequests=0;productionEntries=0;upstream='Injected in-memory protocol fixture; no database/network implementation';rebootTested=$false;idleTested=$true;idlePauseSeconds=[Math]::Round($idleSeconds,1);inputDidNotAutoResume=(-not $AutoResumeExpected);autoResumeExpected=[bool]$AutoResumeExpected;autoResume=$autoResumeEvidence;closePrompt=$closePromptEvidence;offlineStart=$offlineStartEvidence;windowsUserMode='Hosted CI account; not standard-user/UAC acceptance'}
     Write-PairingJson (Join-Path $env:RUNNER_TEMP 'approved-agent-lan-audit.json') $summary
     Write-Host ('PASS: tested Agent '+$approved.version+', real gateway mutual TLS, synthetic sign-in/projects, start/stop, offline pending journal through normal close/reopen, cancelled/confirmed switch and actual five-minute idle behavior. Auto-resume expected: '+[bool]$AutoResumeExpected+'; exact receipts: '+$expectedReceipts+'; zero duplicates. PROTOCOL FIXTURE ONLY: zero production writes; no reboot/SQL/standard-user acceptance claimed.')
 } catch {

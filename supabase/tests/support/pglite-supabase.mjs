@@ -7,7 +7,8 @@ import { readdir, readFile } from "node:fs/promises";
 
 const MIGRATIONS = new URL("../../migrations/", import.meta.url);
 
-export async function createSupabaseLikeDatabase() {
+// `through` stops after that migration version (for rollout tests).
+export async function createSupabaseLikeDatabase({ through } = {}) {
   const db = new PGlite();
 
   await db.exec(`
@@ -30,7 +31,9 @@ export async function createSupabaseLikeDatabase() {
     alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
   `);
 
-  const files = (await readdir(MIGRATIONS)).filter((file) => file.endsWith(".sql")).sort();
+  const files = (await readdir(MIGRATIONS))
+    .filter((file) => file.endsWith(".sql") && (!through || file.slice(0, 14) <= through))
+    .sort();
 
   for (const file of files) {
     const sql = (await readFile(new URL(file, MIGRATIONS), "utf8")).replace(

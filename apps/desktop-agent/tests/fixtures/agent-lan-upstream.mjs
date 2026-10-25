@@ -1,4 +1,4 @@
-// Protocol fixture for the unchanged approved Windows Agent. No database or
+// Protocol fixture for the approved Windows Agent (1.0.15+). No database or
 // outbound network implementation is present: createGateway always receives
 // this in-memory upstream, and a stray global fetch fails immediately.
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs'
@@ -65,10 +65,16 @@ const upstream = async (url, options) => {
       response = result(400, { error: 'Session identity changed' })
     } else if (!existing && [...sessions.values()].some(s => !s.stopped_at)) {
       response = result(400, { error: 'Existing synthetic session still active' })
+    } else if (body.started_seconds_ago !== undefined && !(Number.isFinite(body.started_seconds_ago) && body.started_seconds_ago >= 0 && body.started_seconds_ago <= 7 * 86400)) {
+      response = result(400, { error: 'Session start is outside the accepted range' })
     } else {
-      const session = existing ?? { id: body.session_id, project_id: body.target_project_id, entry_date: body.entry_date, started_at: new Date().toISOString(), stopped_at: null, time_entry_id: null, finishRequests: 0 }
+      // Agent 1.0.18+ uploads offline/slow starts as "N seconds ago" and reports
+      // its version and PC name; older agents send none of these.
+      const startedAt = new Date(Date.now() - 1000 * (body.started_seconds_ago ?? 0)).toISOString()
+      const session = existing ?? { id: body.session_id, project_id: body.target_project_id, entry_date: body.entry_date, started_at: startedAt, stopped_at: null, time_entry_id: null, finishRequests: 0,
+        agent_version: body.agent_version ?? null, device_name: body.device_name ?? null }
       sessions.set(session.id, session)
-      response = result(200, session)
+      response = result(200, { ...session, server_now: new Date().toISOString() })
     }
   } else if (operation === 'touch_desktop_work_session') {
     response = sessions.has(body.session_id) ? result(200, null) : result(400, { error: 'Unknown synthetic session' })

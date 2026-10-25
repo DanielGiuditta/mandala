@@ -10,15 +10,23 @@
 --    long ago it began. The server backdates it, but never into time already
 --    saved for that person; if a later session exists, this one ends there.
 --
+-- 4. Agent 1.0.18+ also reports its version and the Windows PC name with each
+--    start, stored on the receipt, so the fleet can be checked from New York
+--    without a remote session. Older agents leave them empty.
+--
 -- The five-minute idle rule is unchanged and still enforced by the agent.
 -- start_desktop_work_session keeps its name and first three arguments, so
 -- installed 1.0.17 agents and the LAN gateway allowlist keep working.
 
+-- "if not exists" lets this migration be re-applied after its rollback, which
+-- deliberately keeps these columns so no saved data is dropped.
 alter table public.desktop_work_sessions
-  add column confirmed_at timestamptz,
-  add column stop_limit_at timestamptz,
-  add column superseded_by uuid references public.desktop_work_sessions(id),
-  add column client_finished_at timestamptz;
+  add column if not exists confirmed_at timestamptz,
+  add column if not exists stop_limit_at timestamptz,
+  add column if not exists superseded_by uuid references public.desktop_work_sessions(id),
+  add column if not exists client_finished_at timestamptz,
+  add column if not exists agent_version text,
+  add column if not exists device_name text;
 
 comment on column public.desktop_work_sessions.confirmed_at is
   'Server time the start was accepted. Later than started_at when the agent started offline or the confirmation was slow.';
@@ -28,6 +36,10 @@ comment on column public.desktop_work_sessions.superseded_by is
   'The later session (usually on another computer) that ended this one.';
 comment on column public.desktop_work_sessions.client_finished_at is
   'Server time the owning agent uploaded its own stop. Null on a session closed by the server until its agent reports.';
+comment on column public.desktop_work_sessions.agent_version is
+  'Windows agent version that started the session, as reported by the agent (1.0.18+). Diagnostic only.';
+comment on column public.desktop_work_sessions.device_name is
+  'Windows computer name that started the session, as reported by the agent (1.0.18+). Diagnostic only.';
 
 -- Sets a session's stop and keeps its single time entry in step. Internal only.
 create function public.set_desktop_session_stop(target_session_id uuid, new_stop timestamptz)
@@ -72,7 +84,9 @@ create function public.start_desktop_work_session(
   session_id uuid,
   target_project_id uuid,
   entry_date date,
-  started_seconds_ago numeric default 0
+  started_seconds_ago numeric default 0,
+  agent_version text default null,
+  device_name text default null
 )
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -157,8 +171,11 @@ begin
   end if;
 
   if limit_at is null then
-    insert into public.desktop_work_sessions(id, person_id, project_id, started_at, last_activity_at, entry_date, confirmed_at)
-      values (session_id, person, target_project_id, start_at, start_at, entry_date, now_at)
+    insert into public.desktop_work_sessions(id, person_id, project_id, started_at, last_activity_at, entry_date, confirmed_at,
+      agent_version, device_name)
+      values (session_id, person, target_project_id, start_at, start_at, entry_date, now_at,
+        left(nullif(btrim(start_desktop_work_session.agent_version), ''), 40),
+        left(nullif(btrim(start_desktop_work_session.device_name), ''), 64))
       returning * into receipt;
     insert into public.active_work_sessions(person_id, project_id, started_at, last_activity_at, desktop_session_id)
       values (person, target_project_id, start_at, start_at, session_id);
@@ -166,9 +183,11 @@ begin
     -- Already ended by a later session: the agent uploads its own stop, capped at limit_at.
     insert into public.desktop_work_sessions(
       id, person_id, project_id, started_at, last_activity_at, entry_date, confirmed_at,
-      stopped_at, stop_limit_at, superseded_by)
+      stopped_at, stop_limit_at, superseded_by, agent_version, device_name)
       values (session_id, person, target_project_id, start_at, start_at, entry_date, now_at,
-        start_at, limit_at, superseding)
+        start_at, limit_at, superseding,
+        left(nullif(btrim(start_desktop_work_session.agent_version), ''), 40),
+        left(nullif(btrim(start_desktop_work_session.device_name), ''), 64))
       returning * into receipt;
   end if;
 
@@ -245,5 +264,5 @@ begin
   return to_jsonb(receipt);
 end $$;
 
-revoke all on function public.start_desktop_work_session(uuid, uuid, date, numeric) from public;
-grant execute on function public.start_desktop_work_session(uuid, uuid, date, numeric) to authenticated;
+revoke all on function public.start_desktop_work_session(uuid, uuid, date, numeric, text, text) from public;
+grant execute on function public.start_desktop_work_session(uuid, uuid, date, numeric, text, text) to authenticated;

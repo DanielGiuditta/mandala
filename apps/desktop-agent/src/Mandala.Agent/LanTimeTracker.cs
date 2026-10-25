@@ -14,6 +14,8 @@ namespace Mandala.Agent;
 public sealed partial class SupabaseTimeTrackerClient
 {
     private const double MaxStartSecondsAgo = 7 * 86400 - 60;
+    // Reported with each start so the fleet can be checked from the server.
+    private static readonly string AgentVersion = typeof(SupabaseTimeTrackerClient).Assembly.GetName().Version?.ToString() ?? "unknown";
     private readonly DesktopSessionClock _lanClock = new();
     private readonly TimeProvider _wallTime = TimeProvider.System;
     private readonly Func<string, DesktopSessionJournal> _createJournal = email => new DesktopSessionJournal(email);
@@ -184,6 +186,8 @@ public sealed partial class SupabaseTimeTrackerClient
             target_project_id = session.ProjectId,
             entry_date = session.EntryDate,
             started_seconds_ago = Math.Round(secondsAgo, 3),
+            agent_version = AgentVersion,
+            device_name = Environment.MachineName,
         });
         if (receipt.Id != session.Id || receipt.ProjectId != session.ProjectId) throw new InvalidOperationException("The session receipt did not match. Preserve diagnostics for IT.");
 
