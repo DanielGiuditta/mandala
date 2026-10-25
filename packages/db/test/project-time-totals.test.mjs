@@ -100,7 +100,7 @@ function installProject({ metrics } = {}) {
           documents: [],
           found: true,
           offices: [{ id: OFFICE_ID, name: "Calicut" }],
-          people: [person(LEAD_ID, "Ar. Godwin"), person(WORKER_ID, "Jabir")],
+          people: [person(LEAD_ID, "Lead Architect"), person(WORKER_ID, "Design Assistant")],
           project: projectRow,
           timeEntries: timeEntryRows,
         },
@@ -121,7 +121,7 @@ function installProject({ metrics } = {}) {
     tables: {
       active_work_sessions: [],
       offices: [{ id: OFFICE_ID, name: "Calicut" }],
-      people: [person(LEAD_ID, "Ar. Godwin"), person(WORKER_ID, "Jabir")],
+      people: [person(LEAD_ID, "Lead Architect"), person(WORKER_ID, "Design Assistant")],
       projects: [projectRow],
     },
   });

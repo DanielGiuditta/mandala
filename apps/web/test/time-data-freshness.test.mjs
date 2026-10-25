@@ -54,17 +54,17 @@ test("people list hours reflect a Windows save on the next load", async () => {
 });
 
 test("person detail hours reflect a Windows save on the next load", async () => {
-  const { after } = await readTwiceAroundWindowsSave(() => people.loadPersonDetail("jabir", context));
+  const { after } = await readTwiceAroundWindowsSave(() => people.loadPersonDetail("designer", context));
 
   assert.equal(after.timeSummary.totalHours, 28.01);
 });
 
 test("list filters still apply to live reads", async () => {
   const projectData = await projects.loadProjects({ query: "olympus" }, context);
-  const peopleData = await people.loadPeople({ query: "jabir" }, context);
+  const peopleData = await people.loadPeople({ query: "design" }, context);
 
   assert.deepEqual(projectData.projects.map((project) => project.id), ["olympus"]);
-  assert.deepEqual(peopleData.people.map((person) => person.id), ["jabir"]);
+  assert.deepEqual(peopleData.people.map((person) => person.id), ["designer"]);
 });
 
 test("only reads without hours use the data cache", async () => {
@@ -72,7 +72,7 @@ test("only reads without hours use the data cache", async () => {
   await projects.loadProjects({}, context);
   await projects.loadProjectDetail("atlantis", context);
   await people.loadPeople({}, context);
-  await people.loadPersonDetail("jabir", context);
+  await people.loadPersonDetail("designer", context);
   assert.deepEqual(cachedKeys, []);
 
   await projects.getCachedProjectRailData(context);

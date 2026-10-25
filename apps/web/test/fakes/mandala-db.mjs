@@ -7,8 +7,8 @@ const projects = [
   { clientName: "HiLITE", description: null, id: "olympus", managingOfficeId: "calicut", name: "HiLITE Olympus", originatingOfficeId: "calicut", stage: "active" },
 ];
 const people = [
-  { email: "a@example.test", fullName: "Ar. Godwin", id: "godwin", officeId: "calicut", title: null },
-  { email: "b@example.test", fullName: "Jabir", id: "jabir", officeId: "calicut", title: null },
+  { email: "a@example.test", fullName: "Lead Architect", id: "lead", officeId: "calicut", title: null },
+  { email: "b@example.test", fullName: "Design Assistant", id: "designer", officeId: "calicut", title: null },
 ];
 
 export async function listProjects(filters) {
