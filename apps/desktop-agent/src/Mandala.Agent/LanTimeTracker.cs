@@ -215,7 +215,10 @@ public sealed partial class SupabaseTimeTrackerClient
         var receipt = await RpcAsync<DesktopReceipt>("finish_desktop_work_session", new { session_id = session.Id, stopped_at = session.StoppedAt });
         if (receipt.Id != session.Id || receipt.ProjectId != session.ProjectId || receipt.StoppedAt is null)
             throw new InvalidOperationException("Save receipt mismatch. Pending time was retained.");
-        AgentDiagnostics.Record("lan-time-confirmed", $"sessionId={session.Id}; entryId={receipt.TimeEntryId ?? "under-rounding-threshold"}; superseded={receipt.SupersededBy is not null}");
+        // Exact format is parsed by CI and IT office tests (scripts/office-test/check-core.ps1).
+        AgentDiagnostics.Record("lan-time-confirmed", $"sessionId={session.Id}; entryId={receipt.TimeEntryId ?? "under-rounding-threshold"}");
+        if (receipt.SupersededBy is not null)
+            AgentDiagnostics.Record("lan-time-superseded", $"sessionId={session.Id}; supersededBy={receipt.SupersededBy}");
         return new TimeEntrySaveResult(receipt.TimeEntryId ?? session.Id, TooShort: receipt.TimeEntryId is null,
             Superseded: receipt.SupersededBy is not null);
     }

@@ -253,6 +253,12 @@ public partial class MainWindow : Window
                 return;
             }
 
+            // Let a heartbeat or save that was already running finish first.
+            for (var attempt = 0; attempt < 50 && _isSaving; attempt++)
+            {
+                await Task.Delay(100);
+            }
+
             if (_isSaving || _wakeIdleStopPending || _manualStopRequested || _activeSession is null || _activeSession.ProjectId == project.Id)
             {
                 TrackerMessageText.Text = "The timer changed while that question was open. Check the status above, then press Start Work again.";

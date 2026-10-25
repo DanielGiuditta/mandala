@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Mandala.Agent;
 
 // Compiled only into the regression executable. Every HTTP request is handled
@@ -215,6 +216,14 @@ internal static class LanRecoveryChecks
                 await client.StartAsync("b", "2026-09-23", false);
                 Check(client.CurrentDesktopSession?.ProjectId == "b", "a rejected save stays queued for IT and never blocks new work");
             });
+
+        await WithFixture(async (client, backend, source, directory) => {
+            await client.StartAsync("a", "2026-09-23", false); source.Advance(60);
+            await client.StopAsync("2026-09-23");
+            var line = File.ReadLines(AgentDiagnostics.LogPath).Last(l => l.Contains("| lan-time-confirmed |"));
+            Check(Regex.IsMatch(line, @"\| lan-time-confirmed \| sessionId=[a-fA-F0-9-]{36}; entryId=([a-fA-F0-9-]{36}|under-rounding-threshold)$"),
+                "lan-time-confirmed keeps the exact format parsed by CI and IT office tests (check-core.ps1)");
+        });
 
         // --- Agent 1.0.18: no gaps ---------------------------------------------------------
 
