@@ -8,7 +8,7 @@ import {
   loadPeopleOptionsAction,
   updateProjectAction,
 } from "./actions";
-import { getCachedProjects } from "./data-cache";
+import { loadProjects } from "./data-cache";
 
 interface ProjectsPageProps {
   searchParams: Promise<{
@@ -34,8 +34,8 @@ export default async function ProjectsPage({
     stage:
       params.stage && isProjectStage(params.stage) ? params.stage : undefined,
   };
-  const data = await trace.measure("getCachedProjects", () =>
-    getCachedProjects(filters, viewerContext),
+  const data = await trace.measure("loadProjects", () =>
+    loadProjects(filters, viewerContext),
   )
 
   trace.finish({

@@ -14,6 +14,11 @@ import {
 } from "@mandala/db";
 import { unstable_cache } from "next/cache";
 
+// Reads that include tracked hours are never wrapped in unstable_cache. The
+// Windows agent saves time directly in Postgres, so nothing can invalidate a
+// Next.js data cache when it does, and unstable_cache serves a stale entry of
+// any age before refreshing it. Only names, photos and option lists are cached.
+
 const PEOPLE_TAG = "people";
 const PEOPLE_OPTIONS_TAG = "people-options";
 const PEOPLE_REVALIDATE_SECONDS = 300;
@@ -53,34 +58,20 @@ export function getPeopleOptionsTag(): string {
   return PEOPLE_OPTIONS_TAG;
 }
 
-export async function getCachedPeople(
+// Includes hours this week: always read live.
+export async function loadPeople(
   filters: PeopleListFilters,
   context: ViewerRequestContext,
 ): Promise<PeopleListData> {
-  const data = await unstable_cache(
-    async () => listPeople({}, context),
-    ["people-list", getViewerCacheKey(context)],
-    {
-      revalidate: PEOPLE_REVALIDATE_SECONDS,
-      tags: [PEOPLE_TAG],
-    },
-  )();
-
-  return filterPeople(data, filters);
+  return filterPeople(await listPeople({}, context), filters);
 }
 
-export async function getCachedPersonDetail(
+// Includes the person's hours and work log: always read live.
+export async function loadPersonDetail(
   personId: string,
   context: ViewerRequestContext,
 ): Promise<PersonDetailData> {
-  return unstable_cache(
-    async () => getPersonDetail(personId, context),
-    ["person-detail", getViewerCacheKey(context), personId],
-    {
-      revalidate: PEOPLE_REVALIDATE_SECONDS,
-      tags: [PEOPLE_TAG, `person:${personId}`],
-    },
-  )();
+  return getPersonDetail(personId, context);
 }
 
 export async function getCachedPeopleRailData(

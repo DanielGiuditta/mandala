@@ -12,6 +12,11 @@ import {
 } from "@mandala/db";
 import { unstable_cache } from "next/cache";
 
+// Reads that include tracked hours are never wrapped in unstable_cache. The
+// Windows agent saves time directly in Postgres, so nothing can invalidate a
+// Next.js data cache when it does, and unstable_cache serves a stale entry of
+// any age before refreshing it. Only names, photos and option lists are cached.
+
 const PROJECTS_TAG = "projects";
 const PEOPLE_OPTIONS_TAG = "people-options";
 const PROJECTS_REVALIDATE_SECONDS = 300;
@@ -63,34 +68,20 @@ export function getPeopleOptionsTag(): string {
   return PEOPLE_OPTIONS_TAG;
 }
 
-export async function getCachedProjects(
+// Includes project hours: always read live.
+export async function loadProjects(
   filters: ProjectListFilters,
   context: ViewerRequestContext,
 ): Promise<ProjectListData> {
-  const data = await unstable_cache(
-    async () => listProjects({}, context),
-    ["projects-list", getViewerCacheKey(context)],
-    {
-      revalidate: PROJECTS_REVALIDATE_SECONDS,
-      tags: [PROJECTS_TAG],
-    },
-  )();
-
-  return filterProjects(data, filters);
+  return filterProjects(await listProjects({}, context), filters);
 }
 
-export async function getCachedProjectDetail(
+// Includes project hours and the work log: always read live.
+export async function loadProjectDetail(
   projectId: string,
   context: ViewerRequestContext,
 ): Promise<ProjectDetailData> {
-  return unstable_cache(
-    async () => getProjectDetail(projectId, context),
-    ["project-detail", getViewerCacheKey(context), projectId],
-    {
-      revalidate: PROJECTS_REVALIDATE_SECONDS,
-      tags: [PROJECTS_TAG, getProjectTag(projectId)],
-    },
-  )();
+  return getProjectDetail(projectId, context);
 }
 
 export async function getCachedProjectRailData(

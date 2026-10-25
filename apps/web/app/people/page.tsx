@@ -9,7 +9,7 @@ import {
   loadProjectOptionsAction,
   updatePersonAction,
 } from "./actions"
-import { getCachedPeople } from "./data-cache"
+import { loadPeople } from "./data-cache"
 
 interface PeoplePageProps {
   searchParams: Promise<{
@@ -30,8 +30,8 @@ export default async function PeoplePage({ searchParams }: PeoplePageProps) {
     officeId: params.office || undefined,
     query: params.q || undefined,
   }
-  const data = await trace.measure("getCachedPeople", () =>
-    getCachedPeople(filters, viewerContext),
+  const data = await trace.measure("loadPeople", () =>
+    loadPeople(filters, viewerContext),
   )
 
   trace.finish({

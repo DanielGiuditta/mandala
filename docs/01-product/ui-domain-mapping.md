@@ -20,6 +20,7 @@ Use these mappings so UI labels can stay user-friendly while code stays consiste
 - "Person Photo" / "Profile Photo" / "Avatar" → `photoUrl`
 - "Supervisor" / "Manager" → `Person.supervisorPersonId`
 - "Permission" / "Access" (People create/list) → linked `UserAccount` plus optional `RoleAssignment`, not `Person.title`
+- "Hours" / "Total hours" / "Cost" (Projects list, project detail at-a-glance and work log) → all-time project-wide sum of stored `TimeEntry.hours` (and rough labor cost) from the single SQL aggregate `get_project_list_time_metrics`, so every view of the same project shows the same total
 - "Hours this week" (People list/detail) → current-week rollup of tracked `TimeEntry.hours`
 - "Sourced to" (People list/detail) → active projects with tracked `TimeEntry` history for that person, not planned `Assignment` rows
 - "Staff" / "Staffed to" (Project detail) → unique people on the project derived from active `Assignment` rows plus tracked `TimeEntry` history

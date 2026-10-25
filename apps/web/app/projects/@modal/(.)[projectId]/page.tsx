@@ -9,7 +9,7 @@ import {
 } from "../../actions";
 import { getViewerRequestContext } from "../../../../lib/auth/session";
 import {
-  getCachedProjectDetail,
+  loadProjectDetail,
   getCachedProjectRailData,
 } from "../../data-cache";
 
@@ -31,7 +31,7 @@ export default async function ProjectDetailModalPage({
   );
   const [data, railData] = await trace.measure("loadDetailShellData", () =>
     Promise.all([
-      getCachedProjectDetail(projectId, viewerContext),
+      loadProjectDetail(projectId, viewerContext),
       getCachedProjectRailData(viewerContext),
     ]),
   );

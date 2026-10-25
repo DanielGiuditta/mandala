@@ -14,7 +14,7 @@ import {
 import {
   getCachedPeopleOfficeOptions,
   getCachedPeopleRailData,
-  getCachedPersonDetail,
+  loadPersonDetail,
 } from "../data-cache";
 
 interface PersonDetailPageProps {
@@ -33,7 +33,7 @@ export default async function PersonDetailPage({ params }: PersonDetailPageProps
   );
   const [data, officeData, railData] = await trace.measure("loadDetailShellData", () =>
     Promise.all([
-      getCachedPersonDetail(personId, viewerContext),
+      loadPersonDetail(personId, viewerContext),
       getCachedPeopleOfficeOptions(viewerContext),
       getCachedPeopleRailData(viewerContext),
     ]),

@@ -71,5 +71,7 @@ Migration `20260907090000_add_lan_desktop_sessions.sql` adds durable `desktop_wo
 
 - Build explicit list queries for dashboard and detail views.
 - Rollups should be reproducible from source records.
+- Project time totals come from one SQL aggregate (`get_project_list_time_metrics`) for both the Projects list and project detail. Sum stored hours in SQL; do not re-add rows in application code.
+- Reads that include tracked hours (project list/detail, people list/detail) are read live and are not wrapped in the Next.js data cache. Windows agent saves are written directly in Postgres and never reach a web action that could invalidate a cache, and `unstable_cache` serves stale entries of unbounded age. Only data without hours (rails, option lists) may be cached.
 - Avoid burying critical business logic in UI-only code.
 - Prefer additive SQL read functions for heavy list/detail views when they replace multiple round trips without weakening RLS.

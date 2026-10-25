@@ -131,6 +131,40 @@ interface ProjectListTimeMetricRow {
   total_hours: number | string;
 }
 
+interface ProjectTimeMetrics {
+  totalHours: number;
+  totalLaborCost: number;
+}
+
+// The single source of project time totals. The list and the detail view both
+// use this SQL aggregate (exact numeric sum of stored hours), so the same
+// project always shows the same total.
+async function fetchProjectTimeMetrics(
+  client: NonNullable<ReturnType<typeof createServerSupabaseClient>>,
+  projectIds: string[],
+): Promise<Map<string, ProjectTimeMetrics>> {
+  if (projectIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await client.rpc("get_project_list_time_metrics", {
+    input_project_ids: projectIds,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as ProjectListTimeMetricRow[]).reduce((map, metric) => {
+    map.set(metric.project_id, {
+      totalHours: Number(metric.total_hours),
+      totalLaborCost:
+        metric.rough_labor_cost === null ? 0 : Number(metric.rough_labor_cost),
+    });
+    return map;
+  }, new Map<string, ProjectTimeMetrics>());
+}
+
 interface ProjectDetailContextResponse {
   found: boolean;
   assignments?: AssignmentRow[];
@@ -1545,35 +1579,18 @@ export async function listProjects(
         fetchPeopleRows(leadIds, { client }),
       )
     : Promise.resolve([]);
-  const metricsPromise = internalProjectIds.length > 0
-    ? trace.measure("rpc.getProjectListTimeMetrics", () =>
-        client.rpc("get_project_list_time_metrics", {
-          input_project_ids: internalProjectIds,
-        }),
-      )
-    : Promise.resolve({ data: [], error: null });
+  const metricsPromise = trace.measure("rpc.getProjectListTimeMetrics", () =>
+    fetchProjectTimeMetrics(client, internalProjectIds),
+  );
 
-  const [people, metricsResponse, activeWorkSession] = await Promise.all([
+  const [people, metricsByProjectId, activeWorkSession] = await Promise.all([
     leadPeoplePromise,
     metricsPromise,
     getSelfActiveWorkSession(context),
   ]);
 
-  if (metricsResponse.error) {
-    throw metricsResponse.error;
-  }
-
   const officesById = new Map(offices.map((office) => [office.id, office]));
   const peopleById = new Map(people.map((person) => [person.id, person]));
-  const metricsByProjectId = ((metricsResponse.data ?? []) as ProjectListTimeMetricRow[])
-    .reduce((map, metric) => {
-      map.set(metric.project_id, {
-        totalHours: Number(metric.total_hours),
-        totalLaborCost:
-          metric.rough_labor_cost === null ? 0 : Number(metric.rough_labor_cost),
-      });
-      return map;
-    }, new Map<string, { totalHours: number; totalLaborCost: number }>());
   const activeWorkProjectId = activeWorkSession?.projectId ?? null;
 
   const result = {
@@ -2543,7 +2560,16 @@ export async function getProjectDetail(
   const timeEntryRows = detailContext.timeEntryRows;
   const offices = detailContext.offices;
   const projectSubject = toProjectPermissionSubject(row);
-  const activeWorkSession = await getSelfActiveWorkSession(context);
+  const restrictedToSummary = !canViewInternalProject(
+    viewerAccess.viewer,
+    projectSubject,
+  );
+  const [activeWorkSession, timeMetricsByProjectId] = await Promise.all([
+    getSelfActiveWorkSession(context),
+    restrictedToSummary
+      ? Promise.resolve(new Map<string, ProjectTimeMetrics>())
+      : fetchProjectTimeMetrics(client, [projectId]),
+  ]);
   const isReadOnlyWhileWorkingElsewhere = Boolean(
     activeWorkSession && activeWorkSession.projectId !== projectId,
   );
@@ -2584,16 +2610,12 @@ export async function getProjectDetail(
     row,
     officesById,
     peopleById,
-    null,
-    false,
+    timeMetricsByProjectId.get(projectId) ?? null,
+    restrictedToSummary,
     canEditCurrentProject,
     canEditCurrentProjectStage,
     canSetCurrentProjectLead,
     canViewFinancials,
-  );
-  const restrictedToSummary = !canViewInternalProject(
-    viewerAccess.viewer,
-    project,
   );
 
   if (restrictedToSummary) {
@@ -2681,9 +2703,6 @@ export async function getProjectDetail(
     }
   >();
 
-  let totalHours = 0;
-  let totalLaborCost = 0;
-
   for (const timeEntry of timeEntries) {
     const person = peopleById.get(timeEntry.personId);
     const personName = person?.full_name ?? "Unknown person";
@@ -2692,11 +2711,6 @@ export async function getProjectDetail(
       ? timeEntry.hours * hourlyCost
       : null;
     const existing = byPerson.get(timeEntry.personId);
-
-    totalHours += timeEntry.hours;
-    if (laborCost !== null) {
-      totalLaborCost += laborCost;
-    }
 
     if (existing) {
       existing.hours += timeEntry.hours;
@@ -2753,8 +2767,9 @@ export async function getProjectDetail(
         personPhotoUrl: peopleById.get(entry.personId)?.photo_url ?? null,
         personTitle: peopleById.get(entry.personId)?.title ?? null,
       })),
-      totalHours,
-      totalLaborCost: canViewFinancials ? totalLaborCost : null,
+      // Same SQL aggregate and fields as the Projects list row for this project.
+      totalHours: project.totalHours ?? 0,
+      totalLaborCost: project.totalLaborCost,
     },
     viewerLabel,
   };
