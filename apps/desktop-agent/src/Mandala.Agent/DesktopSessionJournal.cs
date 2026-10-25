@@ -12,10 +12,16 @@ namespace Mandala.Agent;
 public sealed class DesktopSessionJournal
 {
     private readonly string _path;
-    public DesktopSessionJournal(string email, string? directory = null)
+    private readonly bool _protect;
+    public DesktopSessionJournal(string email, string? directory = null) : this(email, directory, protect: true) { }
+
+    // Regression tests on non-Windows hosts store the same JSON without DPAPI.
+    // The installed agent always protects the journal.
+    internal DesktopSessionJournal(string email, string? directory, bool protect)
     {
         var name = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(email.ToLowerInvariant())));
         _path = Path.Combine(directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Mandala Agent"), $"time-{name}.dat");
+        _protect = protect;
     }
 
     public async Task<DesktopJournalState> LoadAsync(string email)
@@ -23,21 +29,29 @@ public sealed class DesktopSessionJournal
         if (!File.Exists(_path)) return new DesktopJournalState(email, [], null);
         // Corruption is an actionable error: never discard pending work silently.
         var encrypted = await File.ReadAllBytesAsync(_path);
-        var plain = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+        var plain = _protect ? ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser) : encrypted;
         var state = JsonSerializer.Deserialize<DesktopJournalState>(plain, AppConfiguration.JsonOptions)
             ?? throw new InvalidDataException("Pending time could not be read. Preserve diagnostics for IT.");
         if (!string.Equals(state.Email, email, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Pending time belongs to a different account.");
         return state;
     }
 
-    public async Task SaveAsync(DesktopJournalState state)
+    public Task SaveAsync(DesktopJournalState state)
+    {
+        Save(state);
+        return Task.CompletedTask;
+    }
+
+    // Synchronous so it can run while Windows is shutting down or signing out.
+    public void Save(DesktopJournalState state)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var bytes = ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(state, AppConfiguration.JsonOptions), null, DataProtectionScope.CurrentUser);
+        var json = JsonSerializer.SerializeToUtf8Bytes(state, AppConfiguration.JsonOptions);
+        var bytes = _protect ? ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser) : json;
         var temporary = _path + ".tmp";
         using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
         {
-            await stream.WriteAsync(bytes);
+            stream.Write(bytes);
             stream.Flush(flushToDisk: true);
         }
         File.Move(temporary, _path, overwrite: true);

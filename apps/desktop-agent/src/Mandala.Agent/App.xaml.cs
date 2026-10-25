@@ -20,6 +20,14 @@ public partial class App : Application
         }
         base.OnStartup(e);
     }
+    // Sign-out, restart or shutdown: record the exact stop on this computer
+    // before Windows ends the process. It uploads on the next start.
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        (MainWindow as MainWindow)?.SaveForShutdown();
+        base.OnSessionEnding(e);
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         _instanceMutex?.Dispose();

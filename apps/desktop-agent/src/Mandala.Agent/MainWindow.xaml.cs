@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Globalization;
 using System.Windows;
@@ -29,6 +30,8 @@ public partial class MainWindow : Window
     private bool _isPolling;
     private bool _manualStopRequested;
     private DateTimeOffset _lastManualStopAttemptAt = DateTimeOffset.MinValue;
+    private bool _closeConfirmed;
+    private bool _sessionEnding;
 
     public MainWindow()
     {
@@ -48,6 +51,74 @@ public partial class MainWindow : Window
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _pollTimer.Tick += async (_, _) => await PollAsync();
         Loaded += async (_, _) => await RestoreSessionAsync();
+        Closing += MainWindow_Closing;
+    }
+
+    // Closing the window must never silently stop (or keep) tracking. Ask, and
+    // keep the agent running minimised unless the employee chooses to stop.
+    private async void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_closeConfirmed || _sessionEnding || _client is null) return;
+        if (_activeSession is not null)
+        {
+            e.Cancel = true;
+            var answer = MessageBox.Show(
+                $"Mandala is tracking {_activeSession.ProjectName}.\n\nYes: stop tracking and close.\nNo: keep tracking and minimise this window.",
+                "Stop tracking?", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                WindowState = WindowState.Minimized;
+                AgentDiagnostics.Record("close-kept-tracking", $"projectId={_activeSession.ProjectId}");
+                return;
+            }
+            _autoResume.Cancel();
+            _manualStopRequested = true;
+            _lastManualStopAttemptAt = DateTimeOffset.MinValue;
+            await ProcessManualStopAsync();
+            if (_activeSession is null)
+            {
+                AgentDiagnostics.Record("close-after-stop", "Tracking stopped before closing.");
+                _closeConfirmed = true;
+                Close();
+            }
+            else
+            {
+                TrackerMessageText.Text = "Stopping… close Mandala again once it shows No active project.";
+            }
+            return;
+        }
+        if (_autoResume.IsPaused && _autoResume.Project is { } project)
+        {
+            e.Cancel = true;
+            var answer = MessageBox.Show(
+                $"Mandala is paused and will resume {project.Name} when you use this computer.\n\nYes: turn tracking off and close.\nNo: keep it ready and minimise this window.",
+                "Turn tracking off?", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                WindowState = WindowState.Minimized;
+                return;
+            }
+            _autoResume.Cancel();
+            AgentDiagnostics.Record("close-cancelled-resume", $"projectId={project.Id}");
+            _closeConfirmed = true;
+            Close();
+        }
+    }
+
+    // Windows is shutting down or signing out: record the exact stop on this
+    // computer (no dialogs, no network). It uploads when the agent next starts.
+    public void SaveForShutdown()
+    {
+        _sessionEnding = true;
+        try
+        {
+            _client?.SaveStopForShutdown();
+            AgentDiagnostics.Record("session-ending-saved", _client?.LanDiagnosticSummary ?? "no client");
+        }
+        catch (Exception exception)
+        {
+            AgentDiagnostics.Record("session-ending-save-failure", AgentDiagnostics.Compact(exception.ToString()));
+        }
     }
 
     private async Task RestoreSessionAsync()
@@ -162,14 +233,30 @@ public partial class MainWindow : Window
         var switchingProject = _activeSession is not null && _activeSession.ProjectId != project.Id;
         if (switchingProject)
         {
-            var confirmation = MessageBox.Show(
-                $"You are currently tracking {_activeSession!.ProjectName}. Do you want to stop it and start tracking {project.Name}?",
-                "Switch active project?",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+            // Pause polling while the question is open, so idle saves and automatic
+            // resume cannot run underneath it. A long-open question still counts as
+            // idle time through the polling gap if the answer is No.
+            MessageBoxResult confirmation;
+            _pollTimer.Stop();
+            try
+            {
+                confirmation = MessageBox.Show(
+                    $"You are currently tracking {_activeSession!.ProjectName}. Do you want to stop it and start tracking {project.Name}?",
+                    "Switch active project?",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+            }
+            finally { _pollTimer.Start(); }
 
             if (confirmation != MessageBoxResult.Yes)
             {
+                return;
+            }
+
+            if (_isSaving || _wakeIdleStopPending || _manualStopRequested || _activeSession is null || _activeSession.ProjectId == project.Id)
+            {
+                TrackerMessageText.Text = "The timer changed while that question was open. Check the status above, then press Start Work again.";
+                UpdateTrackerStatus();
                 return;
             }
         }
@@ -182,7 +269,11 @@ public partial class MainWindow : Window
             _trackerMessageState.ClearPersistent();
             var saveResult = await _client.StartAsync(project.Id, GetLocalDate(), switchingProject);
             _activeSession = _client.CurrentDesktopSession;
-            if (_activeSession?.ProjectId == project.Id && !_client.HasPendingSave)
+            _wakeIdleStopPending = false;
+            // The previous session was stopped explicitly; don't treat the
+            // question's open time as a polling gap for the new session.
+            _lastPollAt = _pollClock.UtcNow;
+            if (_activeSession?.ProjectId == project.Id)
             {
                 _autoResume.Arm(_client.Email!, new TimeTrackerProject(_activeSession.ProjectId, _activeSession.ProjectName));
                 AgentDiagnostics.Record("auto-resume-armed", $"projectId={project.Id}; email={_client.Email}");
@@ -190,8 +281,9 @@ public partial class MainWindow : Window
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             if (switchingProject && saveResult is not null && previousProjectName is not null)
             {
-                var confirmation = saveResult.Pending ? _client.PendingTimeMessage! : saveResult.TooShort
-                    ? "Previous session was shorter than the time-entry rounding threshold. No hours were added."
+                var confirmation = saveResult.Pending ? _client.PendingTimeMessage!
+                    : saveResult.Superseded ? TrackerConfirmationMessages.Superseded()
+                    : saveResult.TooShort ? TrackerConfirmationMessages.TooShort()
                     : TrackerConfirmationMessages.ProjectSwitch(
                     previousProjectName,
                     project.Name,
@@ -260,15 +352,16 @@ public partial class MainWindow : Window
     {
         var polledAt = _pollClock.UtcNow;
         var previousPollAt = _lastPollAt;
-        _lastPollAt = polledAt;
         var idleDuration = NativeIdleMonitor.GetIdleDuration();
         var currentInputTick = NativeIdleMonitor.GetLastInputTick();
         _autoResume.ObserveInput(currentInputTick, idleDuration);
 
         if (_client is null || _isSaving)
         {
+            // Keep the previous poll time so a sleep during a save is still seen.
             return;
         }
+        _lastPollAt = polledAt;
 
         if (_client.HasPendingSave &&
             _pollClock.UtcNow - _lastPendingSaveRetryAt >= TimeSpan.FromSeconds(10))
@@ -280,11 +373,7 @@ public partial class MainWindow : Window
                 var recovered = await _client.ReconcilePendingSaveAsync();
                 if (recovered is not null)
                 {
-                    var confirmation = recovered.TooShort
-                        ? "Session closed. It was shorter than the time-entry rounding threshold; no hours were added."
-                        : _autoResume.IsPaused
-                            ? TrackerConfirmationMessages.IdlePause(recovered.TimeEntryId, true)
-                            : TrackerConfirmationMessages.ManualStop(recovered.TimeEntryId);
+                    var confirmation = TrackerConfirmationMessages.Saved(recovered, _autoResume.IsPaused, true);
                     _trackerMessageState.ShowPersistent(confirmation);
                     AgentDiagnostics.Record(
                         "pending-save-confirmation-shown",
@@ -298,7 +387,9 @@ public partial class MainWindow : Window
                 AgentDiagnostics.Record(
                     "pending-save-background-failure",
                     AgentDiagnostics.Compact(exception.ToString()));
-                TrackerMessageText.Text = "Pending time remains on this computer. Sync could not be confirmed; use diagnostics if this continues.";
+                TrackerMessageText.Text = ExtractMessage(exception,
+                    "Time is kept on this computer. Mandala has not accepted the upload yet; if this continues, use Copy diagnostics and send it to IT.",
+                    "AGENT-PENDING-SAVE-001");
             }
             finally
             {
@@ -360,6 +451,13 @@ public partial class MainWindow : Window
                 await _client.TouchAsync();
                 await _sessionStore.SaveAsync(_client.GetStoredSession());
             }
+            catch (DesktopSessionSupersededException superseded)
+            {
+                _autoResume.Cancel();
+                _activeSession = null;
+                TrackerMessageText.Text = _trackerMessageState.ShowPersistent(superseded.Message);
+                AgentDiagnostics.Record("superseded-shown", superseded.Message);
+            }
             catch (Exception exception)
             {
                 TrackerMessageText.Text = ExtractMessage(exception, "Unable to record activity.", "AGENT-ACTIVITY-001");
@@ -375,8 +473,10 @@ public partial class MainWindow : Window
         if (_client is null) return;
         var idleDuration = NativeIdleMonitor.GetIdleDuration();
         _autoResume.ObserveInput(NativeIdleMonitor.GetLastInputTick(), idleDuration);
+        // Earlier time waiting for upload stays queued on this computer; it never
+        // delays resuming.
         if (!_autoResume.CanAttempt(_client.Email, _pollClock.UtcNow, idleDuration,
-            _activeSession is not null, _client.HasPendingSave)) return;
+            _activeSession is not null, _client.BlocksNewWork)) return;
 
         var project = _autoResume.Project!;
         var generation = _autoResume.BeginAttempt(_pollClock.UtcNow);
@@ -409,7 +509,7 @@ public partial class MainWindow : Window
         {
             // A lost response leaves its original UUID queued. Reconciliation
             // closes uncertain starts before another attempt can be made.
-            var rejected = !_client.HasPendingSave &&
+            var rejected = _client.CurrentDesktopSession is null &&
                 (exception is AgentDiagnosticException || exception is System.Net.Http.HttpRequestException
                     { StatusCode: System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden });
             if (rejected) _autoResume.Cancel();
@@ -441,10 +541,7 @@ public partial class MainWindow : Window
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             UpdateTrackerStatus();
             var confirmation = saveResult.Pending ? _client.PendingTimeMessage!
-                : saveResult.TooShort ? "Session closed. It was shorter than the time-entry rounding threshold; no hours were added."
-                : pausedForIdle
-                ? TrackerConfirmationMessages.IdlePause(saveResult.TimeEntryId, _autoResume.IsPaused)
-                : TrackerConfirmationMessages.ManualStop(saveResult.TimeEntryId);
+                : TrackerConfirmationMessages.Saved(saveResult, pausedForIdle, _autoResume.IsPaused);
             TrackerMessageText.Text = _trackerMessageState.ShowPersistent(confirmation);
             AgentDiagnostics.Record(
                 pausedForIdle ? "idle-confirmation-shown" : "stop-confirmation-shown",
@@ -569,16 +666,18 @@ public partial class MainWindow : Window
 
     private void UpdateTrackerStatus()
     {
-        StartWorkButton.IsEnabled = !_isSaving && !_manualStopRequested && !_wakeIdleStopPending && _client?.HasPendingSave != true;
+        StartWorkButton.IsEnabled = !_isSaving && !_manualStopRequested && !_wakeIdleStopPending && _client?.BlocksNewWork != true;
         if (_autoResume.IsPaused && _autoResume.Project is { } project)
         {
             ActiveProjectText.Text = $"Paused {project.Name}";
-            ElapsedText.Text = _wakeIdleStopPending || _client?.HasPendingSave == true
+            ElapsedText.Text = _wakeIdleStopPending
                 ? "Saving time before automatic resume. Stop ends tracking."
-                : "Resumes when you use this computer. Stop ends tracking.";
+                : _client?.HasPendingSave == true
+                    ? "Resumes when you use this computer. Earlier time uploads when Mandala is reachable. Stop ends tracking."
+                    : "Resumes when you use this computer. Stop ends tracking.";
             StopButton.IsEnabled = true;
             StartWorkButton.Content = "Start Work";
-            StartWorkButton.IsEnabled = !_isSaving && !_wakeIdleStopPending && _client?.HasPendingSave != true;
+            StartWorkButton.IsEnabled = !_isSaving && !_wakeIdleStopPending && _client?.BlocksNewWork != true;
             return;
         }
         if (_activeSession is null)
@@ -602,7 +701,10 @@ public partial class MainWindow : Window
 
         var elapsed = _client!.GetElapsed(_activeSession);
         ActiveProjectText.Text = $"Tracking {_activeSession.ProjectName}";
-        ElapsedText.Text = $"{Math.Floor(elapsed.TotalHours):0}h {elapsed.Minutes:00}m active";
+        ElapsedText.Text = $"{Math.Floor(elapsed.TotalHours):0}h {elapsed.Minutes:00}m active" +
+            (_client.CurrentDesktopSession is not null && !_client.CurrentSessionIsConfirmed
+                ? " · recorded on this computer, Mandala confirms when connected"
+                : "");
         StopButton.IsEnabled = !_isSaving;
         if (_client.CurrentDesktopSession is null)
         {

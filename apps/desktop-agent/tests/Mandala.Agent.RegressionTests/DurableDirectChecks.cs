@@ -3,8 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Mandala.Agent;
 
-// These checks use the production client and real Windows DPAPI journal. HTTP
-// terminates in this handler: fixture credentials cannot leave this process.
+// These checks use the production client and journal (real DPAPI on Windows).
+// HTTP terminates in this handler: fixture credentials cannot leave this process.
 internal static class DurableDirectChecks
 {
     private const string Date = "2026-10-13";
@@ -12,12 +12,6 @@ internal static class DurableDirectChecks
 
     public static async Task RunAsync()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Console.WriteLine("SKIP: durable direct-client recovery requires real Windows DPAPI");
-            return;
-        }
-
         await WithFixture(async (client, backend, time, directory) =>
         {
             Check(!client.UsesLanGateway, "fixture exercises direct Supabase mode");
@@ -52,19 +46,19 @@ internal static class DurableDirectChecks
         await WithFixture(async (client, backend, time, directory) =>
         {
             backend.LoseStart = true;
-            await Reject(() => client.StartAsync("a", Date, false), "lost committed direct start");
+            await client.StartAsync("a", Date, false);
             var originalId = backend.Sessions.Keys.Single();
-            Check(client.HasPendingSave, "uncertain direct start is durably pending");
-            await Reject(() => client.StartAsync("a", Date, false), "no second UUID while a start is uncertain");
-            Check(backend.StartIds.Distinct().Single() == originalId, "uncertain start does not create another session identity");
-
+            Check(client.HasPendingSave && client.CurrentDesktopSession is not null,
+                "a lost direct start keeps tracking on this computer and is durably pending");
+            await client.StartAsync("a", Date, false);
+            Check(backend.StartIds.Distinct().Single() == originalId, "pressing Start again never creates a second session identity");
             time.Advance(600);
             var restarted = new SupabaseTimeTrackerClient(backend, time, directory, useLanGateway: false);
             Check(await restarted.RestoreAsync(new StoredSession("fixture", "fixture", Email)), "direct credentials restore");
             var recovered = await restarted.ReconcilePendingSaveAsync();
             var original = backend.Sessions[originalId];
             Check(recovered is { Pending: false, TooShort: true } && original.stopped_at == original.started_at,
-                "restart reconciles an uncertain start as zero time using the same UUID");
+                "with no recorded activity, restart saves the lost start as zero time using the same UUID");
             Check(backend.StartIds.Count(id => id == originalId) == 2 && backend.Sessions.Count == 1,
                 "lost direct start is retried idempotently before any new start");
 
@@ -83,28 +77,30 @@ internal static class DurableDirectChecks
             Check((await client.StopAsync(Date)).Pending && client.HasPendingSave,
                 "lost committed direct finish is visibly pending");
             var saved = backend.Sessions.Values.Single();
-            await Reject(() => client.StartAsync("a", Date, false), "pending finish prevents returning input starting new work");
-            Check(backend.Sessions.Count == 1, "pending receipt never creates overlapping work");
+            time.Advance(30);
+            await client.StartAsync("a", Date, false);
+            Check(client.CurrentDesktopSession is not null, "a pending finish is queued and never blocks returning work");
             var recovered = await client.ReconcilePendingSaveAsync();
             Check(recovered is { Pending: false } && recovered.TimeEntryId == saved.time_entry_id && !client.HasPendingSave,
                 "direct finish retry confirms the original receipt");
-            Check(backend.Sessions.Count == 1 && backend.FinishRequests == 2,
-                "a lost finish response cannot duplicate saved time");
+            var resumed = backend.Sessions.Values.Single(session => session.stopped_at is null);
+            Check(backend.Sessions.Count == 2 && backend.FinishRequests == 2 && resumed.started_at >= saved.stopped_at,
+                "a lost finish response cannot duplicate or overlap saved time");
         });
 
         foreach (var otherProject in new[] { "a", "b" })
             await WithFixture(async (client, backend, time, directory) =>
             {
                 var other = backend.SeedOtherDevice(otherProject);
-                var before = backend.Sessions[other.id];
                 var snapshot = await client.GetSnapshotAsync(Date);
                 Check(snapshot.ActiveSession is null && !string.IsNullOrWhiteSpace(snapshot.Warning),
                     "another device's desktop timer is displayed as a conflict instead of local active work");
-                await Reject(() => client.StartAsync("a", Date, false), "other-device active timer, project " + otherProject);
-                Check(backend.Sessions.Count == 1 && backend.Sessions[other.id] == before,
-                    "a rejected resume never adopts or modifies another device's timer");
-                Check(backend.FinishRequests == 0 && backend.TouchRequests == 0 && !client.HasPendingSave,
-                    "other-device conflict does not stop, touch or retain a falsely uncertain start");
+                await client.StartAsync("a", Date, false);
+                var ended = backend.Sessions[other.id];
+                Check(ended.stopped_at is not null && ended.superseded_by is not null && client.CurrentDesktopSession?.ProjectId == "a",
+                    "Start here ends the other computer's open session instead of being blocked, project " + otherProject);
+                Check(backend.FinishRequests == 0 && backend.TouchRequests == 0,
+                    "this computer never finishes or touches the other computer's session");
             });
 
         await WithFixture(async (client, backend, time, directory) =>
@@ -165,16 +161,22 @@ internal static class DurableDirectChecks
             var restarted = new SupabaseTimeTrackerClient(backend, time, directory, useLanGateway: false);
             Check(await restarted.RestoreAsync(new StoredSession("fixture", "fixture", Email)),
                 "offline direct restart retains recoverable work");
-            await Reject(() => restarted.StartAsync("a", Date, false), "offline pending save prevents fresh start after process restart");
+            time.Advance(30);
+            await restarted.StartAsync("b", Date, false);
+            Check(restarted.CurrentDesktopSession?.ProjectId == "b", "an offline restart still lets new work start on this computer");
+            time.Advance(240);
+            await restarted.TouchAsync();
             backend.Offline = false;
-            var recovered = await restarted.ReconcilePendingSaveAsync();
-            Check(recovered is { Pending: false } && backend.Sessions.Count == 1,
-                "reconnection confirms the exact durable direct stop");
-            Check(backend.Sessions.Values.Single().stopped_at == backend.Sessions.Values.Single().started_at.AddSeconds(120),
+            await restarted.ReconcilePendingSaveAsync();
+            var first = backend.Sessions.Values.Single(session => session.project_id == "a");
+            var second = backend.Sessions.Values.Single(session => session.project_id == "b");
+            Check(first.stopped_at == first.started_at.AddSeconds(120),
                 "offline direct restart preserves the original stop time");
+            Check(second.started_at == first.stopped_at!.Value.AddSeconds(30) && second.stopped_at is null,
+                "the offline start uploads at its real time and keeps running");
         });
 
-        Console.WriteLine("PASS: real direct client/journal covers idle-to-fresh-session timing, lost start and finish responses, restart/outage recovery, device conflicts, revoked access and legacy stop compatibility; all HTTP handled in memory");
+        Console.WriteLine("PASS: direct client/journal covers idle-to-fresh-session timing, lost start and finish responses, restart/outage recovery with new offline work, takeover of another computer's session, revoked access and legacy stop compatibility; all HTTP handled in memory");
     }
 
     private static async Task WithFixture(Func<SupabaseTimeTrackerClient, DirectFixtureUpstream, FixtureTime, string, Task> test)
@@ -210,10 +212,12 @@ internal static class DurableDirectChecks
     }
 }
 
+// Follows the server rules in supabase/migrations/20261024210000_keep_all_desktop_time.sql.
 internal sealed class DirectFixtureUpstream(FixtureTime time) : HttpMessageHandler
 {
     internal sealed record Receipt(string id, string project_id, DateTimeOffset started_at,
-        DateTimeOffset? stopped_at = null, string? time_entry_id = null);
+        DateTimeOffset? stopped_at = null, string? time_entry_id = null, string? superseded_by = null,
+        DateTimeOffset? stop_limit_at = null, bool client_finished = false, DateTimeOffset? server_now = null);
     public readonly Dictionary<string, Receipt> Sessions = new();
     public readonly List<string> Routes = [];
     public readonly List<string> StartIds = [];
@@ -275,12 +279,23 @@ internal sealed class DirectFixtureUpstream(FixtureTime time) : HttpMessageHandl
             {
                 var projectId = body.RootElement.GetProperty("target_project_id").GetString()!;
                 if (projectId == "a" && !AllowProjectA) return Response(new { error = "Selected project is unavailable." }, 400);
-                if (LegacySession is not null || Sessions.Values.Any(session => session.stopped_at is null))
-                    return Response(new { error = "Stop the existing timer on its original device before starting work here." }, 400);
-                Sessions.Add(id, new Receipt(id, projectId, time.Wall));
+                var secondsAgo = body.RootElement.TryGetProperty("started_seconds_ago", out var ago) ? ago.GetDouble() : 0;
+                var started = time.Wall.AddSeconds(-secondsAgo);
+                bool moved;
+                do
+                {
+                    moved = false;
+                    foreach (var saved in Sessions.Values.Where(s => s.stopped_at is { } stop && s.started_at <= started && stop > started))
+                    { started = saved.stopped_at!.Value; moved = true; }
+                } while (moved);
+                // A desktop start closes a leftover web timer and ends any open session elsewhere.
+                if (LegacySession is not null) { LegacySession = null; LegacyEntries.Add(Guid.NewGuid().ToString()); }
+                foreach (var open in Sessions.Values.Where(s => s.stopped_at is null).ToList())
+                    Sessions[open.id] = open with { stopped_at = started, stop_limit_at = started, superseded_by = id };
+                Sessions.Add(id, new Receipt(id, projectId, started));
             }
             if (LoseStart) { LoseStart = false; throw new HttpRequestException("Lost committed direct start response"); }
-            return Response(Sessions[id]);
+            return Response(Sessions[id] with { server_now = time.Wall });
         }
         if (route == "finish_desktop_work_session")
         {
@@ -293,13 +308,26 @@ internal sealed class DirectFixtureUpstream(FixtureTime time) : HttpMessageHandl
                 {
                     stopped_at = stoppedAt,
                     time_entry_id = stoppedAt == session.started_at ? null : Guid.NewGuid().ToString(),
+                    client_finished = true,
                 };
+            else if (session.stop_limit_at is { } limit && !session.client_finished)
+            {
+                var final = stoppedAt < limit ? stoppedAt : limit;
+                Sessions[id] = session with
+                {
+                    stopped_at = final,
+                    time_entry_id = final == session.started_at ? null : Guid.NewGuid().ToString(),
+                    client_finished = true,
+                };
+            }
             if (LoseFinish) { LoseFinish = false; throw new HttpRequestException("Lost committed direct finish response"); }
             return Response(Sessions[id]);
         }
         if (route == "touch_desktop_work_session")
         {
             TouchRequests++;
+            if (Sessions[id] is { stopped_at: not null, stop_limit_at: not null, client_finished: false })
+                return Response(new { code = "P0001", message = "AGENT-SESSION-SUPERSEDED: This account started work on another computer." }, 400);
             return Response(new { });
         }
         throw new Exception("Unexpected direct operation: " + route);

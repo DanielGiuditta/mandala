@@ -68,7 +68,7 @@ In V1, people capture time primarily through a native Windows checker.
 
 At machine login or session start, the person selects the current project from a dropdown.
 
-From Windows Agent 1.0.17, selecting a project and starting work enables automatic resume for that project during the current application session. After five minutes without Windows keyboard or mouse activity, the agent saves the completed interval and waits. Returning input starts a new interval on the same project only after the previous save is confirmed and current authorization permits it. The idle gap is not backfilled. Explicit Stop, including while paused, disables automatic resume until the employee starts work again. Application startup or sign-in alone does not start a timer. Merely selecting another project or opening a file never changes the tracked project. The agent displays whether it is waiting to resume or has resumed.
+From Windows Agent 1.0.17, selecting a project and starting work enables automatic resume for that project during the current application session. After five minutes without Windows keyboard or mouse activity, the agent saves the completed interval and waits. Returning input starts a new interval on the same project. From Agent 1.0.18 the previous interval only has to be saved on the computer, not yet uploaded; Mandala rechecks authorization when each interval uploads. The idle gap is not backfilled. Explicit Stop, including while paused, disables automatic resume until the employee starts work again. Application startup or sign-in alone does not start a timer. Merely selecting another project or opening a file never changes the tracked project. The agent displays whether it is waiting to resume or has resumed.
 
 The web app may also expose a lightweight self-only sidebar tracker for any signed-in internal user account.
 
@@ -82,7 +82,14 @@ The standalone web time-tracker workspace remains limited to partners, admins, a
 
 The approved Windows installer is downloadable from the web application only by partners and admins. Installation is an IT-managed action; employees use the installed agent with their existing Mandala account.
 
-LAN-only workstations may use an IT-enrolled Windows agent through a dedicated HTTPS office gateway. The gateway needs internet access; employee machines do not. Starting a new session requires the gateway and production backend to be reachable. Once confirmed, work and its eventual stop are durably retained on the workstation during outages and synchronized with an idempotent receipt. A pending upload is visibly distinct from a confirmed cloud save. Another device cannot take over that session while it is awaiting synchronization.
+LAN-only workstations may use an IT-enrolled Windows agent through a dedicated HTTPS office gateway. The gateway needs internet access; employee machines do not. Work and its eventual stop are durably retained on the workstation during outages and synchronized with an idempotent receipt. A pending upload is visibly distinct from a confirmed cloud save.
+
+Tracked time must never be silently lost or blocked (owner decision, 24 October 2026; Agent 1.0.18 with migration `20261024210000_keep_all_desktop_time`):
+
+- Start works even when the office gateway or Mandala is unreachable. The agent records the session on the workstation from the moment Start is pressed and uploads it later; Mandala saves it with its real start time, never overlapping time already saved for that person. Finished sessions wait in an upload queue and never block the next session.
+- A Start for the same person on another computer is never refused. It ends any open session elsewhere at that session's last known activity plus five minutes, never later than the new start. The original computer can still upload its own stop afterwards, accepted up to the moment the newer session began, and the agent there stops and says so.
+- Closing the agent window asks whether to stop tracking; otherwise the agent keeps tracking minimised. Windows sign-out or shutdown records the stop on the workstation, and it uploads when the agent next starts.
+- The five-minute idle rule is unchanged: time without keyboard or mouse input beyond the five-minute allowance is not counted.
 
 Once a person has recorded time on a project, the web app should treat that person as staffed to the project for project and people visibility across the system, even if no planned assignment exists yet.
 

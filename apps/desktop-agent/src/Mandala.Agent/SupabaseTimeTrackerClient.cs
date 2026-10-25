@@ -36,8 +36,12 @@ public sealed partial class SupabaseTimeTrackerClient
     }
 
     public string? Email => _session?.Email;
-    public bool HasPendingSave => _pendingSaveCheck is not null ||
+    // Time recorded on this computer that Mandala has not confirmed yet.
+    public bool HasPendingSave => _pendingSaveCheck is not null || QueuedSessionCount > 0 ||
         _journalState?.Session is { } session && (!session.Confirmed || session.StoppedAt is not null);
+    // Only the legacy web-timer save must finish before new work; desktop time
+    // waiting for upload never blocks a new session.
+    public bool BlocksNewWork => _pendingSaveCheck is not null;
 
     public async Task SignInAsync(string email, string password)
     {
@@ -75,7 +79,7 @@ public sealed partial class SupabaseTimeTrackerClient
 
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
-        if (UsesLanGateway || _journalState?.Session is not null) return await GetLanSnapshotAsync();
+        if (UsesLanGateway || _journalState?.Session is not null || QueuedSessionCount > 0) return await GetLanSnapshotAsync();
         var projects = await ListProjectsAsync();
         await PersistJournalAsync(_journalState! with { Projects = projects.Select(p => new TimeTrackerProject(p.Id, p.Name)).ToList() });
         var warnings = new List<string>();
@@ -117,7 +121,7 @@ public sealed partial class SupabaseTimeTrackerClient
         var active = sessions.FirstOrDefault();
         if (active is not null && (active.DesktopSessionId is not null || _hasOwnedDesktopSession))
         {
-            warnings.Add("A timer is running on another device. Stop it on that device before starting work here.");
+            warnings.Add("Mandala shows a timer running on another computer for this account. Starting work here ends it there.");
             active = null;
         }
         else if (active is not null)

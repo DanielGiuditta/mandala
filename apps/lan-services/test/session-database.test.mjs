@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite'
 
 // Execute the real session functions and new migration in PostgreSQL (WASM),
 // using a small authorization fixture rather than unrelated application fixtures.
-test('database: reconnect is idempotent, ownership is exclusive, and revoked access fails closed', async () => {
+test('database: reconnect is idempotent, a new start ends an open session, and revoked access fails closed', async () => {
   const db = new PGlite()
   const person = '11111111-1111-4111-8111-111111111111'
   const project = '22222222-2222-4222-8222-222222222222'
@@ -34,13 +34,13 @@ test('database: reconnect is idempotent, ownership is exclusive, and revoked acc
     const actualLegacy = await readFile(new URL('../../../supabase/migrations/20260722120000_add_active_work_sessions.sql', import.meta.url), 'utf8')
     await db.exec(actualLegacy.split('alter policy')[0])
     await db.exec(await readFile(new URL('../../../supabase/migrations/20260907090000_add_lan_desktop_sessions.sql', import.meta.url), 'utf8'))
+    await db.exec(await readFile(new URL('../../../supabase/migrations/20261024210000_keep_all_desktop_time.sql', import.meta.url), 'utf8'))
     const call = async (sql, params = []) => (await db.query(sql, params)).rows
     const start = () => call('select start_desktop_work_session($1,$2,current_date) as receipt', [session, project])
     const first = (await start())[0].receipt
     assert.equal((await start())[0].receipt.started_at, first.started_at)
     await assert.rejects(call('select start_self_work_session($1,current_date,false)', [project]), /original workstation/)
     await assert.rejects(call('select stop_self_work_session(current_date)'), /original workstation/)
-    await assert.rejects(call('select start_desktop_work_session($1,$2,current_date)', [secondSession, project]), /existing timer/)
     assert.equal((await call('select pause_stale_self_work_session(current_date) as paused'))[0].paused, false)
     await db.exec(`update desktop_work_sessions set started_at = clock_timestamp() - interval '1 hour'; update active_work_sessions set started_at = clock_timestamp() - interval '1 hour';`)
     const stopped = new Date().toISOString()
@@ -55,7 +55,14 @@ test('database: reconnect is idempotent, ownership is exclusive, and revoked acc
     await db.exec("set test.allowed = 'no'")
     assert.equal((await call('select * from authorize_resource_preview($1)', [session])).length, 0)
     await assert.rejects(call('select start_desktop_work_session($1,$2,current_date)', [secondSession, project]), /unavailable/)
-    await db.exec("set test.allowed = 'yes'; update user_accounts set active = false")
+    // Another computer's start ends an open session instead of being refused.
+    await db.exec("set test.allowed = 'yes'")
+    const thirdSession = '55555555-5555-4555-8555-555555555555'
+    await call('select start_desktop_work_session($1,$2,current_date)', [secondSession, project])
+    await call('select start_desktop_work_session($1,$2,current_date)', [thirdSession, project])
+    assert.equal((await call('select superseded_by from desktop_work_sessions where id = $1', [secondSession]))[0].superseded_by, thirdSession)
+    assert.equal((await call('select desktop_session_id from active_work_sessions'))[0].desktop_session_id, thirdSession)
+    await db.exec("update user_accounts set active = false")
     await assert.rejects(call('select finish_desktop_work_session($1,$2)', [session, stopped]), /active internal/)
     await assert.rejects(call('select * from authorize_resource_preview($1)', [session]), /active internal/)
     // Direct table access and the renamed legacy bypass must not be executable by employees.
