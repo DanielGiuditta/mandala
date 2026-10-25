@@ -2,7 +2,9 @@ param(
     [Parameter(Mandatory=$true)][string]$Agent,
     [Parameter(Mandatory=$true)][string]$ApprovedManifest,
     [switch]$FixtureCandidate,
-    [switch]$AutoResumeExpected
+    [switch]$AutoResumeExpected,
+    # Agent 1.0.18+: time waiting for upload never blocks starting new work.
+    [switch]$QueuedOfflineWork
 )
 $ErrorActionPreference='Stop'
 # This test is restricted to a disposable GitHub-hosted Windows runner. It uses
@@ -137,7 +139,11 @@ try {
     Close-TestAgent
     Start-FixtureAgent
     Wait-AgentText 'TrackerMessageText' {param($text) $text -match 'waiting for (the LAN gateway|Mandala)|Pending time remains'} 90 'offline pending work survives normal close/reopen'
-    Require (-not (Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Actual Agent allowed another start while the offline save was pending.'
+    if($QueuedOfflineWork){
+        Wait-Ui 'Start stays available while the offline save waits for upload' {(Get-AgentControl 'StartWorkButton').Current.IsEnabled} 30|Out-Null
+    } else {
+        Require (-not (Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Actual Agent allowed another start while the offline save was pending.'
+    }
     Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $script:started|Where-Object {$_.Event -eq 'lan-time-confirmed'}).Count -eq 1) 'Offline restore fabricated a server receipt.'
     Set-FixtureOnline $true
     Wait-FixtureReceipts 2

@@ -388,7 +388,7 @@ public partial class MainWindow : Window
                     "pending-save-background-failure",
                     AgentDiagnostics.Compact(exception.ToString()));
                 TrackerMessageText.Text = ExtractMessage(exception,
-                    "Time is kept on this computer. Mandala has not accepted the upload yet; if this continues, use Copy diagnostics and send it to IT.",
+                    "Pending time remains on this computer. Mandala has not accepted the upload yet; if this continues, use Copy diagnostics and send it to IT.",
                     "AGENT-PENDING-SAVE-001");
             }
             finally

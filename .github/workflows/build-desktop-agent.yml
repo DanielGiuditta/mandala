@@ -148,7 +148,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $agent = Join-Path $env:RUNNER_TEMP 'Mandala Agent Audit/Mandala.Agent.exe'
-          & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-lan.ps1 -Agent $agent -ApprovedManifest apps/desktop-agent/release/installer-audit.json -AutoResumeExpected
+          & powershell.exe -NoProfile -STA -ExecutionPolicy RemoteSigned -File apps/desktop-agent/tests/approved-agent-lan.ps1 -Agent $agent -ApprovedManifest apps/desktop-agent/release/installer-audit.json -AutoResumeExpected -QueuedOfflineWork
           if ($LASTEXITCODE -ne 0) { throw 'Installed idle-resume/Stop audit failed; publication blocked.' }
       - name: Publish the audited installer
         if: inputs.publish_release

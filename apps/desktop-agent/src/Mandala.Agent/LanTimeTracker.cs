@@ -37,7 +37,7 @@ public sealed partial class SupabaseTimeTrackerClient
         _journalState?.Session is { Confirmed: false, StoppedAt: null }
             ? "Tracking on this computer. Mandala will confirm the start when the connection returns."
         : _journalState?.Session is { StoppedAt: not null } || QueuedSessionCount > 0
-            ? "Time saved on this computer; it uploads automatically when Mandala is reachable."
+            ? "Time saved on this computer; waiting for Mandala to confirm upload."
         : null;
 
     private async Task LoadJournalAsync()
