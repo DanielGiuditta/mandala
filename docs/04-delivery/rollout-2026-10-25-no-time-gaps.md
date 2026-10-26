@@ -8,6 +8,7 @@ Status (26 October 2026). Each gate needs the owner's explicit OK.
 | B | Applied 25 Oct 16:19 UTC from `685d1f6`; verify passed. |
 | C | Live 25 Oct 16:42 UTC as `dpl_4z8XBrWD7RXqZeojUWQdy2h6gj2K`; the owner's signed-in check passed (Atlantis 28.01 h). |
 | B4 watch | Read-only script `local-resources/rollout-2026-10-25/b4-watch.sh`, run on the first India working days. |
+| Agent 1.0.18 candidate | Windows CI run 40375253887 passed at `ce2c2dc` with publishing off: 13 exact receipts, 0 duplicates, 0 production requests. Restart resume was checked on real Windows: a forced stop while tracking with the gateway down, a restart after Stop, and a forced stop while idle-paused with the gateway down. |
 | D, E | Not started. |
 | Follow-up | D4 migration `20261026030000` and website fixes `5c6291f`: see the end of this document. |
 
