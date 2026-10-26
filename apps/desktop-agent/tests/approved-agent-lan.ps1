@@ -93,6 +93,18 @@ function Confirm-AgentDialog([string]$Title,[bool]$Yes) {
     Wait-Ui ('dialog response '+$Title) {$task.IsCompleted} 15|Out-Null
     $task.GetAwaiter().GetResult()
 }
+function Get-AgentEventCount([string]$Name,[DateTimeOffset]$Since) {
+    # Read-AgentEvents exports only an allowlist of events, so count this one
+    # event name directly. Only names and times are read, never details.
+    $path=Join-Path $local 'agent.log';$count=0
+    if(-not (Test-Path -LiteralPath $path)){return 0}
+    foreach($line in @(Get-Content -LiteralPath $path -Tail 5000)) {
+        if($line -notmatch '\| UTC (?<utc>[^|]+) \| (?<event>[^|]+) \|') { continue }
+        $stamp=[DateTimeOffset]::MinValue
+        if([DateTimeOffset]::TryParse($Matches.utc.Trim(),[ref]$stamp) -and $stamp -ge $Since -and $Matches.event.Trim() -eq $Name){$count++}
+    }
+    return $count
+}
 function Stop-FixtureAgentAbruptly {
     # Simulates a power cut: no close prompt and no Windows shutdown notice.
     $process=Get-Process -Id $script:AgentProcessId -ErrorAction Stop
@@ -325,15 +337,16 @@ try {
         Start-FixtureAgent
         Wait-AgentState 'Paused CI protocol project A' 60
         Wait-AgentText 'ElapsedText' {param($text) $text -like 'Resumes when you use this computer*'} 20 'restart resume waits for keyboard or mouse input'
+        Require ((Get-AgentEventCount 'restart-resume-armed' $relaunchedAt) -eq 1) 'The restart did not arm the stored project.'
         $restartInput=[MandalaTestInput]::LastInput()
         Start-Sleep -Seconds 8
         Require ([MandalaTestInput]::LastInput() -eq $restartInput) 'The restart check unexpectedly generated Windows input.'
         Wait-AgentState 'Paused CI protocol project A'
-        Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $relaunchedAt|Where-Object {$_.Event -eq 'auto-resume-request'}).Count -eq 0) 'Tracking resumed after the restart without new keyboard or mouse input.'
+        Require ((Get-AgentEventCount 'auto-resume-request' $relaunchedAt) -eq 0) 'Tracking resumed after the restart without new keyboard or mouse input.'
         $restartInputAt=[DateTimeOffset]::UtcNow
         [MandalaTestInput]::Pulse()
         Wait-AgentState 'Tracking CI protocol project A' 45
-        Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $relaunchedAt|Where-Object {$_.Event -eq 'restart-resume-success'}).Count -eq 1) 'The restart resume was not recorded.'
+        Require ((Get-AgentEventCount 'restart-resume-success' $relaunchedAt) -eq 1) 'The restart resume was not recorded.'
         foreach($pulse in 1..2){Start-Sleep -Seconds 5;[MandalaTestInput]::Pulse()}
         Set-FixtureOnline $true
         $afterRestart=@(Wait-Ui 'interrupted and resumed sessions uploaded after reconnecting' {
