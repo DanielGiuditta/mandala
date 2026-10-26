@@ -209,6 +209,7 @@ The web app may also expose a lightweight self-only sidebar tracker for any sign
 - approvals are deferred in V1
 - `assignmentId` may be optional in the schema and its absence is valid when the person is not staffed to the tracked project
 - the sidebar tracker is self-only, resolves the signed-in internal user by email-backed person identity, and writes a single manual `TimeEntry` on stop
+- time entries are created only by the tracker functions (Windows agent and sidebar tracker). Employees cannot insert time entries directly through the API (migration `20261026030000`); corrections by project leads, partners and admins edit existing entries
 - a `TimeEntry` is finalized work history, not the active timer state
 - Windows idle auto-resume creates a new session on the last explicitly started project when input returns; it never extends the previous entry across an idle gap. Resume intent is temporary client state, cleared by explicit Stop or application restart, not a new domain field or entity. The web tracker retains explicit restart behavior.
 - the sidebar tracker may target only projects the current viewer is allowed to track against
