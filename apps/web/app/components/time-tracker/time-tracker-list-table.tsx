@@ -32,9 +32,9 @@ interface ColumnDefinition {
 
 const COLUMN_DEFINITIONS: ColumnDefinition[] = [
   { key: "project", label: "Project", width: 250 },
-  { key: "hoursToday", label: "Hours Today", width: 130 },
-  { key: "totalHours", label: "Total Hours", width: 130 },
-  { key: "totalCost", label: "Total Cost", width: 130 },
+  { key: "hoursToday", label: "My Hours Today", width: 130 },
+  { key: "totalHours", label: "My Total Hours", width: 130 },
+  { key: "totalCost", label: "My Cost", width: 130 },
 ];
 const GRID_COLUMN_GAP = 16;
 

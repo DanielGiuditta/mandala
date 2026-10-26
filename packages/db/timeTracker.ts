@@ -1,4 +1,3 @@
-import type { TimeEntry } from "@mandala/domain";
 import {
   canAccessTimeTracker,
   canTrackOwnTimeForProject,
@@ -11,6 +10,7 @@ import {
   getCurrentViewerAccess,
   type ViewerRequestContext,
 } from "./auth";
+import { selectAllRows } from "./allRows";
 import { fetchPeopleCompensationById } from "./lookups";
 import {
   PREVIEW_CONFIG_MESSAGE,
@@ -40,17 +40,6 @@ interface TrackerAssignmentRow {
   end_date: string | null;
   id: string;
   start_date: string | null;
-}
-
-interface TrackerTimeEntryRow {
-  assignment_id: string | null;
-  date: string;
-  hours: number | string;
-  id: string;
-  notes: string | null;
-  person_id: string;
-  project_id: string;
-  source: string | null;
 }
 
 interface TrackerIdRow {
@@ -103,18 +92,6 @@ export interface GetSelfTimeTrackerDataInput {
   localDate: string;
 }
 
-export interface RecordSelfTimeTrackerEntryInput {
-  entryDate: string;
-  projectId: string;
-  startedAt: string;
-  stoppedAt: string;
-}
-
-export interface RecordSelfTimeTrackerEntryResult {
-  entry: TimeEntry;
-  todayHours: number;
-}
-
 export interface StartSelfTimeTrackerSessionInput {
   confirmSwitch: boolean;
   entryDate: string;
@@ -140,8 +117,6 @@ interface ResolvedTrackerContext {
 
 const PROJECT_ROW_SELECT =
   "id, name, photo_url, managing_office_id, lead_person_id, active";
-const TIME_ENTRY_ROW_SELECT =
-  "id, person_id, project_id, assignment_id, date, hours, notes, source";
 
 function emptyTrackerData(
   configured: boolean,
@@ -178,17 +153,6 @@ function isIsoDate(value: string | null | undefined): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
-function parseTimestamp(value: string, fieldName: string): Date {
-  const normalized = value.trim();
-  const parsed = new Date(normalized);
-
-  if (!normalized || Number.isNaN(parsed.getTime())) {
-    throw new Error(`${fieldName} is invalid.`);
-  }
-
-  return parsed;
-}
-
 function roundHours(durationMs: number): number {
   return Math.round((durationMs / 3_600_000) * 100) / 100;
 }
@@ -200,19 +164,6 @@ function createPreviewTimeEntryId(): string {
   }, 0);
 
   return `40000000-0000-0000-0000-${String(maxSuffix + 1).padStart(12, "0")}`;
-}
-
-function toTimeEntry(row: TrackerTimeEntryRow): TimeEntry {
-  return {
-    assignmentId: row.assignment_id,
-    date: row.date,
-    hours: Number(row.hours),
-    id: row.id,
-    notes: row.notes,
-    personId: row.person_id,
-    projectId: row.project_id,
-    source: row.source,
-  };
 }
 
 function toProjectPermissionSubject(project: TrackerProjectRow) {
@@ -329,23 +280,22 @@ async function getTrackedHoursByProjectId(
     return new Map();
   }
 
-  let query = client
-    .from("time_entries")
-    .select("project_id, hours")
-    .eq("person_id", personId)
-    .in("project_id", projectIds);
+  // All-time totals can pass the per-request row cap, so read every page.
+  const rows = await selectAllRows<ProjectHoursRow>((from, to) => {
+    let query = client
+      .from("time_entries")
+      .select("project_id, hours")
+      .eq("person_id", personId)
+      .in("project_id", projectIds);
 
-  if (localDate) {
-    query = query.eq("date", localDate);
-  }
+    if (localDate) {
+      query = query.eq("date", localDate);
+    }
 
-  const { data, error } = await query;
+    return query.order("id").range(from, to);
+  });
 
-  if (error) {
-    throw error;
-  }
-
-  return ((data ?? []) as ProjectHoursRow[]).reduce((hoursByProjectId, row) => {
+  return rows.reduce((hoursByProjectId, row) => {
     hoursByProjectId.set(
       row.project_id,
       (hoursByProjectId.get(row.project_id) ?? 0) + Number(row.hours),
@@ -370,29 +320,6 @@ async function getTrackerHourlyCost(
   return annualSalary === undefined ? 0 : deriveHourlyCost(annualSalary);
 }
 
-async function resolveTrackableProject(
-  client: SupabaseClient,
-  viewer: ResolvedTrackerContext["viewer"],
-  projectId: string,
-): Promise<TrackerProjectRow> {
-  const projects = await listTrackableProjectRows(client, viewer);
-  const project = projects.find((candidate) => candidate.id === projectId);
-
-  if (!project) {
-    throw new Error("Selected project is unavailable.");
-  }
-
-  if (!project.active) {
-    throw new Error("Selected project is inactive.");
-  }
-
-  if (!canTrackOwnTimeForProject(viewer, toProjectPermissionSubject(project))) {
-    throw new Error("You do not have permission to track time for this project.");
-  }
-
-  return project;
-}
-
 function assignmentMatchesDate(
   assignment: TrackerAssignmentRow,
   entryDate: string,
@@ -406,30 +333,6 @@ function assignmentMatchesDate(
   }
 
   return true;
-}
-
-async function resolveAssignmentId(
-  client: SupabaseClient,
-  personId: string,
-  projectId: string,
-  entryDate: string,
-): Promise<string | null> {
-  const { data, error } = await client
-    .from("assignments")
-    .select("id, start_date, end_date")
-    .eq("active", true)
-    .eq("person_id", personId)
-    .eq("project_id", projectId);
-
-  if (error) {
-    throw error;
-  }
-
-  const matchingAssignments = ((data ?? []) as TrackerAssignmentRow[]).filter((assignment) =>
-    assignmentMatchesDate(assignment, entryDate),
-  );
-
-  return matchingAssignments.length === 1 ? matchingAssignments[0].id : null;
 }
 
 function listPreviewTrackableProjectRows(
@@ -1038,104 +941,5 @@ export async function stopSelfTimeTrackerSession(
       row && typeof row === "object" && "project_id" in row
         ? String(row.project_id)
         : null,
-  };
-}
-
-export async function recordSelfTimeTrackerEntry(
-  input: RecordSelfTimeTrackerEntryInput,
-  context: ViewerRequestContext = {},
-): Promise<RecordSelfTimeTrackerEntryResult> {
-  const entryDate = normalizeRequiredText(input.entryDate, "Entry date");
-
-  if (!isIsoDate(entryDate)) {
-    throw new Error("Entry date is invalid.");
-  }
-
-  const projectId = normalizeRequiredText(input.projectId, "Project");
-  const startedAt = parseTimestamp(input.startedAt, "Start time");
-  const stoppedAt = parseTimestamp(input.stoppedAt, "Stop time");
-  const durationMs = stoppedAt.getTime() - startedAt.getTime();
-
-  if (durationMs <= 0) {
-    throw new Error("Tracked duration must be greater than 0.");
-  }
-
-  const hours = roundHours(durationMs);
-
-  if (hours <= 0) {
-    throw new Error("Tracked duration is too short to save.");
-  }
-
-  const status = getDatabaseStatus();
-
-  if (!status.configured) {
-    const viewerAccess = await getCurrentViewerAccess(context);
-    const personId = await resolveTrackerPersonId(context, viewerAccess.viewer);
-
-    if (!viewerAccess.viewer || !personId) {
-      throw new Error(
-        viewerAccess.accessMessage ?? "Finish account setup to track time.",
-      );
-    }
-
-    resolvePreviewTrackableProject(
-      { ...viewerAccess.viewer, personId },
-      projectId,
-    );
-
-    const assignmentId = resolvePreviewAssignmentId(personId, projectId, entryDate);
-    const row = {
-      assignment_id: assignmentId,
-      date: entryDate,
-      hours,
-      id: createPreviewTimeEntryId(),
-      notes: null,
-      person_id: personId,
-      project_id: projectId,
-      source: "manual",
-    };
-
-    previewTimeEntries.push(row);
-
-    return {
-      entry: toTimeEntry(row),
-      todayHours:
-        getPreviewTrackedHoursByProjectId(personId, [projectId], entryDate).get(projectId) ?? 0,
-    };
-  }
-
-  const { client, personId, viewer } = await resolveTrackerContext(context);
-
-  await resolveTrackableProject(client, viewer, projectId);
-
-  const assignmentId = await resolveAssignmentId(client, personId, projectId, entryDate);
-  const { data, error } = await client
-    .from("time_entries")
-    .insert({
-      assignment_id: assignmentId,
-      date: entryDate,
-      hours,
-      notes: null,
-      person_id: personId,
-      project_id: projectId,
-      source: "manual",
-    })
-    .select(TIME_ENTRY_ROW_SELECT)
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  const todayHoursByProjectId = await getTrackedHoursByProjectId(
-    client,
-    personId,
-    [projectId],
-    entryDate,
-  );
-
-  return {
-    entry: toTimeEntry(data as TrackerTimeEntryRow),
-    todayHours: todayHoursByProjectId.get(projectId) ?? 0,
   };
 }

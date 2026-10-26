@@ -786,12 +786,10 @@ function isMissingProjectDetailContextFunction(error: {
   hint?: string | null;
   message?: string;
 }): boolean {
-  if (error.code === "PGRST202") {
-    return true;
-  }
-
-  const combined = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`;
-  return combined.includes("get_project_detail_context");
+  // Only "function not found" means the RPC is missing. Any other error that
+  // happens to mention the function (a timeout, a permission error) must not
+  // switch this server instance to the fallback for the rest of its life.
+  return error.code === "PGRST202";
 }
 
 async function loadProjectDetailContextFallback(

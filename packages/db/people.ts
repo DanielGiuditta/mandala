@@ -44,6 +44,7 @@ import {
 } from "./previewData"
 import { createServerSupabaseClient, getDatabaseStatus } from "./supabaseServer"
 import { createPerfTrace } from "./perf"
+import { selectAllRows } from "./allRows"
 
 const PEOPLE_READ_CACHE_TTL_MS = 300_000
 const DEFAULT_PERSON_AVAILABILITY_HOURS_PER_WEEK = 40
@@ -1492,12 +1493,20 @@ export async function listPeople(
           .select("person_id, project_id")
           .in("person_id", peopleIds)
           .eq("active", true),
-        client
-          .from("time_entries")
-          .select("person_id, date, hours")
-          .in("person_id", peopleIds)
-          .gte("date", currentWeekStart)
-          .lte("date", currentWeekEnd),
+        // A week of entries for many people can pass the per-request row cap.
+        selectAllRows((from, to) =>
+          client
+            .from("time_entries")
+            .select("person_id, date, hours")
+            .in("person_id", peopleIds)
+            .gte("date", currentWeekStart)
+            .lte("date", currentWeekEnd)
+            .order("id")
+            .range(from, to),
+        ).then(
+          (data) => ({ data, error: null }),
+          (error: unknown) => ({ data: null, error }),
+        ),
         client
           .from("user_accounts")
           .select("id, person_id, active")
