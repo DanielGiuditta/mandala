@@ -176,6 +176,29 @@ internal static class DurableDirectChecks
                 "the offline start uploads at its real time and keeps running");
         });
 
+        await WithFixture(async (client, backend, time, directory) =>
+        {
+            // Nothing waiting on this computer, then a power cut takes the
+            // internet down too: the agent must still open and record work.
+            await client.StartAsync("a", Date, false);
+            time.Advance(60);
+            Check(!(await client.StopAsync(Date)).Pending, "online stop uploads, leaving nothing on this computer");
+            backend.Offline = true;
+            var restarted = new SupabaseTimeTrackerClient(backend, time, directory, useLanGateway: false);
+            Check(await restarted.RestoreAsync(new StoredSession("fixture", "fixture", Email)),
+                "an offline restart with nothing pending keeps the saved sign-in");
+            var snapshot = await restarted.GetSnapshotAsync(Date);
+            Check(snapshot.Projects.Count > 0 && snapshot.Warning is not null,
+                "offline, the project list comes from this computer with a visible warning");
+            await restarted.StartAsync("b", Date, false);
+            time.Advance(90);
+            await restarted.TouchAsync();
+            backend.Offline = false;
+            await restarted.ReconcilePendingSaveAsync();
+            Check(backend.Sessions.Values.Count(session => session.project_id == "b" && session.stopped_at is null) == 1,
+                "work started offline after the restart uploads when the connection returns");
+        });
+
         Console.WriteLine("PASS: direct client/journal covers idle-to-fresh-session timing, lost start and finish responses, restart/outage recovery with new offline work, takeover of another computer's session, revoked access and legacy stop compatibility; all HTTP handled in memory");
     }
 

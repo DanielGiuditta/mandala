@@ -93,6 +93,13 @@ function Confirm-AgentDialog([string]$Title,[bool]$Yes) {
     Wait-Ui ('dialog response '+$Title) {$task.IsCompleted} 15|Out-Null
     $task.GetAwaiter().GetResult()
 }
+function Stop-FixtureAgentAbruptly {
+    # Simulates a power cut: no close prompt and no Windows shutdown notice.
+    $process=Get-Process -Id $script:AgentProcessId -ErrorAction Stop
+    Require ($process.Path -eq $script:AgentPath) 'Refusing to stop a different process.'
+    Stop-Process -Id $process.Id -Force
+    Require ($process.WaitForExit(15000)) 'The Agent did not stop.'
+}
 function Invoke-FixtureCleanup([string]$Stage,[scriptblock]$Action) {
     try {& $Action}
     catch {$script:fixtureCleanupErrors+=$Stage+': '+$_.Exception.GetType().Name;Write-Warning ('Fixture cleanup needs attention: '+$Stage)}
@@ -253,7 +260,7 @@ try {
         Wait-AgentState 'No active project'
         Require (@((Read-FixtureEvidence).sessions).Count -eq 5) 'Returning Windows input restarted the legacy timer automatically.'
     }
-    $closePromptEvidence=$null;$offlineStartEvidence=$null
+    $closePromptEvidence=$null;$offlineStartEvidence=$null;$restartResumeEvidence=$null
     if($QueuedOfflineWork) {
         # Agent 1.0.18: closing the window while tracking asks first. No keeps
         # tracking with the window minimised; Yes saves the session and closes.
@@ -300,6 +307,93 @@ try {
         $expectedReceipts++
         Wait-FixtureReceipts $expectedReceipts
         $offlineStartEvidence=[ordered]@{startedWhileGatewayDown=$true;pressedAt=$pressedAt.ToString('O');savedStartedAt=$offlineStartedAt.ToString('O');reconnectedAt=$onlineAt.ToString('O');agentVersion=[string]$uploaded[0].agent_version;deviceName=[string]$uploaded[0].device_name}
+
+        # Agent 1.0.18: a power cut while tracking, with the gateway also down.
+        # The Agent is force-stopped, so it gets no warning. When it starts again
+        # it waits for real keyboard/mouse input, then resumes the same project as
+        # a new session. Time while it was off is not counted.
+        $projectA='11111111-1111-4111-8111-111111111111';$projectB='22222222-2222-4222-8222-222222222222'
+        [MandalaTestInput]::Pulse()
+        $restartScenarioAt=[DateTimeOffset]::UtcNow
+        Start-AgentProject 'CI protocol project A'
+        Start-Sleep -Seconds 3;[MandalaTestInput]::Pulse();Start-Sleep -Seconds 17
+        Stop-FixtureAgentAbruptly
+        $killedAt=[DateTimeOffset]::UtcNow
+        Set-FixtureOnline $false
+        Start-Sleep -Seconds 10
+        $relaunchedAt=[DateTimeOffset]::UtcNow
+        Start-FixtureAgent
+        Wait-AgentState 'Paused CI protocol project A' 60
+        Wait-AgentText 'ElapsedText' {param($text) $text -like 'Resumes when you use this computer*'} 20 'restart resume waits for keyboard or mouse input'
+        $restartInput=[MandalaTestInput]::LastInput()
+        Start-Sleep -Seconds 8
+        Require ([MandalaTestInput]::LastInput() -eq $restartInput) 'The restart check unexpectedly generated Windows input.'
+        Wait-AgentState 'Paused CI protocol project A'
+        Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $relaunchedAt|Where-Object {$_.Event -eq 'auto-resume-request'}).Count -eq 0) 'Tracking resumed after the restart without new keyboard or mouse input.'
+        $restartInputAt=[DateTimeOffset]::UtcNow
+        [MandalaTestInput]::Pulse()
+        Wait-AgentState 'Tracking CI protocol project A' 45
+        Require (@(Read-AgentEvents (Join-Path $local 'agent.log') $relaunchedAt|Where-Object {$_.Event -eq 'restart-resume-success'}).Count -eq 1) 'The restart resume was not recorded.'
+        foreach($pulse in 1..2){Start-Sleep -Seconds 5;[MandalaTestInput]::Pulse()}
+        Set-FixtureOnline $true
+        $afterRestart=@(Wait-Ui 'interrupted and resumed sessions uploaded after reconnecting' {
+            $recent=@((Read-FixtureEvidence).sessions|Where-Object {$_.project_id -eq $projectA -and [DateTimeOffset]::Parse($_.started_at) -ge $restartScenarioAt.AddSeconds(-5)})
+            if($recent.Count -eq 2 -and @($recent|Where-Object {$_.stopped_at}).Count -eq 1){$recent}
+        } 90)
+        $interrupted=@($afterRestart|Where-Object {$_.stopped_at})[0];$resumedAfterRestart=@($afterRestart|Where-Object {-not $_.stopped_at})[0]
+        $interruptedStop=[DateTimeOffset]::Parse($interrupted.stopped_at);$resumedStart=[DateTimeOffset]::Parse($resumedAfterRestart.started_at)
+        Require ($interruptedStop -le $killedAt.AddSeconds(1)) 'The interrupted session counted time after the Agent stopped.'
+        Require ($resumedStart -ge $restartInputAt.AddSeconds(-2)) 'The resumed session was backdated before the returning input.'
+        Require (($resumedStart-$interruptedStop).TotalSeconds -ge 10) 'Time while the Agent was off was added.'
+        Start-Sleep -Seconds 3
+        Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project'
+        $expectedReceipts+=2
+        Wait-FixtureReceipts $expectedReceipts
+
+        # Explicit Stop turns it off: after another restart, input resumes nothing.
+        Stop-FixtureAgentAbruptly
+        Start-FixtureAgent
+        Wait-AgentState 'No active project' 60
+        [MandalaTestInput]::Pulse();Start-Sleep -Seconds 8
+        Wait-AgentState 'No active project'
+        Require (@((Read-FixtureEvidence).sessions).Count -eq $expectedReceipts) 'A restart after explicit Stop resumed tracking.'
+
+        # A power cut while idle-paused, with the gateway down and nothing waiting
+        # on this computer: the Agent must still open signed in and resume.
+        [MandalaTestInput]::Pulse()
+        Start-AgentProject 'CI protocol project B'
+        $restartIdleSeconds=Wait-FixtureIdlePause
+        Wait-AgentState 'Paused CI protocol project B'
+        $expectedReceipts++
+        Wait-FixtureReceipts $expectedReceipts
+        Stop-FixtureAgentAbruptly
+        Set-FixtureOnline $false
+        Start-FixtureAgent
+        Wait-AgentState 'Paused CI protocol project B' 60
+        $idleRestartInputAt=[DateTimeOffset]::UtcNow
+        [MandalaTestInput]::Pulse()
+        Wait-AgentState 'Tracking CI protocol project B' 45
+        Wait-AgentText 'ElapsedText' {param($text) $text -like '*recorded on this computer*'} 30 'resumed while the gateway is down'
+        foreach($pulse in 1..2){Start-Sleep -Seconds 5;[MandalaTestInput]::Pulse()}
+        Set-FixtureOnline $true
+        $resumedOffline=@(Wait-Ui 'offline restart resume uploaded after reconnecting' {@((Read-FixtureEvidence).sessions|Where-Object {-not $_.stopped_at -and $_.project_id -eq $projectB})} 60)
+        Require ($resumedOffline.Count -eq 1 -and [DateTimeOffset]::Parse($resumedOffline[0].started_at) -ge $idleRestartInputAt.AddSeconds(-2)) 'The offline restart resume did not start at the returning input.'
+        Start-Sleep -Seconds 3
+        Invoke-AgentButton 'StopButton';Wait-AgentState 'No active project'
+        $expectedReceipts++
+        Wait-FixtureReceipts $expectedReceipts
+        $restartResumeEvidence=[ordered]@{
+            waitedForInputAfterRestart=$true
+            resumedSameProjectAsNewSession=$true
+            interruptedSessionStoppedAt=$interruptedStop.ToString('O')
+            killedAt=$killedAt.ToString('O')
+            returningInputAt=$restartInputAt.ToString('O')
+            resumedSessionStartedAt=$resumedStart.ToString('O')
+            excludedDowntimeSeconds=[Math]::Round(($resumedStart-$interruptedStop).TotalSeconds,1)
+            explicitStopPreventedRestartResume=$true
+            idlePausedRestartWithGatewayDownResumed=$true
+            idlePauseSeconds=[Math]::Round($restartIdleSeconds,1)
+        }
     }
     # Allow a second automatic retry window; a resolved journal must not resend.
     Start-Sleep -Seconds 12
@@ -310,7 +404,7 @@ try {
     foreach($session in $observed.sessions){Require ($session.stopped_at -and $session.time_entry_id -and $session.finishRequests -eq 1 -and @($receipts|Where-Object {$_.SessionId -eq $session.id -and $_.EntryId -eq $session.time_entry_id}).Count -eq 1) 'Actual Agent receipt did not match exactly one synthetic saved session.'}
     Require ((Get-AgentControl 'StartWorkButton').Current.IsEnabled) 'Pending state did not clear after confirmed recovery.'
     Close-TestAgent
-    $summary=[ordered]@{scope='PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE';binaryProvenance=$(if($FixtureCandidate){'Unpublished source candidate with synthetic configuration; not an audited release'}else{'Audited installed release candidate'});releaseAudited=(-not $FixtureCandidate);agentVersion=$approved.version;agentSha256=$approved.agentSha256;backend='nzlajptokbcgeaifgnoq';gateway='https://127.0.0.1:8443';realGatewayMutualTls=$true;realAgentSignIn=$true;realStartStop=$true;realOfflineJournalCloseReopen=$true;selectionDidNotSwitch=$true;cancelDidNotSwitch=$true;confirmedSwitchSavedPreviousFirst=$true;exactSavedReceipts=$expectedReceipts;duplicateReceipts=0;productionRequests=0;productionEntries=0;upstream='Injected in-memory protocol fixture; no database/network implementation';rebootTested=$false;idleTested=$true;idlePauseSeconds=[Math]::Round($idleSeconds,1);inputDidNotAutoResume=(-not $AutoResumeExpected);autoResumeExpected=[bool]$AutoResumeExpected;autoResume=$autoResumeEvidence;closePrompt=$closePromptEvidence;offlineStart=$offlineStartEvidence;windowsUserMode='Hosted CI account; not standard-user/UAC acceptance'}
+    $summary=[ordered]@{scope='PROTOCOL FIXTURE - NOT PRODUCTION ACCEPTANCE';binaryProvenance=$(if($FixtureCandidate){'Unpublished source candidate with synthetic configuration; not an audited release'}else{'Audited installed release candidate'});releaseAudited=(-not $FixtureCandidate);agentVersion=$approved.version;agentSha256=$approved.agentSha256;backend='nzlajptokbcgeaifgnoq';gateway='https://127.0.0.1:8443';realGatewayMutualTls=$true;realAgentSignIn=$true;realStartStop=$true;realOfflineJournalCloseReopen=$true;selectionDidNotSwitch=$true;cancelDidNotSwitch=$true;confirmedSwitchSavedPreviousFirst=$true;exactSavedReceipts=$expectedReceipts;duplicateReceipts=0;productionRequests=0;productionEntries=0;upstream='Injected in-memory protocol fixture; no database/network implementation';rebootTested=$false;idleTested=$true;idlePauseSeconds=[Math]::Round($idleSeconds,1);inputDidNotAutoResume=(-not $AutoResumeExpected);autoResumeExpected=[bool]$AutoResumeExpected;autoResume=$autoResumeEvidence;closePrompt=$closePromptEvidence;offlineStart=$offlineStartEvidence;restartResume=$restartResumeEvidence;windowsUserMode='Hosted CI account; not standard-user/UAC acceptance'}
     Write-PairingJson (Join-Path $env:RUNNER_TEMP 'approved-agent-lan-audit.json') $summary
     Write-Host ('PASS: tested Agent '+$approved.version+', real gateway mutual TLS, synthetic sign-in/projects, start/stop, offline pending journal through normal close/reopen, cancelled/confirmed switch and actual five-minute idle behavior. Auto-resume expected: '+[bool]$AutoResumeExpected+'; exact receipts: '+$expectedReceipts+'; zero duplicates. PROTOCOL FIXTURE ONLY: zero production writes; no reboot/SQL/standard-user acceptance claimed.')
 } catch {

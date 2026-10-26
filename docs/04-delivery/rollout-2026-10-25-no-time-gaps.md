@@ -48,6 +48,7 @@ From New York, a daily read-only query flags 0-second sessions and sessions left
 
 **Phase 2: one Windows visit installs Agent 1.0.18 on all five PCs.**
 - 1.0.18 requires the Phase 1 migration, because it sends a new start argument.
+- 1.0.18 also resumes the last started project after an unexpected restart, such as the office's frequent power cuts (owner decision, 26 Oct). It resumes only on new keyboard or mouse input, for the same Windows user and Mandala account, on the same day. CI checks this on real Windows: a forced stop while tracking with the gateway down, a restart after explicit Stop, and a forced stop while idle-paused with the gateway down.
 - Publish and install it only after Phase 1 has run cleanly for at least two working days.
 - The LAN gateway on STP80 needs no change for any of this.
 

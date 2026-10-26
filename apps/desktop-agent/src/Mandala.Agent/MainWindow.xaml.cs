@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _pollTimer;
     private readonly TrackerMessageState _trackerMessageState = new();
     private readonly IdleAutoResumeState _autoResume = new();
+    private readonly RestartResumeIntentStore _restartIntent = new();
     private SupabaseTimeTrackerClient? _client;
     private ActiveWorkSession? _activeSession;
     private uint _lastInputTick;
@@ -72,6 +73,7 @@ public partial class MainWindow : Window
                 return;
             }
             _autoResume.Cancel();
+            ForgetRestartIntent("close-stop");
             _manualStopRequested = true;
             _lastManualStopAttemptAt = DateTimeOffset.MinValue;
             // Let a heartbeat or save that was already running finish first.
@@ -104,6 +106,7 @@ public partial class MainWindow : Window
                 return;
             }
             _autoResume.Cancel();
+            ForgetRestartIntent("close-cancelled-resume");
             AgentDiagnostics.Record("close-cancelled-resume", $"projectId={project.Id}");
             _closeConfirmed = true;
             Close();
@@ -189,6 +192,7 @@ public partial class MainWindow : Window
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             ShowTracker();
             await LoadTrackerAsync();
+            ArmRestartResume();
         }
         finally { SetSaving(false); }
     }
@@ -213,6 +217,7 @@ public partial class MainWindow : Window
             PasswordBox.Clear();
             ShowTracker();
             await LoadTrackerAsync();
+            ArmRestartResume();
         }
         catch (Exception exception)
         {
@@ -288,6 +293,7 @@ public partial class MainWindow : Window
             {
                 _autoResume.Arm(_client.Email!, new TimeTrackerProject(_activeSession.ProjectId, _activeSession.ProjectName));
                 AgentDiagnostics.Record("auto-resume-armed", $"projectId={project.Id}; email={_client.Email}");
+                RememberRestartIntent(_client.Email!, _activeSession.ProjectId, _activeSession.ProjectName);
             }
             await _sessionStore.SaveAsync(_client.GetStoredSession());
             if (switchingProject && saveResult is not null && previousProjectName is not null)
@@ -309,6 +315,7 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             AgentDiagnostics.Record("start-ui-failure", AgentDiagnostics.Compact(exception.ToString()));
+            ForgetRestartIntent("start-failed");
             await LoadTrackerAsync();
             TrackerMessageText.Text = ExtractMessage(exception, "Unable to start work.", "AGENT-START-001");
         }
@@ -322,6 +329,7 @@ public partial class MainWindow : Window
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
         _autoResume.Cancel();
+        ForgetRestartIntent("explicit-stop");
         _manualStopRequested = true;
         _lastManualStopAttemptAt = DateTimeOffset.MinValue;
         AgentDiagnostics.Record("auto-resume-cancelled", "Explicit Stop; automatic tracking remains off until Start Work.");
@@ -465,6 +473,7 @@ public partial class MainWindow : Window
             catch (DesktopSessionSupersededException superseded)
             {
                 _autoResume.Cancel();
+                ForgetRestartIntent("superseded");
                 _activeSession = null;
                 TrackerMessageText.Text = _trackerMessageState.ShowPersistent(superseded.Message);
                 AgentDiagnostics.Record("superseded-shown", superseded.Message);
@@ -490,6 +499,7 @@ public partial class MainWindow : Window
             _activeSession is not null, _client.BlocksNewWork)) return;
 
         var project = _autoResume.Project!;
+        var afterRestart = _autoResume.AfterRestart;
         var generation = _autoResume.BeginAttempt(_pollClock.UtcNow);
         AgentDiagnostics.Record("auto-resume-request", $"projectId={project.Id}; email={_client.Email}");
         try
@@ -512,8 +522,11 @@ public partial class MainWindow : Window
                 .FirstOrDefault(p => p.Id == project.Id);
             _lastInputTick = NativeIdleMonitor.GetLastInputTick();
             _lastHeartbeatAt = _pollClock.UtcNow;
-            TrackerMessageText.Text = _trackerMessageState.ShowPersistent(TrackerConfirmationMessages.AutomaticResume(project.Name));
-            AgentDiagnostics.Record("auto-resume-success", $"projectId={project.Id}; startedAt={_activeSession.StartedAt:O}");
+            TrackerMessageText.Text = _trackerMessageState.ShowPersistent(afterRestart
+                ? TrackerConfirmationMessages.RestartResumed(project.Name)
+                : TrackerConfirmationMessages.AutomaticResume(project.Name));
+            AgentDiagnostics.Record(afterRestart ? "restart-resume-success" : "auto-resume-success",
+                $"projectId={project.Id}; startedAt={_activeSession.StartedAt:O}");
             await _sessionStore.SaveAsync(_client.GetStoredSession());
         }
         catch (Exception exception)
@@ -523,7 +536,11 @@ public partial class MainWindow : Window
             var rejected = _client.CurrentDesktopSession is null &&
                 (exception is AgentDiagnosticException || exception is System.Net.Http.HttpRequestException
                     { StatusCode: System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden });
-            if (rejected) _autoResume.Cancel();
+            if (rejected)
+            {
+                _autoResume.Cancel();
+                ForgetRestartIntent("auto-resume-blocked");
+            }
             TrackerMessageText.Text = ExtractMessage(exception,
                 rejected ? "Automatic resume stopped. Resolve the issue, then select a project and Start Work."
                     : "Tracking is paused. Mandala will retry when the connection is available and you are active.",
@@ -534,6 +551,45 @@ public partial class MainWindow : Window
         {
             SetSaving(false);
         }
+    }
+
+    // The last explicitly started project, kept on this computer for an
+    // unexpected restart. Failing to save it never affects tracking itself.
+    private void RememberRestartIntent(string email, string projectId, string projectName)
+    {
+        try { _restartIntent.Save(new RestartResumeIntent(email, projectId, projectName, GetLocalDate())); }
+        catch (Exception exception)
+        {
+            AgentDiagnostics.Record("restart-resume-save-failure", AgentDiagnostics.Compact(exception.Message));
+        }
+    }
+
+    private void ForgetRestartIntent(string reason)
+    {
+        _restartIntent.Clear();
+        AgentDiagnostics.Record("restart-resume-cleared", $"reason={reason}");
+    }
+
+    // After an unexpected restart (for example a power cut), wait for the same
+    // employee to use the keyboard or mouse on the same day, then resume the
+    // project they last started as a new session. Time while the computer was
+    // off is never counted, and the 5-minute idle rule still applies.
+    private void ArmRestartResume()
+    {
+        if (_client?.Email is not { Length: > 0 } email || _activeSession is not null || _autoResume.Project is not null) return;
+        var intent = _restartIntent.Load();
+        if (intent is null) return;
+        var today = GetLocalDate();
+        var project = RestartResumeDecision.ProjectToResume(intent, email, today);
+        if (project is null)
+        {
+            ForgetRestartIntent(intent.LocalDate != today ? "restart-resume-other-day" : "restart-resume-other-account");
+            return;
+        }
+        _autoResume.ArmAfterRestart(email, project, NativeIdleMonitor.GetLastInputTick());
+        TrackerMessageText.Text = _trackerMessageState.ShowPersistent(TrackerConfirmationMessages.RestartResumePending(project.Name));
+        AgentDiagnostics.Record("restart-resume-armed", $"projectId={project.Id}; email={email}");
+        UpdateTrackerStatus();
     }
 
     private async Task<bool> StopTrackingAsync(bool pausedForIdle)

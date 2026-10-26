@@ -312,6 +312,25 @@ internal static class LanRecoveryChecks
             Check(Seconds(backend.Sessions.Values.Single()) == 400, "an offline session survives an app restart with its recorded activity");
         });
 
+        await WithFixture(async (client, backend, source, directory) => {
+            // Nothing pending, then the PC and the office gateway both lose power.
+            backend.Now = () => source.Wall;
+            await client.StartAsync("a", "2026-09-23", false);
+            source.Advance(60);
+            Check(!(await client.StopAsync("2026-09-23")).Pending, "online stop uploads, leaving nothing on this computer");
+            backend.Offline = true;
+            var restarted = new SupabaseTimeTrackerClient(backend, source, directory);
+            Check(await restarted.RestoreAsync(new StoredSession("fixture", "fixture", "fixture@example.test")),
+                "with the gateway down and nothing pending, the agent still opens signed in");
+            var snapshot = await restarted.GetSnapshotAsync("2026-09-23");
+            Check(snapshot.Projects.Count > 0 && snapshot.Warning is not null, "offline, the last project list is used with a visible warning");
+            await restarted.StartAsync("b", "2026-09-23", false);
+            source.Advance(300); await restarted.TouchAsync();
+            backend.Offline = false;
+            await restarted.ReconcilePendingSaveAsync();
+            Check(backend.Sessions.Values.Count(s => s.project_id == "b") == 1, "work started while the gateway was down uploads afterwards");
+        });
+
         Console.WriteLine("PASS: five clock offsets, clock jumps, restart, offline recovery, lost start/finish responses, idempotent receipts, confirmed switch, rejected-save queueing, offline start and queue, late confirmation, takeover, shutdown save; zero network requests");
     }
     private static async Task WithFixture(Func<SupabaseTimeTrackerClient, FixtureUpstream, FixtureTime, string, Task> test)

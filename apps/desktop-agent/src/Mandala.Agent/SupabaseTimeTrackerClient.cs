@@ -63,9 +63,12 @@ public sealed partial class SupabaseTimeTrackerClient
         {
             return await RefreshSessionAsync();
         }
-        catch (Exception exception) when (_journalState?.Session is not null && IsConnectionFailure(exception))
+        catch (Exception exception) when (IsConnectionFailure(exception))
         {
-            return true; // Recover this Windows user's pending work; cloud writes still require valid auth.
+            // Mandala or the office gateway is unreachable (for example after a
+            // power cut). Keep the saved sign-in so work can be recorded on this
+            // computer; it is refreshed, and access rechecked, when the connection returns.
+            return true;
         }
         catch
         {
@@ -80,7 +83,13 @@ public sealed partial class SupabaseTimeTrackerClient
     public async Task<TrackerSnapshot> GetSnapshotAsync(string localDate)
     {
         if (UsesLanGateway || _journalState?.Session is not null || QueuedSessionCount > 0) return await GetLanSnapshotAsync();
-        var projects = await ListProjectsAsync();
+        List<ProjectResponse> projects;
+        try { projects = await ListProjectsAsync(); }
+        // Offline: use the last project list from Mandala, like the LAN path.
+        catch (AgentDiagnosticException exception) when (exception.InnerException is { } cause && IsConnectionFailure(cause))
+        {
+            return await GetLanSnapshotAsync();
+        }
         await PersistJournalAsync(_journalState! with { Projects = projects.Select(p => new TimeTrackerProject(p.Id, p.Name)).ToList() });
         var warnings = new List<string>();
 

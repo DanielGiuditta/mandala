@@ -12,6 +12,12 @@ internal static class TrackerConfirmationMessages
     public static string AutomaticResume(string projectName) =>
         $"Resumed {projectName} after Windows activity. Idle time was not added.";
 
+    public static string RestartResumePending(string projectName) =>
+        $"Mandala restarted. Tracking {projectName} resumes when you use the keyboard or mouse. Time while this computer was off is not counted. Stop ends tracking.";
+
+    public static string RestartResumed(string projectName) =>
+        $"Resumed {projectName} after the restart. Time while this computer was off was not added.";
+
     public static string ProjectSwitch(string previousProjectName, string currentProjectName, string timeEntryId) =>
         $"{previousProjectName} time saved successfully. Reference: {ShortReference(timeEntryId)}. Now tracking {currentProjectName}.";
 

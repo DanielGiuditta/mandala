@@ -1,7 +1,9 @@
 namespace Mandala.Agent;
 
-// Intent belongs to this process and signed-in employee. Restoring credentials,
-// choosing a dropdown item or recovering a journal never arms automatic work.
+// Intent belongs to the signed-in employee. Restoring credentials, choosing a
+// dropdown item or recovering a journal never arms automatic work by itself;
+// from 1.0.18 the last explicit Start is also kept on this computer
+// (RestartResumeIntent) and re-armed after an unexpected restart.
 internal sealed class IdleAutoResumeState
 {
     private static readonly TimeSpan IdleLimit = TimeSpan.FromMinutes(5);
@@ -13,6 +15,9 @@ internal sealed class IdleAutoResumeState
 
     public TimeTrackerProject? Project { get; private set; }
     public bool IsPaused { get; private set; }
+    // True while waiting to resume after an unexpected restart (for example a
+    // power cut), until that resume completes or intent is cancelled.
+    public bool AfterRestart { get; private set; }
 
     public void Arm(string email, TimeTrackerProject project)
     {
@@ -21,12 +26,26 @@ internal sealed class IdleAutoResumeState
         Project = project;
     }
 
+    // After an unexpected restart: resume the restored project only after new
+    // keyboard or mouse input. Input before this moment, such as signing in to
+    // Windows before Mandala started, does not count.
+    public void ArmAfterRestart(string email, TimeTrackerProject project, uint inputTick)
+    {
+        Arm(email, project);
+        IsPaused = true;
+        AfterRestart = true;
+        _inputAtPause = inputTick;
+        _activityReturned = false;
+        _retryAt = DateTimeOffset.MinValue;
+    }
+
     public void Cancel()
     {
         _generation++;
         Project = null;
         _email = null;
         IsPaused = false;
+        AfterRestart = false;
         _activityReturned = false;
         _retryAt = DateTimeOffset.MinValue;
     }
@@ -35,6 +54,7 @@ internal sealed class IdleAutoResumeState
     {
         if (Project?.Id != projectId) return;
         IsPaused = true;
+        AfterRestart = false;
         _inputAtPause = inputTick;
         // Unlock input may already have reset Windows idle time when a long
         // polling gap reveals sleep. Do not require another input after saving.
@@ -66,6 +86,7 @@ internal sealed class IdleAutoResumeState
     {
         if (generation != _generation || !IsPaused) return false;
         IsPaused = false;
+        AfterRestart = false;
         _activityReturned = false;
         return true;
     }
