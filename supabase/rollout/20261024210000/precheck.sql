@@ -1,6 +1,6 @@
 -- Read-only pre-checks for migration 20261024210000_keep_all_desktop_time.
 -- Run in a read-only session:
---   PGOPTIONS='-c default_transaction_read_only=on' psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 -f precheck.sql
+--   psql -X -v ON_ERROR_STOP=1 -c "set session characteristics as transaction read only" -f precheck.sql
 -- Each DO block raises "STOP: ..." and ends the run if production is not in the
 -- exact state this migration was written and tested against.
 

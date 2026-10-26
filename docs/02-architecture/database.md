@@ -18,6 +18,8 @@
 - resource_documents
 - active_work_sessions (one current session per person; finalized work remains in `time_entries`)
 
+`people`, `projects` and `user_accounts` carry an internal `is_test_data` maintenance marker (migration `20260831160000`, used to clean up pilot data). It does not grant or restrict access and is not a business field.
+
 `time_entries` has no insert grant or policy for API roles. Rows are written only by the security-definer tracker functions (`start_desktop_work_session`, `set_desktop_session_stop`, `start_online_work_session`, `stop_online_work_session`). Reads and lead/admin corrections use RLS as before.
 
 After the core operational tables, add the minimum authorization support tables:

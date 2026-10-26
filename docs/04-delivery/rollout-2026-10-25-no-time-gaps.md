@@ -1,6 +1,15 @@
 # Production rollout: no time gaps (migration 20261024210000, website fix, Agent 1.0.18)
 
-Status: **plan only. Nothing below has run against production.** Each gate needs the owner's explicit OK.
+Status (26 October 2026). Each gate needs the owner's explicit OK.
+
+| Gate | State |
+| --- | --- |
+| A | Done 25 Oct. Results in `local-resources/rollout-2026-10-25/GATE-A-RESULTS.md`. |
+| B | Applied 25 Oct 16:19 UTC from `685d1f6`; verify passed. |
+| C | Live 25 Oct 16:42 UTC as `dpl_4z8XBrWD7RXqZeojUWQdy2h6gj2K`; the owner's signed-in check passed (Atlantis 28.01 h). |
+| B4 watch | Read-only script `local-resources/rollout-2026-10-25/b4-watch.sh`, run on the first India working days. |
+| D, E | Not started. |
+| Follow-up | D4 migration `20261026030000` and website fixes `5c6291f`: see the end of this document. |
 
 ## Hard constraint: Windows changes are expensive (owner, 25 October 2026)
 
@@ -50,9 +59,9 @@ Loaded from the main checkout's `.env.deploy.local` (backend `nzlajptokbcgeaifgn
 
 ```bash
 set -a
-source <(grep -E '^(SUPABASE_PROJECT_REF|SUPABASE_DB_PASSWORD|NEXT_PUBLIC_SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|VERCEL_TOKEN|VERCEL_ORG_ID|VERCEL_PROJECT_ID)=' "/Users/dangiuditta/Library/CloudStorage/Dropbox/dev/Mandala/.env.deploy.local")
+source <(grep -E '^(SUPABASE_PROJECT_REF|SUPABASE_DB_PASSWORD|NEXT_PUBLIC_SUPABASE_URL|NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|VERCEL_TOKEN|VERCEL_ORG_ID|VERCEL_PROJECT_ID)=' "/Users/dangiuditta/Library/CloudStorage/Dropbox/dev/Mandala/.env.deploy.local")
 set +a
-export PGHOST=aws-0-ap-south-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGSSLMODE=require
+export PGHOST=aws-1-ap-south-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGSSLMODE=require
 export PGUSER="postgres.${SUPABASE_PROJECT_REF}" PGPASSWORD="$SUPABASE_DB_PASSWORD"
 test "$SUPABASE_PROJECT_REF" = nzlajptokbcgeaifgnoq   # refuse any other backend
 ```
@@ -62,7 +71,11 @@ Tools:
 - The already-cached Vercel CLI 50.39.0: `node ~/.npm/_npx/00642693cc02dc5b/node_modules/vercel/dist/vc.js`. Nothing new is downloaded.
 - `gh`.
 
-Gate A confirms that the pooler host and the July password still work. If they don't, the alternative hosts are `aws-1-ap-south-1.pooler.supabase.com:5432` and the direct `db.nzlajptokbcgeaifgnoq.supabase.co:5432`. If the password is stale, the owner supplies a new one; this plan never resets it.
+Findings from Gate A (25 Oct):
+- **Pooler host.** Only the `aws-1-ap-south-1` pooler reaches this project; `aws-0` answers "tenant not found". The July password works.
+- **Rejected key.** The local `SUPABASE_SERVICE_ROLE_KEY` (an `sb_secret_` key) is rejected by production with "Invalid API key". Commands that need it are marked below.
+- **Different copies of the key.** GitHub Actions has its own `SUPABASE_SERVICE_ROLE_KEY` (updated 4 Aug), which published 1.0.17 on 13 Oct. Vercel's copy dates from 24 Jul, like the rejected local one.
+- **Read-only mode.** The pooler ignores `PGOPTIONS`. Read-only commands therefore start with `-c "set session characteristics as transaction read only"`, as below.
 
 ## Step 0: commit and push the rollout files (repository only)
 
@@ -72,12 +85,12 @@ Gate A confirms that the pooler host and the July password still work. If they d
 
 ## Gate A: read-only checks (no production writes)
 
-Every database command uses `PGOPTIONS='-c default_transaction_read_only=on'`, so Postgres itself refuses any write.
+Every database command starts with `-c "set session characteristics as transaction read only"`, so Postgres itself refuses any write.
 
 **A1. Database pre-check**
 
 ```bash
-PGOPTIONS='-c default_transaction_read_only=on' psql -X -v ON_ERROR_STOP=1 -f supabase/rollout/20261024210000/precheck.sql
+psql -X -v ON_ERROR_STOP=1 -c "set session characteristics as transaction read only" -f supabase/rollout/20261024210000/precheck.sql
 ```
 
 It stops with `STOP: …` unless all of these hold:
@@ -97,7 +110,7 @@ It then prints a baseline for later comparison:
 
 ```bash
 mkdir -p ../../local-resources/rollout-2026-10-25 && cd ../../local-resources/rollout-2026-10-25
-PGOPTIONS='-c default_transaction_read_only=on' psql -X -v ON_ERROR_STOP=1 -f "$WORKTREE/supabase/rollout/20261024210000/backup.psql"
+psql -X -v ON_ERROR_STOP=1 -c "set session characteristics as transaction read only" -f "$WORKTREE/supabase/rollout/20261024210000/backup.psql"
 ```
 
 It exports `desktop_work_sessions`, `active_work_sessions` and `time_entries` in full.
@@ -122,6 +135,8 @@ curl -s "$NEXT_PUBLIC_SUPABASE_URL/storage/v1/object/desktop-agent-releases/late
 
 The manifest should show version `1.0.17`, SHA-256 `ecb323a5…c93c406` and 51,070,938 bytes. This copy is the installer rollback.
 
+Without a working key, the same proof comes from storage metadata (read-only SQL). Compare `storage.objects.metadata->>'eTag'` for `latest/release.json` with the MD5 of a local copy, as done on 25 Oct (`GATE-A-RESULTS.md`).
+
 ## Gate B: apply the database migration (production write)
 
 **Timing.** Run it on a Sunday in India, or outside 09:00–19:00 IST. The DDL takes about a second. A Start that lands in exactly that second may fail once and is retried.
@@ -144,7 +159,7 @@ psql -X -v ON_ERROR_STOP=1 --single-transaction \
 **B2. Verify** (read-only):
 
 ```bash
-PGOPTIONS='-c default_transaction_read_only=on' psql -X -v ON_ERROR_STOP=1 -f supabase/rollout/20261024210000/verify.sql
+psql -X -v ON_ERROR_STOP=1 -c "set session characteristics as transaction read only" -f supabase/rollout/20261024210000/verify.sql
 ```
 
 It fails with `FAIL: …` unless all of these hold:
@@ -164,10 +179,12 @@ for body in \
   '{"session_id":"00000000-0000-4000-8000-000000000000","target_project_id":"00000000-0000-4000-8000-000000000000","entry_date":"2026-10-25","started_seconds_ago":5}' \
   '{"session_id":"00000000-0000-4000-8000-000000000000","target_project_id":"00000000-0000-4000-8000-000000000000","entry_date":"2026-10-25","started_seconds_ago":5,"agent_version":"1.0.18.0","device_name":"CHECK"}'; do
   curl -s -w ' HTTP %{http_code}\n' -X POST "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/rpc/start_desktop_work_session" \
-    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+    -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" \
     -H 'content-type: application/json' -d "$body"
 done
 ```
+
+The public anon key reaches the function exactly like an agent, and the function refuses it before touching any table. The service key is not needed here.
 
 - **Expected** for all three calls: HTTP 400 with "An active internal employee account is required." That proves the API routes both the installed agents' 3-argument call and 1.0.18's extended calls to the new function.
 - **"Could not find the function" (PGRST202)** means installed agents can't start: run the rollback below immediately.
@@ -247,6 +264,9 @@ gh workflow run build-desktop-agent.yml --repo DanielGiuditta/mandala --ref clau
 - downloading `latest/MandalaAgentSetup-1.0.18.exe` to this Mac gives the same SHA-256 and byte size;
 - **owner check:** `https://mandala-web-tau.vercel.app/desktop-agent` offers `MandalaAgentSetup-1.0.18.exe`.
 
+**Key check before D2 and Rollback D.** Both use the local service key, which is rejected as of 25 Oct. First put a working secret key in `.env.deploy.local` (Supabase dashboard → API keys; owner only), then check it:
+`curl -s -o /dev/null -w '%{http_code}\n' -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/offices?select=id&limit=1"` must print 200. D1 itself runs in CI with the GitHub secret.
+
 **Rollback D:** put the A4 manifest back. The 1.0.17 installer object is never touched.
 
 ```bash
@@ -261,6 +281,7 @@ A PC already on 1.0.18 may go back to 1.0.17 **only when its agent shows no time
 
 **Before the visit, all from New York:**
 - Gate D is published and verified.
+- **Owner check:** sign in and open `https://mandala-web-tau.vercel.app/desktop-agent`. It must offer the installer download. That page uses Vercel's `SUPABASE_SERVICE_ROLE_KEY`, which dates from the same day as the rejected local key. If it fails, either replace the key in Vercel, or bring the installer from the CI run's artifact (`gh run download`) and check its SHA-256.
 - India has been told one day ahead, via the usual async route:
   > On [date], please press Stop in Mandala Agent when you finish work and leave your PC switched on and connected. Surjith: please leave STP80 on with UltraViewer available and send the access details as usual.
 
@@ -297,3 +318,31 @@ If something looks wrong, investigate from the data first. Ask India for a diagn
 - The partners' daily gap report page (needs a design go-ahead).
 - Revoking employees' direct `time_entries` inserts (audit D4).
 - Audited "add missed time" for supervisors.
+
+## Follow-up fixes (26 October 2026, server and website only, no PC visit)
+
+**D4: stop direct inserts of hours** (migration `20261026030000_deny_direct_time_entry_inserts`, commit `96f2cbb`):
+- Drops the "authenticated users can insert self manual time entries" policy and revokes `INSERT` on `time_entries` from `anon` and `authenticated`.
+- The timer functions that write hours are security definer and keep working. Reads and lead corrections are unchanged.
+- Rehearsed in `supabase/tests/time-entry-integrity.test.mjs`. Production's current insert policy is byte-identical (md5 of `with_check`) to the one `rollback.sql` recreates.
+- Read-only backup and pre-check passed on 26 Oct, 08:20 IST (`local-resources/rollout-2026-10-26-d4/`).
+
+```bash
+psql -X -v ON_ERROR_STOP=1 --single-transaction \
+  -f supabase/rollout/20261026030000/apply-guards.sql \
+  -f supabase/migrations/20261026030000_deny_direct_time_entry_inserts.sql \
+  -f supabase/rollout/20261026030000/record-migration.sql
+psql -X -v ON_ERROR_STOP=1 -c "set session characteristics as transaction read only" -f supabase/rollout/20261026030000/verify.sql
+```
+
+Rollback: `apply-guards.sql` + `rollback.sql`, in one transaction.
+
+**Website fixes** (commit `5c6291f`; deploy exactly like Gate C, from a clean export of that commit):
+- **D12:** personal totals and People weekly totals read every page, so they don't undercount past 1,000 rows.
+- **D10:** the `/time-tracker` columns say "My".
+- **D18:** only PGRST202 triggers the project-detail fallback.
+- The dead direct-insert code path is removed.
+
+The website does not depend on D4, and D4 does not depend on the website, so they can go in either order.
+
+**Repository only:** `20260831160000_add_test_data_markers.sql` was recovered from production's migration history. It was applied on 31 Aug, but no copy of the repository had it.

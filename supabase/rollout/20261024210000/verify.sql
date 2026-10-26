@@ -1,5 +1,5 @@
 -- Read-only checks right after applying 20261024210000_keep_all_desktop_time:
---   PGOPTIONS='-c default_transaction_read_only=on' psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 -f verify.sql
+--   psql -X -v ON_ERROR_STOP=1 -c "set session characteristics as transaction read only" -f verify.sql
 -- Compare the baseline rows printed at the end with the precheck output: the
 -- migration itself must not change any receipt, timer or time entry.
 
