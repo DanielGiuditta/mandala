@@ -1,6 +1,6 @@
 # Production rollout: no time gaps (migration 20261024210000, website fix, Agent 1.0.18)
 
-Status (26 October 2026). Each gate needs the owner's explicit OK.
+Status (27 October 2026, UTC). Each gate needs the owner's explicit OK.
 
 | Gate | State |
 | --- | --- |
@@ -10,7 +10,8 @@ Status (26 October 2026). Each gate needs the owner's explicit OK.
 | B4 watch | Read-only script `local-resources/rollout-2026-10-25/b4-watch.sh`, run on the first India working days. |
 | Agent 1.0.18 candidate | Windows CI run 40375253887 passed at `ce2c2dc` with publishing off: 13 exact receipts, 0 duplicates, 0 production requests. Restart resume was checked on real Windows: a forced stop while tracking with the gateway down, a restart after Stop, and a forced stop while idle-paused with the gateway down. |
 | D, E | Not started. |
-| Follow-up | D4 migration `20261026030000` and website fixes `5c6291f`: see the end of this document. |
+| D4 | Applied 27 Oct 01:02 UTC; verify and the public API probe passed. Results in `local-resources/rollout-2026-10-26-d4/D4-AND-WEB-RESULTS.md`. |
+| Website fixes | Live 27 Oct 01:05 UTC from `5c6291f` as `dpl_5wptdsBbiGB6wTtTxShs5oFggchT`; the rollback target is `dpl_4z8XBrWD7RXqZeojUWQdy2h6gj2K`. The owner's signed-in check is pending. |
 
 ## Hard constraint: Windows changes are expensive (owner, 25 October 2026)
 
@@ -318,7 +319,7 @@ If something looks wrong, investigate from the data first. Ask India for a diagn
 ## Not in this rollout
 
 - The partners' daily gap report page (needs a design go-ahead).
-- Revoking employees' direct `time_entries` inserts (audit D4).
+- Revoking employees' direct `time_entries` inserts (audit D4). Done separately on 27 Oct; see below.
 - Audited "add missed time" for supervisors.
 
 ## Follow-up fixes (26 October 2026, server and website only, no PC visit)
@@ -328,6 +329,7 @@ If something looks wrong, investigate from the data first. Ask India for a diagn
 - The timer functions that write hours are security definer and keep working. Reads and lead corrections are unchanged.
 - Rehearsed in `supabase/tests/time-entry-integrity.test.mjs`. Production's current insert policy is byte-identical (md5 of `with_check`) to the one `rollback.sql` recreates.
 - Read-only backup and pre-check passed on 26 Oct, 08:20 IST (`local-resources/rollout-2026-10-26-d4/`).
+- **Applied 27 Oct 01:02 UTC** after a fresh backup and pre-check (218 entries, 109.49 h). Verify passed. Totals are unchanged. A direct insert with the public key now gets `permission denied for table time_entries`.
 
 ```bash
 psql -X -v ON_ERROR_STOP=1 --single-transaction \
@@ -344,6 +346,7 @@ Rollback: `apply-guards.sql` + `rollback.sql`, in one transaction.
 - **D10:** the `/time-tracker` columns say "My".
 - **D18:** only PGRST202 triggers the project-detail fallback.
 - The dead direct-insert code path is removed.
+- **Live 27 Oct 01:05 UTC** as `dpl_5wptdsBbiGB6wTtTxShs5oFggchT` (bom1), from a clean `git archive 5c6291f`. Checks: tests 37/37 and `tsc` clean. Post-deploy: routes as expected and no error logs. Rollback: `vercel rollback dpl_4z8XBrWD7RXqZeojUWQdy2h6gj2K`.
 
 The website does not depend on D4, and D4 does not depend on the website, so they can go in either order.
 
